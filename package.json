@@ -1,0 +1,12 @@
+{
+  "name": "service-provider-marketplace",
+  "version": "1.0.0",
+  "description": "Service Provider Marketplace",
+  "scripts": {
+    "backend": "cd backend && npm start",
+    "customer": "cd customer-app && npm start",
+    "provider": "cd provider-app && npm start",
+    "admin": "cd admin-panel && npm run dev",
+    "install:all": "npm install && cd backend && npm install && cd ../customer-app && npm install && cd ../provider-app && npm install && cd ../admin-panel && npm install"
+  }
+}
