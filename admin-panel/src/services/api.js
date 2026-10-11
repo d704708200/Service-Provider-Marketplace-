@@ -1,0 +1,93 @@
+import axios from 'axios';
+
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+const api = axios.create({
+  baseURL: BASE_URL,
+  timeout: 15000,
+  headers: {
+    'Content-Type': 'application/json',
+    Accept: 'application/json'
+  }
+});
+
+// Callback for handling 401 unauthenticated globally in React context
+let onUnauthorizedCallback = null;
+
+export const setOnUnauthorizedCallback = (callback) => {
+  onUnauthorizedCallback = callback;
+};
+
+// Request Interceptor: Attach Bearer token if present
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('admin_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response Interceptor: Format error and handle 401/403
+api.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    if (error.response) {
+      const { status, data } = error.response;
+      
+      // Extract human-friendly error message from standard backend format
+      const message =
+        data?.error?.message ||
+        data?.message ||
+        (status === 401
+          ? 'Authentication required or session expired. Please sign in again.'
+          : status === 403
+          ? 'Access denied: You lack sufficient administrative privileges.'
+          : status === 404
+          ? 'Requested resource not found.'
+          : status >= 500
+          ? 'Server error occurred. Please try again later.'
+          : 'An unexpected error occurred.');
+
+      error.userMessage = message;
+
+      // Handle unauthenticated (401)
+      if (status === 401) {
+        localStorage.removeItem('admin_token');
+        if (typeof onUnauthorizedCallback === 'function') {
+          onUnauthorizedCallback(message);
+        }
+      }
+    } else if (error.request) {
+      error.userMessage = 'Unable to reach backend service. Verify server is running at ' + BASE_URL;
+    } else {
+      error.userMessage = error.message || 'Network request configuration failed.';
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+// Auth API Methods
+export const authApi = {
+  loginAdmin: async (credentials) => {
+    const response = await api.post('/auth/login/admin', credentials);
+    return response.data;
+  },
+  getMe: async () => {
+    const response = await api.get('/auth/me');
+    return response.data;
+  },
+  checkHealth: async () => {
+    const response = await api.get('/health');
+    return response.data;
+  }
+};
+
+export default api;

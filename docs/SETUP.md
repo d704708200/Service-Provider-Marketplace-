@@ -1,4 +1,4 @@
-﻿# Project Setup & Configuration
+# Project Setup & Configuration
 
 ## Prerequisites
 - Node.js (v18 or newer)
@@ -41,6 +41,14 @@ ADMIN_PANEL_URL=http://localhost:5173
 
 ### 3. Admin Panel
 - `admin-panel/.env`: `VITE_API_URL=http://localhost:5000/api`
+
+Run the admin panel locally:
+```bash
+cd admin-panel
+npm run dev
+```
+
+For complete architecture, routing, and verification details, see [ADMIN_PANEL.md](./ADMIN_PANEL.md).
 
 ## Running Tests
 Run backend test suite:
