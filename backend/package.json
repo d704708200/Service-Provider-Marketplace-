@@ -7,7 +7,9 @@
     "dev": "nodemon server.js",
     "test:models": "node test_models.js",
     "test:health": "node test_health.js",
-    "test": "node test_models.js && node test_health.js"
+    "test": "node test_models.js && node test_health.js && node test_auth_unit.js && node test_auth_http.js",
+    "test:auth": "node test_auth_unit.js && node test_auth_http.js",
+    "test:integration": "node test_auth_integration.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

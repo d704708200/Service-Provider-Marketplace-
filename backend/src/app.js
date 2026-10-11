@@ -4,6 +4,9 @@ const corsMiddleware = require('./config/cors');
 const { getDBStatus } = require('./config/db');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 
+// Route Imports
+const authRoutes = require('./routes/authRoutes');
+
 const app = express();
 
 // Security headers
@@ -44,6 +47,9 @@ app.get('/', (req, res) => {
     health: '/api/health'
   });
 });
+
+// API Routes
+app.use('/api/auth', authRoutes);
 
 // 404 Handler
 app.use(notFoundHandler);
