@@ -56,3 +56,57 @@ Run backend test suite:
 cd backend
 npm test
 ```
+
+### Live Database Integration Tests
+When `MONGODB_URI` and `JWT_SECRET` are configured in `backend/.env`, run the end-to-end database authentication tests:
+```bash
+cd backend
+npm run test:integration
+```
+This tests:
+- Customer registration and login
+- Duplicate registration rejection (409)
+- Invalid password handling (401)
+- Provider registration (pending status) and login
+- Role mismatch access controls (403)
+- Admin login and profile association
+- Token verification with `GET /api/auth/me`
+- Deactivated / inactive account blocking (403)
+- Safe, automated teardown of test-created records
+
+## Safe Administrator Provisioning
+
+To provision an authorized administrator account without hardcoding credentials:
+
+### Method 1: Interactive Prompt
+```bash
+cd backend
+npm run seed:admin
+```
+You will be securely prompted for the administrator's email and initial password (minimum 6 characters).
+
+### Method 2: Command Line Flags
+```bash
+cd backend
+node src/seeds/provisionAdmin.js --email=admin@example.com --password="YourSecurePassword" --name="Platform Administrator" --department="Operations"
+```
+
+### Method 3: Environment Variables
+Define the following in `backend/.env`:
+```env
+ADMIN_SEED_EMAIL=admin@example.com
+ADMIN_SEED_PASSWORD=YourSecurePassword
+ADMIN_SEED_NAME="Platform Administrator"
+ADMIN_SEED_DEPARTMENT="Operations"
+```
+Then run:
+```bash
+cd backend
+npm run seed:admin
+```
+
+**Safety Guarantees:**
+- Passwords are securely hashed with bcrypt (salt rounds = 10) before storage; plaintext passwords are never stored or logged.
+- The script checks for existing accounts and refuses to overwrite passwords or re-assign accounts with conflicting roles.
+- Safe to re-run; will not create duplicate entries or delete existing accounts.
+- Creates both the primary `User` record (role `admin`) and the associated `Admin` profile record required by `/api/auth/login/admin`.
