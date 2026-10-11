@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const helmet = require('helmet');
 const corsMiddleware = require('./config/cors');
 const { getDBStatus } = require('./config/db');
@@ -6,6 +6,7 @@ const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 
 // Route Imports
 const authRoutes = require('./routes/authRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
 
 const app = express();
 
@@ -50,6 +51,7 @@ app.get('/', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/categories', categoryRoutes);
 
 // 404 Handler
 app.use(notFoundHandler);

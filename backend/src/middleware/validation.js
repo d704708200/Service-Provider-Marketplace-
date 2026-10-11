@@ -1,4 +1,4 @@
-﻿const validateRegisterCustomer = (req, res, next) => {
+const validateRegisterCustomer = (req, res, next) => {
   const { name, email, phone, password, address } = req.body;
   const errors = [];
 
@@ -104,8 +104,112 @@ const validateLogin = (req, res, next) => {
   next();
 };
 
+const mongoose = require('mongoose');
+
+const validateObjectId = (paramName = 'id') => {
+  return (req, res, next) => {
+    const id = req.params[paramName];
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: `Invalid MongoDB ObjectId for parameter '${paramName}': '${id}'`,
+          statusCode: 400,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+    next();
+  };
+};
+
+const validateCreateCategory = (req, res, next) => {
+  const { name, displayOrder, description } = req.body;
+  const errors = [];
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    errors.push('Category name is required');
+  } else if (name.trim().length > 100) {
+    errors.push('Category name cannot exceed 100 characters');
+  }
+
+  if (description !== undefined && typeof description !== 'string') {
+    errors.push('Description must be a string');
+  }
+
+  if (displayOrder !== undefined && (!Number.isInteger(Number(displayOrder)) || Number(displayOrder) < 0)) {
+    errors.push('Display order must be a non-negative integer');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateUpdateCategory = (req, res, next) => {
+  const { name, displayOrder, description } = req.body;
+  const errors = [];
+
+  if (name !== undefined) {
+    if (typeof name !== 'string' || !name.trim()) {
+      errors.push('Category name cannot be empty');
+    } else if (name.trim().length > 100) {
+      errors.push('Category name cannot exceed 100 characters');
+    }
+  }
+
+  if (description !== undefined && typeof description !== 'string') {
+    errors.push('Description must be a string');
+  }
+
+  if (displayOrder !== undefined && (!Number.isInteger(Number(displayOrder)) || Number(displayOrder) < 0)) {
+    errors.push('Display order must be a non-negative integer');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateUpdateCategoryStatus = (req, res, next) => {
+  const { isActive } = req.body;
+  if (isActive === undefined || typeof isActive !== 'boolean') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: "Validation failed: 'isActive' boolean field is required",
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+  next();
+};
+
 module.exports = {
   validateRegisterCustomer,
   validateRegisterProvider,
-  validateLogin
+  validateLogin,
+  validateObjectId,
+  validateCreateCategory,
+  validateUpdateCategory,
+  validateUpdateCategoryStatus
 };

@@ -1,4 +1,4 @@
-﻿# Database Architecture & Models Documentation
+# Database Architecture & Models Documentation
 
 ## Overview
 The Service Provider Marketplace backend uses **MongoDB** with **Mongoose ODM (v8.3.0)**.
@@ -47,8 +47,8 @@ The database schema supports multi-role users (Customer, Provider, Admin), hiera
 | **User** | `users` | `_id` | `email` (unique), `phone` (unique), `role`, `isActive` | Core authentication and identity profile for all roles. |
 | **Customer** | `customers` | `_id`, `user` (ref: `User`, unique) | `user`, `addresses.location` (`2dsphere`) | Customer profile with multiple saved GeoJSON addresses and payment preferences. |
 | **Provider** | `providers` | `_id`, `user` (ref: `User`, unique), `categories`, `serviceAreas` | `user`, `verificationStatus`, `isAvailable`, `categories`, `rating.average` | Service professional profile, credentials, verification status, and ratings. |
-| **Category** | `categories` | `_id` | `name` (unique), `slug` (unique), `isActive`, `displayOrder` | Service categories (e.g. Plumbing, Electrical, Cleaning). |
-| **Service** | `services` | `_id`, `category` (ref: `Category`), `provider` (ref: `Provider`, optional) | `category`, `provider`, `price`, `isActive` | Catalog service items with pricing model (fixed/hourly/quote). |
+| **Category** | `categories` | `_id` | `name` (unique), `slug` (unique), `isActive`, `displayOrder` | Service categories with unique slug resolution and Service reference protection. |
+| **Service** | `services` | `_id`, `category` (ref: `Category`), `provider` (ref: `Provider`, optional) | `category`, `provider`, `price`, `isActive` | Catalog service items with pricing model (fixed/hourly/quote) referencing Category. |
 | **ServiceArea** | `serviceareas` | `_id` | `city`, `zipCodes`, `polygon` (`2dsphere`) | Geographic boundary / serviced zone with GeoJSON Polygon support. |
 | **Availability** | `availabilities`| `_id`, `provider` (ref: `Provider`) | Compound unique index: `{ provider: 1, dayOfWeek: 1 }` | Weekly provider scheduling slots (0=Sunday .. 6=Saturday) and date overrides. |
 | **Booking** | `bookings` | `_id`, `bookingReference` (unique), `customer`, `provider`, `service` | `customer`, `provider`, `status`, `scheduledDate`, `address.location` (`2dsphere`) | Service request and order lifecycle (`pending`, `accepted`, `in_progress`, `completed`, `cancelled`, `rejected`). |
