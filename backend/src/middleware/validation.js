@@ -702,3 +702,427 @@ module.exports = {
   validateRejectBooking
 };
 
+const validateUpdateCustomerProfile = (req, res, next) => {
+  const { name, phone, avatar, defaultPaymentMethod, emergencyContact, role, isActive, isVerified } = req.body;
+  const errors = [];
+
+  // Strictly disallow altering protected security fields
+  if (role !== undefined || isActive !== undefined || isVerified !== undefined) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        message: 'Security violation: Attempted to modify protected fields (role, account status, or verification)',
+        statusCode: 403,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  if (name !== undefined) {
+    if (typeof name !== 'string' || name.trim().length < 2) {
+      errors.push('Name must be at least 2 characters');
+    } else if (name.trim().length > 100) {
+      errors.push('Name cannot exceed 100 characters');
+    }
+  }
+
+  if (phone !== undefined) {
+    if (typeof phone !== 'string' || phone.trim().length < 7) {
+      errors.push('Phone must be a valid phone number (min 7 digits)');
+    }
+  }
+
+  if (avatar !== undefined && avatar !== null && typeof avatar !== 'string') {
+    errors.push('Avatar must be a string URL or null');
+  }
+
+  const validPaymentMethods = ['cash', 'card', 'upi', 'wallet'];
+  if (defaultPaymentMethod !== undefined && !validPaymentMethods.includes(defaultPaymentMethod)) {
+    errors.push(`defaultPaymentMethod must be one of: ${validPaymentMethods.join(', ')}`);
+  }
+
+  if (emergencyContact !== undefined) {
+    if (typeof emergencyContact !== 'object' || emergencyContact === null) {
+      errors.push('emergencyContact must be an object with name and phone');
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateCustomerAddress = (req, res, next) => {
+  const { street, city, state, zipCode, location, isDefault } = req.body;
+  const errors = [];
+
+  if (!street || typeof street !== 'string' || !street.trim()) {
+    errors.push('Street address is required');
+  } else if (street.trim().length > 200) {
+    errors.push('Street address cannot exceed 200 characters');
+  }
+
+  if (!city || typeof city !== 'string' || !city.trim()) {
+    errors.push('City is required');
+  } else if (city.trim().length > 100) {
+    errors.push('City cannot exceed 100 characters');
+  }
+
+  if (state !== undefined && typeof state !== 'string') {
+    errors.push('State must be a string');
+  }
+
+  if (zipCode !== undefined && typeof zipCode !== 'string') {
+    errors.push('Postal/Zip code must be a string');
+  }
+
+  if (isDefault !== undefined && typeof isDefault !== 'boolean') {
+    errors.push('isDefault must be a boolean');
+  }
+
+  if (location !== undefined) {
+    if (
+      !location ||
+      typeof location !== 'object' ||
+      !Array.isArray(location.coordinates) ||
+      location.coordinates.length !== 2
+    ) {
+      errors.push('Location must be a GeoJSON object with [longitude, latitude] coordinates');
+    } else {
+      const [lng, lat] = location.coordinates;
+      if (typeof lng !== 'number' || typeof lat !== 'number' || lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+        errors.push('Coordinates must be valid numbers: longitude between -180 and 180, latitude between -90 and 90');
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateUpdateCustomerAddress = (req, res, next) => {
+  const { street, city, state, zipCode, location, isDefault } = req.body;
+  const errors = [];
+
+  if (street !== undefined) {
+    if (typeof street !== 'string' || !street.trim()) {
+      errors.push('Street address cannot be empty');
+    } else if (street.trim().length > 200) {
+      errors.push('Street address cannot exceed 200 characters');
+    }
+  }
+
+  if (city !== undefined) {
+    if (typeof city !== 'string' || !city.trim()) {
+      errors.push('City cannot be empty');
+    } else if (city.trim().length > 100) {
+      errors.push('City cannot exceed 100 characters');
+    }
+  }
+
+  if (state !== undefined && typeof state !== 'string') {
+    errors.push('State must be a string');
+  }
+
+  if (zipCode !== undefined && typeof zipCode !== 'string') {
+    errors.push('Postal/Zip code must be a string');
+  }
+
+  if (isDefault !== undefined && typeof isDefault !== 'boolean') {
+    errors.push('isDefault must be a boolean');
+  }
+
+  if (location !== undefined) {
+    if (
+      !location ||
+      typeof location !== 'object' ||
+      !Array.isArray(location.coordinates) ||
+      location.coordinates.length !== 2
+    ) {
+      errors.push('Location must be a GeoJSON object with [longitude, latitude] coordinates');
+    } else {
+      const [lng, lat] = location.coordinates;
+      if (typeof lng !== 'number' || typeof lat !== 'number' || lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+        errors.push('Coordinates must be valid numbers: longitude between -180 and 180, latitude between -90 and 90');
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateProviderAvailability = (req, res, next) => {
+  const { schedule } = req.body;
+  const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+
+  if (!schedule || !Array.isArray(schedule)) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: "Validation failed: 'schedule' array is required",
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  const errors = [];
+  const seenDays = new Set();
+
+  schedule.forEach((dayEntry, index) => {
+    if (dayEntry.dayOfWeek === undefined || !Number.isInteger(Number(dayEntry.dayOfWeek))) {
+      errors.push(`Entry #${index + 1}: dayOfWeek must be an integer between 0 and 6`);
+    } else {
+      const dayNum = Number(dayEntry.dayOfWeek);
+      if (dayNum < 0 || dayNum > 6) {
+        errors.push(`Entry #${index + 1}: dayOfWeek must be between 0 (Sunday) and 6 (Saturday)`);
+      }
+      if (seenDays.has(dayNum)) {
+        errors.push(`Duplicate schedule entry for dayOfWeek ${dayNum}`);
+      }
+      seenDays.add(dayNum);
+    }
+
+    if (dayEntry.isAvailable !== undefined && typeof dayEntry.isAvailable !== 'boolean') {
+      errors.push(`Entry #${index + 1}: isAvailable must be a boolean`);
+    }
+
+    if (dayEntry.slots !== undefined) {
+      if (!Array.isArray(dayEntry.slots)) {
+        errors.push(`Entry #${index + 1}: slots must be an array`);
+      } else {
+        dayEntry.slots.forEach((slot, slotIdx) => {
+          if (!slot.startTime || !timeRegex.test(slot.startTime)) {
+            errors.push(`Entry #${index + 1}, Slot #${slotIdx + 1}: startTime must match HH:mm format`);
+          }
+          if (!slot.endTime || !timeRegex.test(slot.endTime)) {
+            errors.push(`Entry #${index + 1}, Slot #${slotIdx + 1}: endTime must match HH:mm format`);
+          }
+          if (slot.startTime && slot.endTime && timeRegex.test(slot.startTime) && timeRegex.test(slot.endTime)) {
+            if (slot.startTime >= slot.endTime) {
+              errors.push(`Entry #${index + 1}, Slot #${slotIdx + 1}: startTime (${slot.startTime}) must precede endTime (${slot.endTime})`);
+            }
+          }
+        });
+      }
+    }
+  });
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateProviderServiceArea = (req, res, next) => {
+  const { name, city, state, zipCodes, polygon } = req.body;
+  const errors = [];
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    errors.push('Service area name is required');
+  } else if (name.trim().length > 100) {
+    errors.push('Service area name cannot exceed 100 characters');
+  }
+
+  if (!city || typeof city !== 'string' || !city.trim()) {
+    errors.push('City is required');
+  }
+
+  if (state !== undefined && typeof state !== 'string') {
+    errors.push('State must be a string');
+  }
+
+  if (zipCodes !== undefined) {
+    if (!Array.isArray(zipCodes)) {
+      errors.push('zipCodes must be an array of postal codes');
+    } else {
+      for (const z of zipCodes) {
+        if (typeof z !== 'string' || !z.trim()) {
+          errors.push('Each zipCode must be a non-empty string');
+          break;
+        }
+      }
+    }
+  }
+
+  if (polygon !== undefined) {
+    if (
+      !polygon ||
+      typeof polygon !== 'object' ||
+      polygon.type !== 'Polygon' ||
+      !Array.isArray(polygon.coordinates) ||
+      polygon.coordinates.length === 0
+    ) {
+      errors.push("polygon must be a GeoJSON Polygon with type 'Polygon' and coordinate rings");
+    } else {
+      // Validate polygon coordinates
+      const ring = polygon.coordinates[0];
+      if (!Array.isArray(ring) || ring.length < 4) {
+        errors.push('GeoJSON Polygon ring must contain at least 4 coordinate pairs (first and last must match)');
+      } else {
+        for (const coord of ring) {
+          if (!Array.isArray(coord) || coord.length < 2 || typeof coord[0] !== 'number' || typeof coord[1] !== 'number') {
+            errors.push('Each polygon point must be [longitude, latitude] numbers');
+            break;
+          }
+          const [lng, lat] = coord;
+          if (lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+            errors.push('Polygon coordinates out of range (-180 to 180 longitude, -90 to 90 latitude)');
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateUpdateProviderServiceArea = (req, res, next) => {
+  const { name, city, state, zipCodes, polygon, isActive } = req.body;
+  const errors = [];
+
+  if (name !== undefined) {
+    if (typeof name !== 'string' || !name.trim()) {
+      errors.push('Service area name cannot be empty');
+    } else if (name.trim().length > 100) {
+      errors.push('Service area name cannot exceed 100 characters');
+    }
+  }
+
+  if (city !== undefined && (typeof city !== 'string' || !city.trim())) {
+    errors.push('City cannot be empty');
+  }
+
+  if (state !== undefined && typeof state !== 'string') {
+    errors.push('State must be a string');
+  }
+
+  if (zipCodes !== undefined && !Array.isArray(zipCodes)) {
+    errors.push('zipCodes must be an array of postal codes');
+  }
+
+  if (isActive !== undefined && typeof isActive !== 'boolean') {
+    errors.push('isActive must be a boolean');
+  }
+
+  if (polygon !== undefined) {
+    if (
+      !polygon ||
+      typeof polygon !== 'object' ||
+      polygon.type !== 'Polygon' ||
+      !Array.isArray(polygon.coordinates) ||
+      polygon.coordinates.length === 0
+    ) {
+      errors.push("polygon must be a GeoJSON Polygon with type 'Polygon' and coordinate rings");
+    } else {
+      const ring = polygon.coordinates[0];
+      if (!Array.isArray(ring) || ring.length < 4) {
+        errors.push('GeoJSON Polygon ring must contain at least 4 coordinate pairs (first and last must match)');
+      } else {
+        for (const coord of ring) {
+          if (!Array.isArray(coord) || coord.length < 2 || typeof coord[0] !== 'number' || typeof coord[1] !== 'number') {
+            errors.push('Each polygon point must be [longitude, latitude] numbers');
+            break;
+          }
+          const [lng, lat] = coord;
+          if (lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+            errors.push('Polygon coordinates out of range (-180 to 180 longitude, -90 to 90 latitude)');
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+module.exports = {
+  validateRegisterCustomer,
+  validateRegisterProvider,
+  validateLogin,
+  validateObjectId,
+  validateCreateCategory,
+  validateUpdateCategory,
+  validateUpdateCategoryStatus,
+  validateCreateService,
+  validateUpdateService,
+  validateUpdateServiceStatus,
+  validateUpdateProviderProfile,
+  validateSubmitDocument,
+  validateDocumentReview,
+  validateProviderVerification,
+  validateAccountStatus,
+  validateCreateBooking,
+  validateCancelBooking,
+  validateRejectBooking,
+  validateUpdateCustomerProfile,
+  validateCustomerAddress,
+  validateUpdateCustomerAddress,
+  validateProviderAvailability,
+  validateProviderServiceArea,
+  validateUpdateProviderServiceArea
+};
+
+

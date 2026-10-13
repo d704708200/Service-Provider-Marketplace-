@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-import { bookingApi } from '../../services/api';
+import { bookingApi, customerApi } from '../../services/api';
 import { Header, Card, Input, Button, Badge } from '../../components/common';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -25,6 +25,11 @@ export default function RequestServiceScreen({ route, navigation }) {
 
   // Booking mode: 'scheduled' | 'instant'
   const [bookingMode, setBookingMode] = useState('scheduled');
+
+  // Saved Addresses State
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState(null);
+  const [useCustomAddress, setUseCustomAddress] = useState(false);
 
   // Form states
   const [street, setStreet] = useState('');
@@ -40,6 +45,55 @@ export default function RequestServiceScreen({ route, navigation }) {
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState(null);
+
+  // Load saved addresses on screen mount
+  React.useEffect(() => {
+    let isMounted = true;
+    customerApi
+      .getAddresses()
+      .then((res) => {
+        if (isMounted && res?.success && Array.isArray(res.data) && res.data.length > 0) {
+          setSavedAddresses(res.data);
+          const defaultAddr = res.data.find((a) => a.isDefault) || res.data[0];
+          setSelectedAddressId(defaultAddr._id);
+          setStreet(defaultAddr.street || '');
+          setCity(defaultAddr.city || '');
+          setState(defaultAddr.state || '');
+          setPostalCode(defaultAddr.zipCode || '');
+        } else if (isMounted) {
+          setUseCustomAddress(true);
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not load saved addresses:', err.message);
+        if (isMounted) setUseCustomAddress(true);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSelectSavedAddress = (addr) => {
+    setSelectedAddressId(addr._id);
+    setUseCustomAddress(false);
+    setStreet(addr.street || '');
+    setCity(addr.city || '');
+    setState(addr.state || '');
+    setPostalCode(addr.zipCode || '');
+    if (formErrors.street || formErrors.city) {
+      setFormErrors({ ...formErrors, street: null, city: null });
+    }
+  };
+
+  const handleSelectNewAddressMode = () => {
+    setSelectedAddressId(null);
+    setUseCustomAddress(true);
+    setStreet('');
+    setCity('');
+    setState('');
+    setPostalCode('');
+  };
 
   const validate = () => {
     const errors = {};
@@ -325,6 +379,57 @@ export default function RequestServiceScreen({ route, navigation }) {
         <Card style={styles.formCard}>
           <Text style={styles.sectionTitle}>Service Location</Text>
 
+          {/* Saved Addresses Picker */}
+          {savedAddresses.length > 0 && (
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={styles.subSectionTitle}>Choose from Saved Addresses</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: 4 }}>
+                {savedAddresses.map((addr) => {
+                  const isSelected = selectedAddressId === addr._id && !useCustomAddress;
+                  return (
+                    <TouchableOpacity
+                      key={addr._id}
+                      style={[styles.savedAddressChip, isSelected && styles.savedAddressChipSelected]}
+                      onPress={() => handleSelectSavedAddress(addr)}
+                      activeOpacity={0.8}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons
+                          name={addr.title?.toLowerCase() === 'work' ? 'briefcase-outline' : 'home-outline'}
+                          size={14}
+                          color={isSelected ? colors.primary : colors.slate500}
+                        />
+                        <Text style={[styles.savedAddressChipTitle, isSelected && styles.savedAddressChipTitleSelected]}>
+                          {addr.title || 'Address'}
+                        </Text>
+                        {addr.isDefault && <Badge label="DEFAULT" variant="primary" size="sm" />}
+                      </View>
+                      <Text style={styles.savedAddressChipStreet} numberOfLines={1}>
+                        {addr.street}, {addr.city}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                <TouchableOpacity
+                  style={[styles.savedAddressChip, useCustomAddress && styles.savedAddressChipSelected]}
+                  onPress={handleSelectNewAddressMode}
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="add-circle-outline" size={14} color={useCustomAddress ? colors.primary : colors.slate500} />
+                    <Text style={[styles.savedAddressChipTitle, useCustomAddress && styles.savedAddressChipTitleSelected]}>
+                      New Address
+                    </Text>
+                  </View>
+                  <Text style={styles.savedAddressChipStreet} numberOfLines={1}>
+                    Enter custom location
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          )}
+
           <Input
             label="Street Address *"
             placeholder="Flat / House No., Street, Area"
@@ -531,6 +636,38 @@ const styles = StyleSheet.create({
     color: colors.slate900
   },
   summarySub: {
+    ...typography.caption,
+    color: colors.slate500,
+    marginTop: 2
+  },
+  subSectionTitle: {
+    ...typography.caption,
+    color: colors.slate600,
+    fontWeight: '600',
+    marginBottom: spacing.xs
+  },
+  savedAddressChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.slate50,
+    borderRadius: borderRadius.md,
+    borderWidth: 1.5,
+    borderColor: colors.slate200,
+    minWidth: 140
+  },
+  savedAddressChipSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySubtle
+  },
+  savedAddressChipTitle: {
+    ...typography.bodySmall,
+    fontWeight: '700',
+    color: colors.slate800
+  },
+  savedAddressChipTitleSelected: {
+    color: colors.primaryDark
+  },
+  savedAddressChipStreet: {
     ...typography.caption,
     color: colors.slate500,
     marginTop: 2

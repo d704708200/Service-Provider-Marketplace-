@@ -13,6 +13,9 @@ export const Input = ({
   keyboardType = 'default',
   autoCapitalize = 'none',
   leftIcon = null,
+  rightIcon = null,
+  onRightIconPress = null,
+  containerStyle,
   multiline = false,
   numberOfLines = 1,
   editable = true,
@@ -25,8 +28,63 @@ export const Input = ({
 
   const isPassword = secureTextEntry;
 
+  const renderLeftIcon = () => {
+    if (!leftIcon) return null;
+    if (typeof leftIcon === 'string') {
+      return (
+        <Ionicons
+          name={leftIcon}
+          size={20}
+          color={isFocused ? colors.primary : colors.slate400}
+        />
+      );
+    }
+    return leftIcon;
+  };
+
+  const renderRightIcon = () => {
+    if (isPassword) {
+      return (
+        <TouchableOpacity
+          style={styles.eyeIcon}
+          onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+            size={20}
+            color={colors.slate400}
+          />
+        </TouchableOpacity>
+      );
+    }
+
+    if (!rightIcon) return null;
+
+    const iconNode =
+      typeof rightIcon === 'string' ? (
+        <Ionicons name={rightIcon} size={20} color={colors.slate400} />
+      ) : (
+        rightIcon
+      );
+
+    if (onRightIconPress) {
+      return (
+        <TouchableOpacity
+          style={styles.eyeIcon}
+          onPress={onRightIconPress}
+          activeOpacity={0.7}
+        >
+          {iconNode}
+        </TouchableOpacity>
+      );
+    }
+
+    return <View style={styles.eyeIcon}>{iconNode}</View>;
+  };
+
   return (
-    <View style={[styles.container, style]}>
+    <View style={[styles.container, containerStyle, style]}>
       {label && <Text style={styles.label}>{label}</Text>}
 
       <View
@@ -37,7 +95,9 @@ export const Input = ({
           !editable && styles.disabledInput
         ]}
       >
-        {leftIcon && <View style={styles.leftIconContainer}>{leftIcon}</View>}
+        {Boolean(leftIcon) && (
+          <View style={styles.leftIconContainer}>{renderLeftIcon()}</View>
+        )}
 
         <TextInput
           value={value}
@@ -60,19 +120,7 @@ export const Input = ({
           {...props}
         />
 
-        {isPassword && (
-          <TouchableOpacity
-            style={styles.eyeIcon}
-            onPress={() => setIsPasswordVisible(!isPasswordVisible)}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
-              size={20}
-              color={colors.slate400}
-            />
-          </TouchableOpacity>
-        )}
+        {renderRightIcon()}
       </View>
 
       {Boolean(error) && <Text style={styles.errorText}>{error}</Text>}

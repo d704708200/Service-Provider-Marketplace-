@@ -119,4 +119,68 @@ export const bookingApi = {
   }
 };
 
+// Provider Profile APIs
+export const providerApi = {
+  getProfile: async () => {
+    const response = await api.get('/providers/me');
+    return response.data;
+  },
+  updateProfile: async (data) => {
+    const response = await api.put('/providers/me', data);
+    return response.data;
+  }
+};
+
+// Provider Availability Schedule APIs
+export const availabilityApi = {
+  getAvailability: async () => {
+    const response = await api.get('/providers/me/availability');
+    return response.data;
+  },
+  updateAvailability: async (schedule) => {
+    const response = await api.put('/providers/me/availability', { schedule });
+    return response.data;
+  }
+};
+
+// Provider Service Areas APIs
+export const serviceAreaApi = {
+  getServiceAreas: async () => {
+    const response = await api.get('/providers/me/service-areas');
+    return response.data;
+  },
+  addServiceArea: async (data) => {
+    const response = await api.post('/providers/me/service-areas', data);
+    return response.data;
+  },
+  updateServiceArea: async (id, data) => {
+    const response = await api.put(`/providers/me/service-areas/${id}`, data);
+    return response.data;
+  },
+  deleteServiceArea: async (id) => {
+    const response = await api.delete(`/providers/me/service-areas/${id}`);
+    return response.data;
+  }
+};
+
+// Provider Offered Services APIs
+export const providerServicesApi = {
+  getServices: async () => {
+    const response = await api.get('/providers/me/services');
+    return response.data;
+  },
+  addService: async (data) => {
+    const response = await api.post('/providers/me/services', data);
+    return response.data;
+  },
+  updateService: async (id, data) => {
+    const response = await api.put(`/providers/me/services/${id}`, data);
+    return response.data;
+  },
+  deleteService: async (id) => {
+    const response = await api.delete(`/providers/me/services/${id}`);
+    return response.data;
+  }
+};
+
 export default api;

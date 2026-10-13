@@ -5,6 +5,9 @@ import { LoadingScreen } from '../components/common';
 import AuthNavigator from './AuthNavigator';
 import TabNavigator from './TabNavigator';
 import BookingDetailScreen from '../screens/requests/BookingDetailScreen';
+import AvailabilityScreen from '../screens/availability/AvailabilityScreen';
+import ServiceAreasScreen from '../screens/profile/ServiceAreasScreen';
+import ProviderServicesScreen from '../screens/services/ProviderServicesScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -23,6 +26,9 @@ export default function RootNavigator() {
         <>
           <Stack.Screen name="MainTabs" component={TabNavigator} />
           <Stack.Screen name="BookingDetail" component={BookingDetailScreen} />
+          <Stack.Screen name="Availability" component={AvailabilityScreen} />
+          <Stack.Screen name="ServiceAreas" component={ServiceAreasScreen} />
+          <Stack.Screen name="OfferedServices" component={ProviderServicesScreen} />
         </>
       )}
     </Stack.Navigator>

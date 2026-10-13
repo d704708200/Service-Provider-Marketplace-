@@ -640,6 +640,28 @@ const ProvidersPage = () => {
                 </div>
               </div>
 
+              {/* Service Areas */}
+              <div>
+                <span className="text-xs font-semibold text-slate-700 block mb-1">
+                  Designated Service Areas
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedProvider.serviceAreas && selectedProvider.serviceAreas.length > 0 ? (
+                    selectedProvider.serviceAreas.map((area) => (
+                      <span
+                        key={area._id}
+                        className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md font-medium bg-slate-100 text-slate-800 border border-slate-200"
+                      >
+                        <span className="font-semibold">{area.name}</span>
+                        <span className="text-slate-500">({area.city})</span>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-400">No service areas registered</span>
+                  )}
+                </div>
+              </div>
+
               {/* Rejection / Suspension Notice */}
               {selectedProvider.rejectionReason && (
                 <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">

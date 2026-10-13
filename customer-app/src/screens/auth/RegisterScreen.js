@@ -136,7 +136,7 @@ export default function RegisterScreen({ navigation }) {
               if (formErrors.name) setFormErrors({ ...formErrors, name: null });
             }}
             autoCapitalize="words"
-            leftIcon="person-outline"
+            leftIcon={<Ionicons name="person-outline" size={20} color={colors.slate400} />}
             error={formErrors.name}
           />
 
@@ -150,7 +150,7 @@ export default function RegisterScreen({ navigation }) {
             }}
             keyboardType="email-address"
             autoCapitalize="none"
-            leftIcon="mail-outline"
+            leftIcon={<Ionicons name="mail-outline" size={20} color={colors.slate400} />}
             error={formErrors.email}
           />
 
@@ -163,7 +163,7 @@ export default function RegisterScreen({ navigation }) {
               if (formErrors.phone) setFormErrors({ ...formErrors, phone: null });
             }}
             keyboardType="phone-pad"
-            leftIcon="call-outline"
+            leftIcon={<Ionicons name="call-outline" size={20} color={colors.slate400} />}
             maxLength={10}
             error={formErrors.phone}
           />
@@ -177,7 +177,7 @@ export default function RegisterScreen({ navigation }) {
               if (formErrors.password) setFormErrors({ ...formErrors, password: null });
             }}
             secureTextEntry
-            leftIcon="lock-closed-outline"
+            leftIcon={<Ionicons name="lock-closed-outline" size={20} color={colors.slate400} />}
             error={formErrors.password}
           />
 
@@ -190,7 +190,7 @@ export default function RegisterScreen({ navigation }) {
               if (formErrors.confirmPassword) setFormErrors({ ...formErrors, confirmPassword: null });
             }}
             secureTextEntry
-            leftIcon="shield-checkmark-outline"
+            leftIcon={<Ionicons name="shield-checkmark-outline" size={20} color={colors.slate400} />}
             error={formErrors.confirmPassword}
           />
 

@@ -69,6 +69,26 @@ const getProviderAvailability = async (req, res, next) => {
 };
 
 /**
+ * PUT /api/providers/me/availability
+ * Authenticated provider updates their schedule
+ */
+const updateProviderAvailability = async (req, res, next) => {
+  try {
+    const updated = await providerService.updateProviderAvailabilityByUserId(
+      req.user._id,
+      req.body.schedule
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Availability schedule updated successfully',
+      data: updated
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * GET /api/providers/me/service-areas
  * Authenticated provider views their assigned service areas
  */
@@ -79,6 +99,122 @@ const getProviderServiceAreas = async (req, res, next) => {
       success: true,
       message: 'Provider service areas retrieved successfully',
       data: areas
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/providers/me/service-areas
+ * Authenticated provider adds a service area
+ */
+const addProviderServiceArea = async (req, res, next) => {
+  try {
+    const areas = await providerService.addProviderServiceAreaByUserId(req.user._id, req.body);
+    res.status(201).json({
+      success: true,
+      message: 'Service area created successfully',
+      data: areas
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PUT /api/providers/me/service-areas/:id
+ * Authenticated provider updates a service area
+ */
+const updateProviderServiceArea = async (req, res, next) => {
+  try {
+    const areas = await providerService.updateProviderServiceAreaByUserId(
+      req.user._id,
+      req.params.id,
+      req.body
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Service area updated successfully',
+      data: areas
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/providers/me/service-areas/:id
+ * Authenticated provider deletes a service area
+ */
+const deleteProviderServiceArea = async (req, res, next) => {
+  try {
+    const areas = await providerService.deleteProviderServiceAreaByUserId(
+      req.user._id,
+      req.params.id
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Service area deleted successfully',
+      data: areas
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/providers/me/services
+ * Authenticated provider adds a provider service offering
+ */
+const addProviderService = async (req, res, next) => {
+  try {
+    const service = await providerService.addProviderServiceByUserId(req.user._id, req.body);
+    res.status(201).json({
+      success: true,
+      message: 'Service added successfully',
+      data: service
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PUT /api/providers/me/services/:id
+ * Authenticated provider updates a provider service offering
+ */
+const updateProviderService = async (req, res, next) => {
+  try {
+    const service = await providerService.updateProviderServiceByUserId(
+      req.user._id,
+      req.params.id,
+      req.body
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Service updated successfully',
+      data: service
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/providers/me/services/:id
+ * Authenticated provider deletes or deactivates a provider service offering
+ */
+const deleteProviderService = async (req, res, next) => {
+  try {
+    const result = await providerService.deleteProviderServiceByUserId(
+      req.user._id,
+      req.params.id
+    );
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result
     });
   } catch (error) {
     next(error);
@@ -271,8 +407,15 @@ module.exports = {
   getProviderMe,
   updateProviderMe,
   getProviderServices,
+  addProviderService,
+  updateProviderService,
+  deleteProviderService,
   getProviderAvailability,
+  updateProviderAvailability,
   getProviderServiceAreas,
+  addProviderServiceArea,
+  updateProviderServiceArea,
+  deleteProviderServiceArea,
   submitDocument,
   deleteDocument,
   getPublicProviders,

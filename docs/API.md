@@ -670,5 +670,79 @@ Complete Service │
 | `GET` | `/api/bookings/admin/:id` | Admin | View complete booking dossier with customer, provider, and timestamps |
 | `PATCH`| `/api/bookings/admin/:id/cancel` | Admin | Supervised cancellation with administrative reason |
 
+---
+
+## 6. Customer Profile & Addresses API (Phase 11)
+
+Mounted at `/api/customers`. All routes require JWT authentication with `role: customer`.
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/customers/me` | Customer | Get authenticated customer's profile |
+| `PUT` | `/api/customers/me` | Customer | Update permitted profile fields (`name`, `phone`, `avatar`, `defaultPaymentMethod`, `emergencyContact`) |
+| `GET` | `/api/customers/me/addresses` | Customer | List saved addresses |
+| `POST` | `/api/customers/me/addresses` | Customer | Add a new saved address (enforces single default address) |
+| `PUT` | `/api/customers/me/addresses/:addressId` | Customer | Update an owned address |
+| `DELETE` | `/api/customers/me/addresses/:addressId` | Customer | Delete an address (auto-promotes first remaining if default was deleted) |
+| `PATCH` | `/api/customers/me/addresses/:addressId/default` | Customer | Set target address as default |
+
+#### `POST /api/customers/me/addresses`
+- **Request Body**:
+```json
+{
+  "title": "Home",
+  "street": "123 Marine Drive",
+  "city": "Mumbai",
+  "state": "Maharashtra",
+  "zipCode": "400020",
+  "isDefault": true,
+  "location": {
+    "type": "Point",
+    "coordinates": [72.8258, 18.9438]
+  }
+}
+```
+
+---
+
+## 7. Provider Availability, Service Areas & Services API (Phase 11)
+
+Mounted at `/api/providers`. Authenticated with `role: provider`.
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/providers/me/availability` | Provider | Retrieve weekly 7-day schedule |
+| `PUT` | `/api/providers/me/availability` | Provider | Update weekly schedule (`dayOfWeek` 0–6, `startTime < endTime`, `HH:mm` format) |
+| `GET` | `/api/providers/me/service-areas` | Provider | List assigned operational service areas |
+| `POST` | `/api/providers/me/service-areas` | Provider | Add a new operational service area with covered zip codes |
+| `PUT` | `/api/providers/me/service-areas/:id` | Provider | Update an owned service area |
+| `DELETE` | `/api/providers/me/service-areas/:id` | Provider | Delete an owned service area |
+| `GET` | `/api/providers/me/services` | Provider | List provider-owned services |
+| `POST` | `/api/providers/me/services` | Provider | Create provider-offered service linked to an active category |
+| `PUT` | `/api/providers/me/services/:id` | Provider | Update owned service offering |
+| `DELETE` | `/api/providers/me/services/:id` | Provider | Deactivate or delete owned service offering |
+
+#### `PUT /api/providers/me/availability`
+- **Request Body**:
+```json
+{
+  "schedule": [
+    {
+      "dayOfWeek": 1,
+      "isAvailable": true,
+      "slots": [
+        { "startTime": "09:00", "endTime": "18:00", "maxBookings": 2 }
+      ]
+    },
+    {
+      "dayOfWeek": 0,
+      "isAvailable": false,
+      "slots": []
+    }
+  ]
+}
+```
+
+
 
 

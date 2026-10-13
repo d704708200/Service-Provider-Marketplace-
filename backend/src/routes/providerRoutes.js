@@ -8,7 +8,12 @@ const {
   validateSubmitDocument,
   validateDocumentReview,
   validateProviderVerification,
-  validateAccountStatus
+  validateAccountStatus,
+  validateProviderAvailability,
+  validateProviderServiceArea,
+  validateUpdateProviderServiceArea,
+  validateCreateService,
+  validateUpdateService
 } = require('../middleware/validation');
 
 // =========================================================
@@ -36,6 +41,31 @@ router.get(
   providerController.getProviderServices
 );
 
+router.post(
+  '/me/services',
+  authenticate,
+  requireRole('provider'),
+  validateCreateService,
+  providerController.addProviderService
+);
+
+router.put(
+  '/me/services/:id',
+  authenticate,
+  requireRole('provider'),
+  validateObjectId('id'),
+  validateUpdateService,
+  providerController.updateProviderService
+);
+
+router.delete(
+  '/me/services/:id',
+  authenticate,
+  requireRole('provider'),
+  validateObjectId('id'),
+  providerController.deleteProviderService
+);
+
 router.get(
   '/me/availability',
   authenticate,
@@ -43,11 +73,44 @@ router.get(
   providerController.getProviderAvailability
 );
 
+router.put(
+  '/me/availability',
+  authenticate,
+  requireRole('provider'),
+  validateProviderAvailability,
+  providerController.updateProviderAvailability
+);
+
 router.get(
   '/me/service-areas',
   authenticate,
   requireRole('provider'),
   providerController.getProviderServiceAreas
+);
+
+router.post(
+  '/me/service-areas',
+  authenticate,
+  requireRole('provider'),
+  validateProviderServiceArea,
+  providerController.addProviderServiceArea
+);
+
+router.put(
+  '/me/service-areas/:id',
+  authenticate,
+  requireRole('provider'),
+  validateObjectId('id'),
+  validateUpdateProviderServiceArea,
+  providerController.updateProviderServiceArea
+);
+
+router.delete(
+  '/me/service-areas/:id',
+  authenticate,
+  requireRole('provider'),
+  validateObjectId('id'),
+  providerController.deleteProviderServiceArea
 );
 
 router.post(

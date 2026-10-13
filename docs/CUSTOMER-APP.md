@@ -141,8 +141,23 @@ node test_customer_flow.js
    - `BookingHistoryScreen` fetches customer's active and historical orders.
    - Supports filter tabs: `All`, `Pending`, `Accepted`, `In Progress`, `Completed`, `Cancelled`.
    - Customers can cancel `pending` or `accepted` bookings directly from the mobile app (`PATCH /api/bookings/customer/:id/cancel`).
-3. **Deferred to Subsequent Phases**:
-   - Payment gateway integration (cash on delivery / offline is currently used).
-   - Real-time WebSockets / push notifications feed.
-   - Customer profile address book manager.
+
+---
+
+## 7. Customer Profile & Saved Addresses Management (Phase 11)
+
+1. **Profile Screen (`ProfileScreen.js`)**:
+   - Fetches and displays customer account details (`GET /api/customers/me`).
+   - Allows inline editing of customer name, phone number, and preferred payment method (`PUT /api/customers/me`).
+   - Protected from modifying roles or security attributes.
+2. **Saved Addresses Manager**:
+   - Lists all saved addresses with visual default address badge (`GET /api/customers/me/addresses`).
+   - Add new address modal with address label, street, city, state, zip code (`POST /api/customers/me/addresses`).
+   - Edit and delete saved addresses (`PUT /api/customers/me/addresses/:id`, `DELETE /api/customers/me/addresses/:id`).
+   - Quick one-tap default address selection (`PATCH /api/customers/me/addresses/:id/default`).
+3. **Request Service Integration (`RequestServiceScreen.js`)**:
+   - Automatically loads saved addresses and pre-selects the customer's primary default address.
+   - Horizontal chips enable 1-tap switching between saved locations or entering a custom location.
+   - Submits a validated address snapshot with each booking.
+
 

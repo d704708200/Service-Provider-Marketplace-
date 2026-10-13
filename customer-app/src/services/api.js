@@ -177,4 +177,38 @@ export const bookingApi = {
   }
 };
 
+// ==========================================
+// 6. Customer Profile & Address APIs
+// ==========================================
+export const customerApi = {
+  getProfile: async () => {
+    const response = await api.get('/customers/me');
+    return response.data;
+  },
+  updateProfile: async (data) => {
+    const response = await api.put('/customers/me', data);
+    return response.data;
+  },
+  getAddresses: async () => {
+    const response = await api.get('/customers/me/addresses');
+    return response.data;
+  },
+  addAddress: async (data) => {
+    const response = await api.post('/customers/me/addresses', data);
+    return response.data;
+  },
+  updateAddress: async (addressId, data) => {
+    const response = await api.put(`/customers/me/addresses/${addressId}`, data);
+    return response.data;
+  },
+  deleteAddress: async (addressId) => {
+    const response = await api.delete(`/customers/me/addresses/${addressId}`);
+    return response.data;
+  },
+  setDefaultAddress: async (addressId) => {
+    const response = await api.patch(`/customers/me/addresses/${addressId}/default`);
+    return response.data;
+  }
+};
+
 export default api;

@@ -134,3 +134,12 @@ npm run seed:admin
 - The script checks for existing accounts and refuses to overwrite passwords or re-assign accounts with conflicting roles.
 - Safe to re-run; will not create duplicate entries or delete existing accounts.
 - Creates both the primary `User` record (role `admin`) and the associated `Admin` profile record required by `/api/auth/login/admin`.
+
+## Phase 11 Test Suites
+
+To verify Customer Profile, Address Book, Provider Availability, and Service Areas:
+```bash
+cd backend
+node test_phase11_unit.js
+```
+

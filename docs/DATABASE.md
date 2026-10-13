@@ -90,6 +90,16 @@ The database schema supports multi-role users (Customer, Provider, Admin), hiera
    - Pricing Immutability: Total amounts are derived exclusively from database service prices and trusted server-side rules.
    - Status Timestamps: `statusTimestamps` tracks `acceptedAt`, `inProgressAt`, `completedAt`, `cancelledAt`, and `rejectedAt`.
 
+9. **Customer Saved Addresses & Profile Rules (Phase 11)**:
+   - Customers store multiple addresses in `Customer.addresses` subdocuments.
+   - Default Address Exclusivity: Exactly one address can be `isDefault: true`. Marking any address as default automatically demotes previous defaults.
+   - Deletion Resilience: Deleting a default address promotes the first remaining saved address as default. Historical booking records retain address snapshots and are unaffected.
+
+10. **Provider Availability & Service Areas (Phase 11)**:
+   - Weekly schedules stored in `Availability` model with unique index on `{ provider: 1, dayOfWeek: 1 }`.
+   - Time slots validate `HH:mm` format and `startTime < endTime`.
+   - Service areas store city and zip codes. Scheduled bookings revalidate provider availability for `scheduledDate.getDay()` and confirm service area match.
+
 ---
 
 ## Running Verification Tests
@@ -103,6 +113,7 @@ npm run test:categories   # Runs category live integration tests (against MongoD
 npm run test:services     # Runs service unit validation & Atlas integration tests
 npm run test:providers    # Runs provider unit validation & Atlas integration tests
 npm run test:bookings     # Runs booking unit validation & Atlas integration tests
+node test_phase11_unit.js # Runs Phase 11 customer profile & provider availability unit suite
 npm test                  # Runs core backend test suites
 ```
 

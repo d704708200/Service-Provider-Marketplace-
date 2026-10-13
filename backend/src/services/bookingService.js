@@ -4,6 +4,8 @@ const Customer = require('../models/Customer');
 const Provider = require('../models/Provider');
 const Service = require('../models/Service');
 const Category = require('../models/Category');
+const Availability = require('../models/Availability');
+const ServiceArea = require('../models/ServiceArea');
 const User = require('../models/User');
 
 /**
@@ -93,6 +95,76 @@ const createBooking = async (userId, bookingData) => {
       const err = new Error('The selected provider does not offer this service category');
       err.statusCode = 400;
       throw err;
+    }
+
+    // Verify Provider Weekly Availability for scheduled booking
+    if ((bookingData.bookingMode || 'scheduled') === 'scheduled' && bookingData.scheduledDate) {
+      const targetDate = new Date(bookingData.scheduledDate);
+      const dayOfWeek = targetDate.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+
+      const availabilityDoc = await Availability.findOne({
+        provider: provider._id,
+        dayOfWeek
+      });
+
+      if (availabilityDoc && !availabilityDoc.isAvailable) {
+        const err = new Error(
+          `Provider '${provider.businessName || 'Selected'}' is not available on this day of the week`
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (
+        availabilityDoc &&
+        availabilityDoc.isAvailable &&
+        availabilityDoc.slots &&
+        availabilityDoc.slots.length > 0 &&
+        bookingData.scheduledTimeSlot?.startTime
+      ) {
+        const slotMatch = availabilityDoc.slots.some(
+          (slot) =>
+            bookingData.scheduledTimeSlot.startTime >= slot.startTime &&
+            bookingData.scheduledTimeSlot.startTime < slot.endTime
+        );
+        if (!slotMatch) {
+          const err = new Error(
+            `The requested time slot '${bookingData.scheduledTimeSlot.startTime}' is outside the provider's available working hours for this day`
+          );
+          err.statusCode = 400;
+          throw err;
+        }
+      }
+    }
+
+    // Verify Provider Service Area if provider has designated service areas
+    if (provider.serviceAreas && provider.serviceAreas.length > 0 && bookingData.address) {
+      const providerAreas = await ServiceArea.find({
+        _id: { $in: provider.serviceAreas },
+        isActive: true
+      });
+
+      if (providerAreas.length > 0) {
+        const bookingCity = (bookingData.address.city || '').trim().toLowerCase();
+        const bookingZip = (bookingData.address.zipCode || '').trim();
+
+        const matchesArea = providerAreas.some((area) => {
+          const cityMatches = area.city && area.city.trim().toLowerCase() === bookingCity;
+          const zipMatches =
+            bookingZip &&
+            Array.isArray(area.zipCodes) &&
+            area.zipCodes.some((z) => z.trim() === bookingZip);
+          return cityMatches || zipMatches;
+        });
+
+        if (!matchesArea) {
+          const err = new Error(
+            `Selected provider does not service this location (${bookingData.address.city || ''} ${bookingZip})`
+          );
+          err.statusCode = 400;
+          throw err;
+        }
+      }
     }
 
     assignedProvider = provider._id;

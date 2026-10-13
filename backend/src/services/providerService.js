@@ -140,6 +140,49 @@ const getProviderAvailabilityByUserId = async (userId) => {
 };
 
 /**
+ * Update availability schedule belonging to authenticated provider
+ * Supports updating single days or whole weekly schedule (0-6)
+ */
+const updateProviderAvailabilityByUserId = async (userId, schedule) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Update or insert each day's availability
+  const updatePromises = schedule.map(async (entry) => {
+    const dayOfWeek = Number(entry.dayOfWeek);
+    const isAvailable = entry.isAvailable !== undefined ? Boolean(entry.isAvailable) : true;
+    const slots = (entry.slots || []).map((s) => ({
+      startTime: s.startTime.trim(),
+      endTime: s.endTime.trim(),
+      maxBookings: Number(s.maxBookings) || 1
+    }));
+
+    return Availability.findOneAndUpdate(
+      { provider: provider._id, dayOfWeek },
+      {
+        $set: {
+          provider: provider._id,
+          dayOfWeek,
+          isAvailable,
+          slots
+        }
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+  });
+
+  await Promise.all(updatePromises);
+
+  return await Availability.find({ provider: provider._id })
+    .sort({ dayOfWeek: 1 })
+    .lean();
+};
+
+/**
  * Retrieve service areas belonging to authenticated provider
  */
 const getProviderServiceAreasByUserId = async (userId) => {
@@ -154,6 +197,238 @@ const getProviderServiceAreasByUserId = async (userId) => {
     .lean();
 
   return areas;
+};
+
+/**
+ * Add a service area for authenticated provider
+ */
+const addProviderServiceAreaByUserId = async (userId, areaData) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const newArea = new ServiceArea({
+    name: areaData.name.trim(),
+    city: areaData.city.trim(),
+    state: areaData.state ? areaData.state.trim() : '',
+    zipCodes: (areaData.zipCodes || []).map((z) => z.trim()),
+    isActive: areaData.isActive !== undefined ? Boolean(areaData.isActive) : true
+  });
+
+  if (areaData.polygon && areaData.polygon.coordinates) {
+    newArea.polygon = {
+      type: 'Polygon',
+      coordinates: areaData.polygon.coordinates
+    };
+  }
+
+  await newArea.save();
+
+  if (!provider.serviceAreas) {
+    provider.serviceAreas = [];
+  }
+  provider.serviceAreas.push(newArea._id);
+  await provider.save();
+
+  return await ServiceArea.find({ _id: { $in: provider.serviceAreas } }).lean();
+};
+
+/**
+ * Update an owned service area for authenticated provider
+ */
+const updateProviderServiceAreaByUserId = async (userId, serviceAreaId, areaData) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const isOwned = provider.serviceAreas && provider.serviceAreas.some((sa) => sa.toString() === serviceAreaId.toString());
+  if (!isOwned) {
+    const err = new Error('Access denied: Service area not owned by this provider');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  const area = await ServiceArea.findById(serviceAreaId);
+  if (!area) {
+    const err = new Error(`Service area not found with ID '${serviceAreaId}'`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (areaData.name !== undefined) area.name = areaData.name.trim();
+  if (areaData.city !== undefined) area.city = areaData.city.trim();
+  if (areaData.state !== undefined) area.state = areaData.state.trim();
+  if (areaData.zipCodes !== undefined) area.zipCodes = areaData.zipCodes.map((z) => z.trim());
+  if (areaData.isActive !== undefined) area.isActive = Boolean(areaData.isActive);
+
+  if (areaData.polygon !== undefined) {
+    if (areaData.polygon && areaData.polygon.coordinates) {
+      area.polygon = {
+        type: 'Polygon',
+        coordinates: areaData.polygon.coordinates
+      };
+    } else {
+      area.polygon = undefined;
+    }
+  }
+
+  await area.save();
+  return await ServiceArea.find({ _id: { $in: provider.serviceAreas } }).lean();
+};
+
+/**
+ * Delete an owned service area for authenticated provider
+ */
+const deleteProviderServiceAreaByUserId = async (userId, serviceAreaId) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const isOwned = provider.serviceAreas && provider.serviceAreas.some((sa) => sa.toString() === serviceAreaId.toString());
+  if (!isOwned) {
+    const err = new Error('Access denied: Service area not owned by this provider');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  provider.serviceAreas = provider.serviceAreas.filter((sa) => sa.toString() !== serviceAreaId.toString());
+  await provider.save();
+  await ServiceArea.findByIdAndDelete(serviceAreaId);
+
+  return await ServiceArea.find({ _id: { $in: provider.serviceAreas } }).lean();
+};
+
+/**
+ * Add a provider-offered service
+ */
+const addProviderServiceByUserId = async (userId, serviceData) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const { name, category: categoryId, price, priceType = 'fixed', estimatedDurationMinutes = 60, description, image, isActive = true } = serviceData;
+
+  const category = await Category.findById(categoryId);
+  if (!category || !category.isActive) {
+    const err = new Error('Category not found or inactive');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Price validation
+  if ((priceType === 'fixed' || priceType === 'hourly') && price <= 0) {
+    const err = new Error(`Price must be greater than 0 for ${priceType} pricing model`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const newService = await Service.create({
+    name: name.trim(),
+    category: categoryId,
+    provider: provider._id,
+    price: Number(price),
+    priceType,
+    estimatedDurationMinutes: Number(estimatedDurationMinutes) || 60,
+    description: description ? description.trim() : '',
+    image: image ? image.trim() : null,
+    isActive: Boolean(isActive)
+  });
+
+  return await Service.findById(newService._id).populate('category', 'name slug icon isActive').lean();
+};
+
+/**
+ * Update an owned provider service
+ */
+const updateProviderServiceByUserId = async (userId, serviceId, updateData) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const service = await Service.findById(serviceId);
+  if (!service) {
+    const err = new Error(`Service not found with ID '${serviceId}'`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (!service.provider || service.provider.toString() !== provider._id.toString()) {
+    const err = new Error('Access denied: You do not own this service');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  if (updateData.name !== undefined) service.name = updateData.name.trim();
+  if (updateData.description !== undefined) service.description = updateData.description.trim();
+  if (updateData.price !== undefined) service.price = Number(updateData.price);
+  if (updateData.priceType !== undefined) service.priceType = updateData.priceType;
+  if (updateData.estimatedDurationMinutes !== undefined) service.estimatedDurationMinutes = Number(updateData.estimatedDurationMinutes);
+  if (updateData.image !== undefined) service.image = updateData.image ? updateData.image.trim() : null;
+  if (updateData.isActive !== undefined) service.isActive = Boolean(updateData.isActive);
+
+  await service.save();
+
+  return await Service.findById(serviceId).populate('category', 'name slug icon isActive').lean();
+};
+
+/**
+ * Deactivate or Delete an owned provider service
+ */
+const deleteProviderServiceByUserId = async (userId, serviceId) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const service = await Service.findById(serviceId);
+  if (!service) {
+    const err = new Error(`Service not found with ID '${serviceId}'`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (!service.provider || service.provider.toString() !== provider._id.toString()) {
+    const err = new Error('Access denied: You do not own this service');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // Check if existing bookings reference this service
+  const bookingsCount = await Booking.countDocuments({ service: serviceId });
+  if (bookingsCount > 0) {
+    // Soft-deactivate to preserve historical booking records
+    service.isActive = false;
+    await service.save();
+    return {
+      message: 'Service deactivated to preserve booking history',
+      deactivated: true,
+      serviceId
+    };
+  }
+
+  await Service.findByIdAndDelete(serviceId);
+  return {
+    message: 'Service deleted successfully',
+    deleted: true,
+    serviceId
+  };
 };
 
 /**
@@ -496,7 +771,14 @@ module.exports = {
   updateProviderProfileByUserId,
   getProviderServicesByUserId,
   getProviderAvailabilityByUserId,
+  updateProviderAvailabilityByUserId,
   getProviderServiceAreasByUserId,
+  addProviderServiceAreaByUserId,
+  updateProviderServiceAreaByUserId,
+  deleteProviderServiceAreaByUserId,
+  addProviderServiceByUserId,
+  updateProviderServiceByUserId,
+  deleteProviderServiceByUserId,
   submitDocument,
   deleteDocument,
   getPublicProviders,

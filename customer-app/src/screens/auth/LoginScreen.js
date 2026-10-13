@@ -100,7 +100,7 @@ export default function LoginScreen({ navigation }) {
             }}
             keyboardType="email-address"
             autoCapitalize="none"
-            leftIcon="mail-outline"
+            leftIcon={<Ionicons name="mail-outline" size={20} color={colors.slate400} />}
             error={formErrors.identifier}
           />
 
@@ -113,7 +113,7 @@ export default function LoginScreen({ navigation }) {
               if (formErrors.password) setFormErrors({ ...formErrors, password: null });
             }}
             secureTextEntry
-            leftIcon="lock-closed-outline"
+            leftIcon={<Ionicons name="lock-closed-outline" size={20} color={colors.slate400} />}
             error={formErrors.password}
           />
 
