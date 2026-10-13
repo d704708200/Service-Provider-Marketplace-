@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { providerApi } from '../../services/api';
 import { Input, Card, Badge, LoadingScreen, ErrorView, EmptyState } from '../../components/common';
+import { formatRating, formatReviewCount, formatExperience } from '../../utils/formatters';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
@@ -50,9 +51,10 @@ export default function ProvidersScreen({ navigation }) {
 
   const renderProviderCard = ({ item }) => {
     const businessName = item.businessName || item.user?.name || 'Verified Provider';
+    const cats = item.categories || item.serviceCategories;
     const categoriesText =
-      Array.isArray(item.serviceCategories) && item.serviceCategories.length > 0
-        ? item.serviceCategories.map((c) => (typeof c === 'object' ? c.name : c)).join(', ')
+      Array.isArray(cats) && cats.length > 0
+        ? cats.map((c) => (typeof c === 'object' ? c.name : c)).join(', ')
         : 'All Services';
 
     return (
@@ -87,16 +89,16 @@ export default function ProvidersScreen({ navigation }) {
               <View style={styles.ratingBadge}>
                 <Ionicons name="star" size={13} color="#F59E0B" />
                 <Text style={styles.ratingText}>
-                  {item.rating ? item.rating.toFixed(1) : 'New'}
+                  {formatRating(item.rating, 'New')}
                 </Text>
-                {item.reviewCount ? (
-                  <Text style={styles.reviewCount}>({item.reviewCount})</Text>
+                {formatReviewCount(item.reviewCount, item.rating) ? (
+                  <Text style={styles.reviewCount}>({formatReviewCount(item.reviewCount, item.rating)})</Text>
                 ) : null}
               </View>
 
-              {item.experienceYears ? (
+              {formatExperience(item.experienceYears) ? (
                 <Text style={styles.experienceText}>
-                  • {item.experienceYears} Years Experience
+                  • {formatExperience(item.experienceYears)} Years Experience
                 </Text>
               ) : null}
             </View>

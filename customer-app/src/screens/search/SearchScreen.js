@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { serviceApi, providerApi, categoryApi } from '../../services/api';
+import { formatRating, formatPrice } from '../../utils/formatters';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
@@ -93,8 +94,8 @@ export default function SearchScreen({ navigation }) {
   const renderProviderCard = ({ item }) => {
     const name = item.businessName || item.user?.name || 'Verified Professional';
     const category = item.categories?.[0]?.name || item.specialization || 'Home Services';
-    const rating = item.rating?.average ? item.rating.average.toFixed(1) : '4.8';
-    const totalJobs = item.stats?.completedJobs || item.completedBookings || 12;
+    const rating = formatRating(item.rating, '4.8');
+    const totalJobs = item.stats?.completedJobs || item.completedBookings || item.completedBookingsCount || 12;
     const distance = item.distance ? `${item.distance}km` : '1.4km';
     const price = item.pricing?.basePrice || item.hourlyRate || 499;
 

@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { providerApi } from '../../services/api';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView } from '../../components/common';
+import { formatRating, formatReviewCount, formatExperience } from '../../utils/formatters';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius, shadows } from '../../theme';
 
@@ -105,11 +106,13 @@ export default function ProviderDetailScreen({ route, navigation }) {
               <View style={styles.statIconRow}>
                 <Ionicons name="star" size={16} color="#F59E0B" />
                 <Text style={styles.statValue}>
-                  {provider.rating ? provider.rating.toFixed(1) : 'New'}
+                  {formatRating(provider.rating, 'New')}
                 </Text>
               </View>
               <Text style={styles.statLabel}>
-                {provider.reviewCount ? `${provider.reviewCount} Reviews` : 'No Reviews Yet'}
+                {formatReviewCount(provider.reviewCount, provider.rating)
+                  ? `${formatReviewCount(provider.reviewCount, provider.rating)} Reviews`
+                  : 'No Reviews Yet'}
               </Text>
             </View>
 
@@ -119,7 +122,7 @@ export default function ProviderDetailScreen({ route, navigation }) {
               <View style={styles.statIconRow}>
                 <Ionicons name="ribbon-outline" size={16} color={colors.primary} />
                 <Text style={styles.statValue}>
-                  {provider.experienceYears || 1}+ Yrs
+                  {formatExperience(provider.experienceYears, 1)}+ Yrs
                 </Text>
               </View>
               <Text style={styles.statLabel}>Experience</Text>
@@ -136,13 +139,14 @@ export default function ProviderDetailScreen({ route, navigation }) {
         ) : null}
 
         {/* Categories / Specialties */}
-        {Array.isArray(provider.serviceCategories) && provider.serviceCategories.length > 0 && (
+        {Array.isArray(provider.categories || provider.serviceCategories) &&
+          (provider.categories || provider.serviceCategories).length > 0 && (
           <Card style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Service Categories & Specialties</Text>
             <View style={styles.categoriesWrap}>
-              {provider.serviceCategories.map((c, idx) => (
+              {(provider.categories || provider.serviceCategories).map((c, idx) => (
                 <Badge
-                  key={idx}
+                  key={c?._id || idx}
                   label={typeof c === 'object' ? c.name : c}
                   variant="primary"
                   size="md"

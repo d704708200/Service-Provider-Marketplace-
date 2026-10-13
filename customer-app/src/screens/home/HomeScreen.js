@@ -15,6 +15,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { categoryApi, serviceApi, providerApi, bannerApi } from '../../services/api';
+import { formatRating } from '../../utils/formatters';
 import colors from '../../theme/colors';
 
 const DEFAULT_CATEGORY_ICONS = {
@@ -325,7 +326,7 @@ export default function HomeScreen({ navigation }) {
                     <View style={styles.ratingRow}>
                       <Ionicons name="star" size={11} color="#F59E0B" />
                       <Text style={styles.ratingNum}>
-                        {provider.rating?.average ? Number(provider.rating.average).toFixed(1) : '5.0'}
+                        {formatRating(provider.rating, '5.0')}
                       </Text>
                       <Text style={styles.dotDivider}>•</Text>
                       <Text style={styles.expText}>{provider.experienceYears || 0} yrs exp</Text>
@@ -382,7 +383,7 @@ export default function HomeScreen({ navigation }) {
                 <View style={styles.ratingRow}>
                   <Ionicons name="star" size={11} color="#F59E0B" />
                   <Text style={styles.ratingNum}>
-                    {nearbyProvider.rating?.average ? Number(nearbyProvider.rating.average).toFixed(1) : '5.0'}
+                    {formatRating(nearbyProvider.rating, '5.0')}
                   </Text>
                   <Text style={styles.dotDivider}>•</Text>
                   <Text style={styles.expText}>{nearbyProvider.distance || 1.4}km</Text>
