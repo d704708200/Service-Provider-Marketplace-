@@ -1,0 +1,148 @@
+import React from 'react';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, View } from 'react-native';
+import { colors, spacing, borderRadius } from '../../theme';
+
+export const Button = ({
+  title,
+  onPress,
+  variant = 'primary', // 'primary', 'secondary', 'outline', 'danger'
+  size = 'md', // 'sm', 'md', 'lg'
+  isLoading = false,
+  disabled = false,
+  leftIcon = null,
+  rightIcon = null,
+  style,
+  textStyle
+}) => {
+  const getVariantStyle = () => {
+    switch (variant) {
+      case 'secondary':
+        return styles.btnSecondary;
+      case 'outline':
+        return styles.btnOutline;
+      case 'danger':
+        return styles.btnDanger;
+      default:
+        return styles.btnPrimary;
+    }
+  };
+
+  const getTextStyle = () => {
+    switch (variant) {
+      case 'secondary':
+        return styles.textSecondary;
+      case 'outline':
+        return styles.textOutline;
+      case 'danger':
+        return styles.textDanger;
+      default:
+        return styles.textPrimary;
+    }
+  };
+
+  const getSizeStyle = () => {
+    switch (size) {
+      case 'sm':
+        return styles.sizeSm;
+      case 'lg':
+        return styles.sizeLg;
+      default:
+        return styles.sizeMd;
+    }
+  };
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onPress}
+      disabled={disabled || isLoading}
+      style={[
+        styles.button,
+        getVariantStyle(),
+        getSizeStyle(),
+        (disabled || isLoading) && styles.disabled,
+        style
+      ]}
+    >
+      {isLoading ? (
+        <ActivityIndicator
+          size="small"
+          color={variant === 'outline' ? colors.primary : colors.white}
+        />
+      ) : (
+        <View style={styles.contentRow}>
+          {leftIcon && <View style={styles.iconLeft}>{leftIcon}</View>}
+          <Text style={[styles.text, getTextStyle(), textStyle]}>{title}</Text>
+          {rightIcon && <View style={styles.iconRight}>{rightIcon}</View>}
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+};
+
+const styles = StyleSheet.create({
+  button: {
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row'
+  },
+  contentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  btnPrimary: {
+    backgroundColor: colors.primary
+  },
+  btnSecondary: {
+    backgroundColor: colors.slate100
+  },
+  btnOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: colors.primary
+  },
+  btnDanger: {
+    backgroundColor: colors.danger
+  },
+  sizeSm: {
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.md
+  },
+  sizeMd: {
+    paddingVertical: spacing.sm + 4,
+    paddingHorizontal: spacing.lg
+  },
+  sizeLg: {
+    paddingVertical: spacing.md + 2,
+    paddingHorizontal: spacing.xl
+  },
+  disabled: {
+    opacity: 0.55
+  },
+  text: {
+    fontWeight: '600',
+    fontSize: 15
+  },
+  textPrimary: {
+    color: colors.white
+  },
+  textSecondary: {
+    color: colors.slate800
+  },
+  textOutline: {
+    color: colors.primary
+  },
+  textDanger: {
+    color: colors.white
+  },
+  iconLeft: {
+    marginRight: spacing.sm
+  },
+  iconRight: {
+    marginLeft: spacing.sm
+  }
+});
+
+export default Button;

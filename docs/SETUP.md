@@ -39,6 +39,17 @@ ADMIN_PANEL_URL=http://localhost:5173
 - `customer-app/.env`: `EXPO_PUBLIC_API_URL=http://localhost:5000/api`
 - `provider-app/.env`: `EXPO_PUBLIC_API_URL=http://localhost:5000/api`
 
+#### Customer App Commands:
+```bash
+cd customer-app
+npm start       # Start Expo bundler
+npm run android # Launch on Android emulator or connected device
+npm run web     # Launch on browser
+node test_customer_flow.js # Run customer backend integration test suite
+```
+
+For complete architecture, device IP configuration, screens, and API endpoints, see [CUSTOMER-APP.md](./CUSTOMER-APP.md).
+
 ### 3. Admin Panel
 - `admin-panel/.env`: `VITE_API_URL=http://localhost:5000/api`
 
