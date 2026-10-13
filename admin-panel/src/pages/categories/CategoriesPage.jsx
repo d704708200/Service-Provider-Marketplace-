@@ -31,7 +31,11 @@ const initialFormData = {
   icon: '',
   image: '',
   displayOrder: 0,
-  isActive: true
+  isActive: true,
+  showInQuickServices: false,
+  quickServicesOrder: 0,
+  showInPopularServices: false,
+  popularServicesOrder: 0
 };
 
 const CategoriesPage = () => {
@@ -122,7 +126,11 @@ const CategoriesPage = () => {
       icon: category.icon || '',
       image: category.image || '',
       displayOrder: category.displayOrder !== undefined ? category.displayOrder : 0,
-      isActive: category.isActive !== undefined ? category.isActive : true
+      isActive: category.isActive !== undefined ? category.isActive : true,
+      showInQuickServices: category.showInQuickServices !== undefined ? category.showInQuickServices : false,
+      quickServicesOrder: category.quickServicesOrder !== undefined ? category.quickServicesOrder : 0,
+      showInPopularServices: category.showInPopularServices !== undefined ? category.showInPopularServices : false,
+      popularServicesOrder: category.popularServicesOrder !== undefined ? category.popularServicesOrder : 0
     });
     setFormErrors({});
     setIsModalOpen(true);
@@ -139,6 +147,14 @@ const CategoriesPage = () => {
 
     if (formData.displayOrder < 0 || isNaN(formData.displayOrder)) {
       errors.displayOrder = 'Display order must be 0 or higher';
+    }
+
+    if (formData.quickServicesOrder < 0 || isNaN(formData.quickServicesOrder)) {
+      errors.quickServicesOrder = 'Quick services order must be 0 or higher';
+    }
+
+    if (formData.popularServicesOrder < 0 || isNaN(formData.popularServicesOrder)) {
+      errors.popularServicesOrder = 'Popular services order must be 0 or higher';
     }
 
     setFormErrors(errors);
@@ -160,7 +176,11 @@ const CategoriesPage = () => {
       icon: formData.icon.trim() || null,
       image: formData.image.trim() || null,
       displayOrder: parseInt(formData.displayOrder, 10) || 0,
-      isActive: formData.isActive
+      isActive: formData.isActive,
+      showInQuickServices: Boolean(formData.showInQuickServices),
+      quickServicesOrder: parseInt(formData.quickServicesOrder, 10) || 0,
+      showInPopularServices: Boolean(formData.showInPopularServices),
+      popularServicesOrder: parseInt(formData.popularServicesOrder, 10) || 0
     };
 
     try {
@@ -412,6 +432,7 @@ const CategoriesPage = () => {
                   <th className="py-3.5 px-4">Slug</th>
                   <th className="py-3.5 px-4">Services</th>
                   <th className="py-3.5 px-4">Display Order</th>
+                  <th className="py-3.5 px-4">Home Sections</th>
                   <th className="py-3.5 px-4">Status</th>
                   <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
@@ -445,6 +466,26 @@ const CategoriesPage = () => {
 
                     {/* Display Order */}
                     <td className="py-3.5 px-4 text-xs font-medium text-slate-600">{cat.displayOrder || 0}</td>
+
+                    {/* Section Visibility Badges */}
+                    <td className="py-3.5 px-4">
+                      <div className="flex flex-col gap-1 items-start">
+                        {cat.showInQuickServices ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">
+                            ⚡ Quick (#{cat.quickServicesOrder ?? 0})
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">Quick: Off</span>
+                        )}
+                        {cat.showInPopularServices ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                            ★ Popular (#{cat.popularServicesOrder ?? 0})
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">Popular: Off</span>
+                        )}
+                      </div>
+                    </td>
 
                     {/* Active Status Badge */}
                     <td className="py-3.5 px-4">
@@ -619,13 +660,43 @@ const CategoriesPage = () => {
                 </p>
               </div>
 
+              {/* Icon & Image URL Row */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    Icon Identifier
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. flash-outline, construct-outline"
+                    value={formData.icon}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, icon: e.target.value }))}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 font-mono text-xs"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-400">Ionicons icon name</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    Image URL
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="https://..."
+                    value={formData.image}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, image: e.target.value }))}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 text-xs"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-400">Optional banner or image link</p>
+                </div>
+              </div>
+
               {/* Description */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                   Description
                 </label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   placeholder="Brief overview of services encompassed by this category..."
                   value={formData.description}
                   onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
@@ -637,7 +708,7 @@ const CategoriesPage = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                    Display Order
+                    General Display Order
                   </label>
                   <input
                     type="number"
@@ -663,6 +734,68 @@ const CategoriesPage = () => {
                     <span className="text-xs font-medium text-slate-700">Active (Publicly Visible)</span>
                   </label>
                 </div>
+              </div>
+
+              {/* Quick Services Configuration Box */}
+              <div className="p-3.5 bg-purple-50/70 border border-purple-200 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.showInQuickServices}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, showInQuickServices: e.target.checked }))}
+                      className="w-4 h-4 text-purple-600 rounded-sm border-purple-300 focus:ring-purple-500"
+                    />
+                    <span className="text-xs font-bold text-purple-900">Show in Customer "Quick Services"</span>
+                  </label>
+                  <span className="text-[11px] font-semibold text-purple-600">Home Screen Section 1</span>
+                </div>
+                {formData.showInQuickServices && (
+                  <div className="flex items-center gap-3 pt-1">
+                    <label className="text-xs font-medium text-purple-900 whitespace-nowrap">
+                      Quick Services Order:
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.quickServicesOrder}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, quickServicesOrder: e.target.value }))}
+                      className="w-24 px-2.5 py-1 bg-white border border-purple-300 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                    />
+                    <span className="text-[11px] text-purple-600">Order on home screen grid (0, 1, 2...)</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Popular Services Configuration Box */}
+              <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.showInPopularServices}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, showInPopularServices: e.target.checked }))}
+                      className="w-4 h-4 text-indigo-600 rounded-sm border-indigo-300 focus:ring-indigo-500"
+                    />
+                    <span className="text-xs font-bold text-indigo-900">Show in Customer "Popular Services"</span>
+                  </label>
+                  <span className="text-[11px] font-semibold text-indigo-600">Home Screen Section 2</span>
+                </div>
+                {formData.showInPopularServices && (
+                  <div className="flex items-center gap-3 pt-1">
+                    <label className="text-xs font-medium text-indigo-900 whitespace-nowrap">
+                      Popular Services Order:
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.popularServicesOrder}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, popularServicesOrder: e.target.value }))}
+                      className="w-24 px-2.5 py-1 bg-white border border-indigo-300 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] text-indigo-600">Order on home screen cards (0, 1, 2...)</span>
+                  </div>
+                )}
               </div>
 
               {/* Form Buttons */}

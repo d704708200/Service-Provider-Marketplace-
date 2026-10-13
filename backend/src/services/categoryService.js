@@ -35,20 +35,43 @@ const generateUniqueSlug = async (name, existingId = null, customSlug = null) =>
 
 /**
  * Public: List active categories for customers/providers
- * Supports optional search, sort by displayOrder asc, createdAt desc
+ * Supports optional search, quickServices/popularServices filtering, sort by section order, displayOrder, name
  */
 const getPublicCategories = async (query = {}) => {
   const filter = { isActive: true };
+
+  // Quick Services filter
+  if (query.quickServices === 'true' || query.quickServices === true) {
+    filter.showInQuickServices = true;
+  }
+
+  // Popular Services filter
+  if (query.popularServices === 'true' || query.popularServices === true) {
+    filter.showInPopularServices = true;
+  }
 
   if (query.search && query.search.trim()) {
     const searchRegex = new RegExp(query.search.trim(), 'i');
     filter.$or = [{ name: searchRegex }, { description: searchRegex }];
   }
 
-  const categories = await Category.find(filter)
-    .sort({ displayOrder: 1, name: 1 })
-    .lean();
+  // Sorting
+  let sortOption = { displayOrder: 1, name: 1 };
+  if (query.quickServices === 'true' || query.quickServices === true) {
+    sortOption = { quickServicesOrder: 1, displayOrder: 1, name: 1 };
+  } else if (query.popularServices === 'true' || query.popularServices === true) {
+    sortOption = { popularServicesOrder: 1, displayOrder: 1, name: 1 };
+  }
 
+  const queryBuilder = Category.find(filter)
+    .select('name slug description icon image isActive displayOrder showInQuickServices quickServicesOrder showInPopularServices popularServicesOrder')
+    .sort(sortOption);
+
+  if (query.limit && !Number.isNaN(Number(query.limit))) {
+    queryBuilder.limit(Math.max(1, parseInt(query.limit, 10)));
+  }
+
+  const categories = await queryBuilder.lean();
   return categories;
 };
 
@@ -137,7 +160,19 @@ const getCategoryById = async (categoryId) => {
  * Admin: Create Category
  */
 const createCategory = async (data) => {
-  const { name, slug: providedSlug, description, icon, image, isActive, displayOrder } = data;
+  const {
+    name,
+    slug: providedSlug,
+    description,
+    icon,
+    image,
+    isActive,
+    displayOrder,
+    showInQuickServices,
+    quickServicesOrder,
+    showInPopularServices,
+    popularServicesOrder
+  } = data;
 
   // Check duplicate name
   const existingName = await Category.findOne({ name: name.trim() });
@@ -157,7 +192,11 @@ const createCategory = async (data) => {
     icon: icon ? icon.trim() : null,
     image: image ? image.trim() : null,
     isActive: isActive !== undefined ? Boolean(isActive) : true,
-    displayOrder: Number.isFinite(Number(displayOrder)) ? Number(displayOrder) : 0
+    displayOrder: Number.isFinite(Number(displayOrder)) ? Number(displayOrder) : 0,
+    showInQuickServices: showInQuickServices !== undefined ? Boolean(showInQuickServices) : false,
+    quickServicesOrder: Number.isFinite(Number(quickServicesOrder)) ? Number(quickServicesOrder) : 0,
+    showInPopularServices: showInPopularServices !== undefined ? Boolean(showInPopularServices) : false,
+    popularServicesOrder: Number.isFinite(Number(popularServicesOrder)) ? Number(popularServicesOrder) : 0
   });
 
   return category.toObject();
@@ -174,7 +213,19 @@ const updateCategory = async (categoryId, data) => {
     throw err;
   }
 
-  const { name, slug: providedSlug, description, icon, image, isActive, displayOrder } = data;
+  const {
+    name,
+    slug: providedSlug,
+    description,
+    icon,
+    image,
+    isActive,
+    displayOrder,
+    showInQuickServices,
+    quickServicesOrder,
+    showInPopularServices,
+    popularServicesOrder
+  } = data;
 
   if (name && name.trim()) {
     const existingName = await Category.findOne({
@@ -201,6 +252,18 @@ const updateCategory = async (categoryId, data) => {
   if (isActive !== undefined) category.isActive = Boolean(isActive);
   if (displayOrder !== undefined && Number.isFinite(Number(displayOrder))) {
     category.displayOrder = Number(displayOrder);
+  }
+  if (showInQuickServices !== undefined) {
+    category.showInQuickServices = Boolean(showInQuickServices);
+  }
+  if (quickServicesOrder !== undefined && Number.isFinite(Number(quickServicesOrder))) {
+    category.quickServicesOrder = Number(quickServicesOrder);
+  }
+  if (showInPopularServices !== undefined) {
+    category.showInPopularServices = Boolean(showInPopularServices);
+  }
+  if (popularServicesOrder !== undefined && Number.isFinite(Number(popularServicesOrder))) {
+    category.popularServicesOrder = Number(popularServicesOrder);
   }
 
   await category.save();

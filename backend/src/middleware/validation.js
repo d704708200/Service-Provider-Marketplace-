@@ -124,7 +124,15 @@ const validateObjectId = (paramName = 'id') => {
 };
 
 const validateCreateCategory = (req, res, next) => {
-  const { name, displayOrder, description } = req.body;
+  const {
+    name,
+    displayOrder,
+    description,
+    showInQuickServices,
+    quickServicesOrder,
+    showInPopularServices,
+    popularServicesOrder
+  } = req.body;
   const errors = [];
 
   if (!name || typeof name !== 'string' || !name.trim()) {
@@ -139,6 +147,22 @@ const validateCreateCategory = (req, res, next) => {
 
   if (displayOrder !== undefined && (!Number.isInteger(Number(displayOrder)) || Number(displayOrder) < 0)) {
     errors.push('Display order must be a non-negative integer');
+  }
+
+  if (showInQuickServices !== undefined && typeof showInQuickServices !== 'boolean') {
+    errors.push('showInQuickServices must be a boolean');
+  }
+
+  if (quickServicesOrder !== undefined && (!Number.isInteger(Number(quickServicesOrder)) || Number(quickServicesOrder) < 0)) {
+    errors.push('quickServicesOrder must be a non-negative integer');
+  }
+
+  if (showInPopularServices !== undefined && typeof showInPopularServices !== 'boolean') {
+    errors.push('showInPopularServices must be a boolean');
+  }
+
+  if (popularServicesOrder !== undefined && (!Number.isInteger(Number(popularServicesOrder)) || Number(popularServicesOrder) < 0)) {
+    errors.push('popularServicesOrder must be a non-negative integer');
   }
 
   if (errors.length > 0) {
@@ -156,7 +180,15 @@ const validateCreateCategory = (req, res, next) => {
 };
 
 const validateUpdateCategory = (req, res, next) => {
-  const { name, displayOrder, description } = req.body;
+  const {
+    name,
+    displayOrder,
+    description,
+    showInQuickServices,
+    quickServicesOrder,
+    showInPopularServices,
+    popularServicesOrder
+  } = req.body;
   const errors = [];
 
   if (name !== undefined) {
@@ -173,6 +205,22 @@ const validateUpdateCategory = (req, res, next) => {
 
   if (displayOrder !== undefined && (!Number.isInteger(Number(displayOrder)) || Number(displayOrder) < 0)) {
     errors.push('Display order must be a non-negative integer');
+  }
+
+  if (showInQuickServices !== undefined && typeof showInQuickServices !== 'boolean') {
+    errors.push('showInQuickServices must be a boolean');
+  }
+
+  if (quickServicesOrder !== undefined && (!Number.isInteger(Number(quickServicesOrder)) || Number(quickServicesOrder) < 0)) {
+    errors.push('quickServicesOrder must be a non-negative integer');
+  }
+
+  if (showInPopularServices !== undefined && typeof showInPopularServices !== 'boolean') {
+    errors.push('showInPopularServices must be a boolean');
+  }
+
+  if (popularServicesOrder !== undefined && (!Number.isInteger(Number(popularServicesOrder)) || Number(popularServicesOrder) < 0)) {
+    errors.push('popularServicesOrder must be a non-negative integer');
   }
 
   if (errors.length > 0) {

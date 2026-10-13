@@ -11,44 +11,49 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { categoryApi, serviceApi, providerApi } from '../../services/api';
 import colors from '../../theme/colors';
 
-const QUICK_SERVICES = [
-  { id: '1', title: 'Electrician', subtitle: 'Repairs & Fittings', icon: 'flash-outline' },
-  { id: '2', title: 'Mechanic', subtitle: 'Quick Emergency', icon: 'construct-outline' },
-  { id: '3', title: 'Plumber', subtitle: 'Leaks & Pipework', icon: 'water-outline' },
-  { id: '4', title: 'AC Service', subtitle: 'Repair & Cleaning', icon: 'snow-outline' }
-];
+const DEFAULT_CATEGORY_ICONS = {
+  electrician: 'flash-outline',
+  mechanic: 'construct-outline',
+  plumber: 'water-outline',
+  'ac service': 'snow-outline',
+  'ac repair': 'snow-outline',
+  'electrical repair': 'flash-outline',
+  'bike service': 'bicycle-outline',
+  carpenter: 'hammer-outline',
+  painter: 'color-palette-outline',
+  cleaner: 'sparkles-outline',
+  'pest control': 'shield-outline'
+};
 
-const POPULAR_SERVICES_DATA = [
-  { id: 'p1', title: 'Electrical Repair', price: '₹299', icon: 'flash-outline' },
-  { id: 'p2', title: 'AC Repair', price: '₹499', icon: 'snow-outline' },
-  { id: 'p3', title: 'Bike Service', price: '₹599', icon: 'bicycle-outline' }
-];
-
-const ALL_SERVICES_GRID = [
-  { id: 'as1', label: 'Electrician', icon: 'flash-outline' },
-  { id: 'as2', label: 'Mechanic', icon: 'construct-outline' },
-  { id: 'as3', label: 'Electrical Tech', icon: 'bulb-outline' },
-  { id: 'as4', label: 'Mechanical Tech', icon: 'hardware-chip-outline' },
-  { id: 'as5', label: 'Plumber', icon: 'water-outline' },
-  { id: 'as6', label: 'AC Technician', icon: 'snow-outline' },
-  { id: 'as7', label: 'Appliance Repair', icon: 'tv-outline' },
-  { id: 'as8', label: 'Carpenter', icon: 'hammer-outline' },
-  { id: 'as9', label: 'Painter', icon: 'color-palette-outline' },
-  { id: 'as10', label: 'Cleaner', icon: 'sparkles-outline' },
-  { id: 'as11', label: 'Pest Control', icon: 'shield-outline' },
-  { id: 'as12', label: 'Other Services', icon: 'apps-outline' }
-];
+const resolveIconName = (icon, name) => {
+  if (icon && typeof icon === 'string' && icon.trim()) {
+    return icon.trim();
+  }
+  const cleanName = (name || '').toLowerCase().trim();
+  if (DEFAULT_CATEGORY_ICONS[cleanName]) {
+    return DEFAULT_CATEGORY_ICONS[cleanName];
+  }
+  for (const [key, val] of Object.entries(DEFAULT_CATEGORY_ICONS)) {
+    if (cleanName.includes(key)) {
+      return val;
+    }
+  }
+  return 'grid-outline';
+};
 
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
   const [categories, setCategories] = useState([]);
+  const [quickServices, setQuickServices] = useState([]);
+  const [popularServices, setPopularServices] = useState([]);
   const [featuredServices, setFeaturedServices] = useState([]);
   const [topProviders, setTopProviders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,13 +61,21 @@ export default function HomeScreen({ navigation }) {
 
   const fetchData = useCallback(async () => {
     try {
-      const [catRes, servRes, provRes] = await Promise.all([
+      const [allCatRes, quickCatRes, popCatRes, servRes, provRes] = await Promise.all([
         categoryApi.getAll().catch(() => ({ data: [] })),
+        categoryApi.getAll({ quickServices: true }).catch(() => ({ data: [] })),
+        categoryApi.getAll({ popularServices: true }).catch(() => ({ data: [] })),
         serviceApi.getAll({ limit: 6 }).catch(() => ({ data: [] })),
         providerApi.getAll({ limit: 6 }).catch(() => ({ data: [] }))
       ]);
 
-      setCategories(catRes.data || []);
+      const allCategories = allCatRes.data || [];
+      const quickList = quickCatRes.data || [];
+      const popList = popCatRes.data || [];
+
+      setCategories(allCategories);
+      setQuickServices(quickList);
+      setPopularServices(popList);
       setFeaturedServices(servRes.data || []);
       setTopProviders(provRes.data || []);
     } catch (err) {
@@ -76,6 +89,13 @@ export default function HomeScreen({ navigation }) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Refetch when screen regains focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [fetchData])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -201,18 +221,40 @@ export default function HomeScreen({ navigation }) {
           </View>
 
           <View style={styles.quickServicesGrid}>
-            {QUICK_SERVICES.map((item) => (
+            {(quickServices.length > 0
+              ? quickServices.slice(0, 4)
+              : categories.filter((c) => c.showInQuickServices).length > 0
+              ? categories.filter((c) => c.showInQuickServices).slice(0, 4)
+              : [
+                  { _id: 'q1', name: 'Electrician', description: 'Repairs & Fittings', icon: 'flash-outline' },
+                  { _id: 'q2', name: 'Mechanic', description: 'Quick Emergency', icon: 'construct-outline' },
+                  { _id: 'q3', name: 'Plumber', description: 'Leaks & Pipework', icon: 'water-outline' },
+                  { _id: 'q4', name: 'AC Service', description: 'Repair & Cleaning', icon: 'snow-outline' }
+                ]
+            ).map((item) => (
               <TouchableOpacity
-                key={item.id}
+                key={item._id || item.id}
                 style={styles.quickServiceCard}
-                onPress={() => navigation.navigate('SearchTab')}
+                onPress={() => {
+                  if (item._id && !item._id.startsWith('q')) {
+                    navigation.navigate('CategoryServices', {
+                      categoryId: item._id,
+                      categoryName: item.name,
+                      categoryDescription: item.description
+                    });
+                  } else {
+                    navigation.navigate('SearchTab');
+                  }
+                }}
                 activeOpacity={0.7}
               >
                 <View style={styles.quickIconCircle}>
-                  <Ionicons name={item.icon} size={18} color="#A78BFA" />
+                  <Ionicons name={resolveIconName(item.icon, item.name)} size={18} color="#A78BFA" />
                 </View>
-                <Text style={styles.quickServiceTitle}>{item.title}</Text>
-                <Text style={styles.quickServiceSubtitle}>{item.subtitle}</Text>
+                <Text style={styles.quickServiceTitle} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.quickServiceSubtitle} numberOfLines={1}>
+                  {item.description || 'Repairs & Care'}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -228,20 +270,45 @@ export default function HomeScreen({ navigation }) {
           </View>
 
           <View style={styles.popularRow}>
-            {POPULAR_SERVICES_DATA.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.popularServiceCard}
-                onPress={() => navigation.navigate('SearchTab')}
-                activeOpacity={0.7}
-              >
-                <View style={styles.popularIconCircle}>
-                  <Ionicons name={item.icon} size={18} color="#A78BFA" />
-                </View>
-                <Text style={styles.popularCardTitle}>{item.title}</Text>
-                <Text style={styles.popularPriceFrom}>From <Text style={styles.popularPriceVal}>{item.price}</Text></Text>
-              </TouchableOpacity>
-            ))}
+            {(popularServices.length > 0
+              ? popularServices.slice(0, 3)
+              : categories.filter((c) => c.showInPopularServices).length > 0
+              ? categories.filter((c) => c.showInPopularServices).slice(0, 3)
+              : [
+                  { _id: 'p1', name: 'Electrical Repair', basePrice: 299, icon: 'flash-outline' },
+                  { _id: 'p2', name: 'AC Repair', basePrice: 499, icon: 'snow-outline' },
+                  { _id: 'p3', name: 'Bike Service', basePrice: 599, icon: 'bicycle-outline' }
+                ]
+            ).map((item, index) => {
+              const defaultPrices = [299, 499, 599];
+              const displayPrice = item.basePrice || item.price || defaultPrices[index % defaultPrices.length];
+              return (
+                <TouchableOpacity
+                  key={item._id || item.id}
+                  style={styles.popularServiceCard}
+                  onPress={() => {
+                    if (item._id && !item._id.startsWith('p')) {
+                      navigation.navigate('CategoryServices', {
+                        categoryId: item._id,
+                        categoryName: item.name,
+                        categoryDescription: item.description
+                      });
+                    } else {
+                      navigation.navigate('SearchTab');
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.popularIconCircle}>
+                    <Ionicons name={resolveIconName(item.icon, item.name)} size={18} color="#A78BFA" />
+                  </View>
+                  <Text style={styles.popularCardTitle} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.popularPriceFrom}>
+                    From <Text style={styles.popularPriceVal}>₹{displayPrice}</Text>
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
@@ -363,18 +430,41 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>All Services</Text>
           <View style={styles.allServicesGrid}>
-            {ALL_SERVICES_GRID.map((item) => (
+            {(categories.length > 0 ? categories : [
+              { _id: 'as1', name: 'Electrician', icon: 'flash-outline' },
+              { _id: 'as2', name: 'Mechanic', icon: 'construct-outline' },
+              { _id: 'as3', name: 'Electrical Tech', icon: 'bulb-outline' },
+              { _id: 'as4', name: 'Mechanical Tech', icon: 'hardware-chip-outline' },
+              { _id: 'as5', name: 'Plumber', icon: 'water-outline' },
+              { _id: 'as6', name: 'AC Technician', icon: 'snow-outline' },
+              { _id: 'as7', name: 'Appliance Repair', icon: 'tv-outline' },
+              { _id: 'as8', name: 'Carpenter', icon: 'hammer-outline' },
+              { _id: 'as9', name: 'Painter', icon: 'color-palette-outline' },
+              { _id: 'as10', name: 'Cleaner', icon: 'sparkles-outline' },
+              { _id: 'as11', name: 'Pest Control', icon: 'shield-outline' },
+              { _id: 'as12', name: 'Other Services', icon: 'apps-outline' }
+            ]).map((item) => (
               <TouchableOpacity
-                key={item.id}
+                key={item._id || item.id}
                 style={styles.allServiceCard}
-                onPress={() => navigation.navigate('SearchTab')}
+                onPress={() => {
+                  if (item._id && !item._id.startsWith('as')) {
+                    navigation.navigate('CategoryServices', {
+                      categoryId: item._id,
+                      categoryName: item.name,
+                      categoryDescription: item.description
+                    });
+                  } else {
+                    navigation.navigate('SearchTab');
+                  }
+                }}
                 activeOpacity={0.7}
               >
                 <View style={styles.allServiceIconCircle}>
-                  <Ionicons name={item.icon} size={18} color="#A78BFA" />
+                  <Ionicons name={resolveIconName(item.icon, item.name)} size={18} color="#A78BFA" />
                 </View>
                 <Text style={styles.allServiceLabel} numberOfLines={2}>
-                  {item.label}
+                  {item.name || item.label}
                 </Text>
               </TouchableOpacity>
             ))}

@@ -1,4 +1,4 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 const categorySchema = new mongoose.Schema(
   {
@@ -36,6 +36,22 @@ const categorySchema = new mongoose.Schema(
     displayOrder: {
       type: Number,
       default: 0
+    },
+    showInQuickServices: {
+      type: Boolean,
+      default: false
+    },
+    quickServicesOrder: {
+      type: Number,
+      default: 0
+    },
+    showInPopularServices: {
+      type: Boolean,
+      default: false
+    },
+    popularServicesOrder: {
+      type: Number,
+      default: 0
     }
   },
   {
@@ -44,6 +60,8 @@ const categorySchema = new mongoose.Schema(
 );
 
 categorySchema.index({ isActive: 1, displayOrder: 1 });
+categorySchema.index({ isActive: 1, showInQuickServices: 1, quickServicesOrder: 1 });
+categorySchema.index({ isActive: 1, showInPopularServices: 1, popularServicesOrder: 1 });
 
 const Category = mongoose.model('Category', categorySchema);
 
