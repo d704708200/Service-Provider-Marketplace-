@@ -61,8 +61,6 @@ const bannerConfigSchema = new mongoose.Schema(
   }
 );
 
-bannerConfigSchema.index({ key: 1 }, { unique: true });
-
 const BannerConfig = mongoose.model('BannerConfig', bannerConfigSchema);
 
 module.exports = BannerConfig;

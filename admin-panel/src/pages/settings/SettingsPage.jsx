@@ -132,14 +132,47 @@ const SettingsPage = () => {
     }
   };
 
+  // Navigation Tabs: 'banner' | 'system' | 'all'
+  const [activeTab, setActiveTab] = useState('banner');
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">System & Account Settings</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Manage promotional banners, inspect administrator profile attributes, and review platform connectivity.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">System & Promotional Settings</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Manage promotional offer banners, inspect administrator profile attributes, and review platform connectivity.
+          </p>
+        </div>
+      </div>
+
+      {/* Settings Navigation Tabs */}
+      <div className="flex border-b border-slate-200">
+        <button
+          type="button"
+          onClick={() => setActiveTab('banner')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+            activeTab === 'banner'
+              ? 'border-purple-600 text-purple-600'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Megaphone className="w-4 h-4" />
+          <span>Home Banner & Promotional Offers</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('system')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+            activeTab === 'system'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Settings className="w-4 h-4" />
+          <span>Admin Profile & System Metadata</span>
+        </button>
       </div>
 
       {/* Banner Management Notification Alerts */}
@@ -183,13 +216,15 @@ const SettingsPage = () => {
       )}
 
       {/* SECTION 1: Home Banner / Promotional Offers Management */}
-      <Card
-        title="Customer App Home Banner & Promotional Offers"
-        subtitle="Configure the First Service Order offer card shown on the Customer App Home Screen"
-      >
+      {(activeTab === 'banner' || activeTab === 'all') && (
+        <Card
+          title="Customer App Home Banner & Promotional Offers"
+          subtitle="Configure the First Service Order offer card shown on the Customer App Home Screen"
+        >
         {isBannerLoading ? (
-          <div className="py-12 flex justify-center items-center">
-            <LoadingSpinner size="md" text="Loading banner settings..." />
+          <div className="py-12 flex flex-col justify-center items-center gap-3">
+            <LoadingSpinner size="md" color="indigo" />
+            <span className="text-xs text-slate-500 font-medium">Loading banner configuration...</span>
           </div>
         ) : (
           <form onSubmit={handleSaveBanner} className="space-y-6">
@@ -407,9 +442,11 @@ const SettingsPage = () => {
           </form>
         )}
       </Card>
+      )}
 
       {/* SECTION 2: System & Account Metadata */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {(activeTab === 'system' || activeTab === 'all') && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Administrator Profile Details */}
         <Card title="Current Administrator Profile" subtitle="Authenticated session metadata">
           <div className="space-y-4">
@@ -495,6 +532,7 @@ const SettingsPage = () => {
           </div>
         </Card>
       </div>
+      )}
     </div>
   );
 };
