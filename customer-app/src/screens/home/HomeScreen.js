@@ -55,17 +55,19 @@ export default function HomeScreen({ navigation }) {
   const [quickServices, setQuickServices] = useState([]);
   const [popularServices, setPopularServices] = useState([]);
   const [featuredServices, setFeaturedServices] = useState([]);
-  const [topProviders, setTopProviders] = useState([]);
+  const [topRatedProviders, setTopRatedProviders] = useState([]);
+  const [nearbyProviders, setNearbyProviders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const [allCatRes, quickCatRes, popCatRes, servRes, provRes] = await Promise.all([
+      const [allCatRes, quickCatRes, popCatRes, servRes, topProvRes, allProvRes] = await Promise.all([
         categoryApi.getAll().catch(() => ({ data: [] })),
         categoryApi.getAll({ quickServices: true }).catch(() => ({ data: [] })),
         categoryApi.getAll({ popularServices: true }).catch(() => ({ data: [] })),
         serviceApi.getAll({ limit: 6 }).catch(() => ({ data: [] })),
+        providerApi.getAll({ topRated: true }).catch(() => ({ data: [] })),
         providerApi.getAll({ limit: 6 }).catch(() => ({ data: [] }))
       ]);
 
@@ -77,7 +79,8 @@ export default function HomeScreen({ navigation }) {
       setQuickServices(quickList);
       setPopularServices(popList);
       setFeaturedServices(servRes.data || []);
-      setTopProviders(provRes.data || []);
+      setTopRatedProviders(topProvRes.data || []);
+      setNearbyProviders(allProvRes.data || []);
     } catch (err) {
       // Handled gracefully
     } finally {
@@ -102,23 +105,7 @@ export default function HomeScreen({ navigation }) {
     fetchData();
   };
 
-  const primaryProvider = topProviders[0] || {
-    _id: 'default_prov_1',
-    businessName: 'Raj Electrical Services',
-    specialization: 'Electrician',
-    rating: { average: 4.8 },
-    experienceYears: 8,
-    pricing: { basePrice: 499 }
-  };
-
-  const nearbyProvider = topProviders[1] || {
-    _id: 'default_prov_2',
-    businessName: 'Raj Kumar',
-    specialization: 'Electrician',
-    rating: { average: 4.8 },
-    experienceYears: 8,
-    distance: 1.4
-  };
+  const nearbyProvider = nearbyProviders[0] || null;
 
   return (
     <View style={styles.container}>
@@ -306,44 +293,58 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.topRatedCard}>
-            <Image
-              source={{
-                uri:
-                  primaryProvider.avatar ||
-                  'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=120&auto=format&fit=crop&q=80'
-              }}
-              style={styles.topRatedAvatar}
-            />
-            <View style={styles.topRatedInfo}>
-              <View style={styles.providerTitleRow}>
-                <Text style={styles.topRatedName} numberOfLines={1}>
-                  {primaryProvider.businessName || 'Raj Electrical Services'}
-                </Text>
-                <Ionicons name="checkmark-circle" size={13} color="#7C3AED" style={{ marginLeft: 4 }} />
-              </View>
-              <Text style={styles.topRatedCategory}>{primaryProvider.specialization || 'Electrician'}</Text>
-              <View style={styles.ratingRow}>
-                <Ionicons name="star" size={11} color="#F59E0B" />
-                <Text style={styles.ratingNum}>
-                  {primaryProvider.rating?.average ? primaryProvider.rating.average.toFixed(1) : '4.8'}
-                </Text>
-                <Text style={styles.dotDivider}>•</Text>
-                <Text style={styles.expText}>{primaryProvider.experienceYears || 8} yrs exp</Text>
-              </View>
-              <Text style={styles.topRatedPrice}>
-                From <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>₹{primaryProvider.pricing?.basePrice || 499}</Text>
-              </Text>
+          {topRatedProviders.length === 0 ? (
+            <View style={styles.emptySectionBox}>
+              <Text style={styles.emptySectionText}>No top rated professionals currently featured.</Text>
             </View>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {topRatedProviders.map((provider) => (
+                <View key={provider._id} style={styles.topRatedCard}>
+                  <Image
+                    source={{
+                      uri:
+                        provider.avatar ||
+                        'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=120&auto=format&fit=crop&q=80'
+                    }}
+                    style={styles.topRatedAvatar}
+                  />
+                  <View style={styles.topRatedInfo}>
+                    <View style={styles.providerTitleRow}>
+                      <Text style={styles.topRatedName} numberOfLines={1}>
+                        {provider.businessName || provider.user?.name || 'Professional'}
+                      </Text>
+                      <Ionicons name="checkmark-circle" size={13} color="#7C3AED" style={{ marginLeft: 4 }} />
+                    </View>
+                    <Text style={styles.topRatedCategory}>
+                      {provider.specialization || (provider.categories && provider.categories[0]?.name) || 'Service Expert'}
+                    </Text>
+                    <View style={styles.ratingRow}>
+                      <Ionicons name="star" size={11} color="#F59E0B" />
+                      <Text style={styles.ratingNum}>
+                        {provider.rating?.average ? Number(provider.rating.average).toFixed(1) : '5.0'}
+                      </Text>
+                      <Text style={styles.dotDivider}>•</Text>
+                      <Text style={styles.expText}>{provider.experienceYears || 0} yrs exp</Text>
+                    </View>
+                    {provider.pricing?.basePrice ? (
+                      <Text style={styles.topRatedPrice}>
+                        From <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>₹{provider.pricing.basePrice}</Text>
+                      </Text>
+                    ) : null}
+                  </View>
 
-            <TouchableOpacity
-              style={styles.viewBtnPurple}
-              onPress={() => navigation.navigate('ProviderDetail', { providerId: primaryProvider._id })}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.viewBtnText}>View</Text>
-            </TouchableOpacity>
-          </View>
+                  <TouchableOpacity
+                    style={styles.viewBtnPurple}
+                    onPress={() => navigation.navigate('ProviderDetail', { providerId: provider._id })}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.viewBtnText}>View</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Available Near You Section matching Figma */}
@@ -355,44 +356,50 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.availableNearCard}>
-            <Image
-              source={{
-                uri:
-                  nearbyProvider.avatar ||
-                  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&auto=format&fit=crop&q=80'
-              }}
-              style={styles.availableAvatar}
-            />
-            <View style={styles.availableInfo}>
-              <View style={styles.providerTitleRow}>
-                <Text style={styles.topRatedName} numberOfLines={1}>
-                  {nearbyProvider.businessName || 'Raj Kumar'}
+          {nearbyProvider ? (
+            <View style={styles.availableNearCard}>
+              <Image
+                source={{
+                  uri:
+                    nearbyProvider.avatar ||
+                    'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&auto=format&fit=crop&q=80'
+                }}
+                style={styles.availableAvatar}
+              />
+              <View style={styles.availableInfo}>
+                <View style={styles.providerTitleRow}>
+                  <Text style={styles.topRatedName} numberOfLines={1}>
+                    {nearbyProvider.businessName || nearbyProvider.user?.name || 'Professional'}
+                  </Text>
+                  <Ionicons name="checkmark-circle" size={13} color="#7C3AED" style={{ marginLeft: 4 }} />
+                </View>
+                <Text style={styles.topRatedCategory}>
+                  {nearbyProvider.specialization || (nearbyProvider.categories && nearbyProvider.categories[0]?.name) || 'Service Expert'} • {nearbyProvider.experienceYears || 0} years
                 </Text>
-                <Ionicons name="checkmark-circle" size={13} color="#7C3AED" style={{ marginLeft: 4 }} />
+                <View style={styles.ratingRow}>
+                  <Ionicons name="star" size={11} color="#F59E0B" />
+                  <Text style={styles.ratingNum}>
+                    {nearbyProvider.rating?.average ? Number(nearbyProvider.rating.average).toFixed(1) : '5.0'}
+                  </Text>
+                  <Text style={styles.dotDivider}>•</Text>
+                  <Text style={styles.expText}>{nearbyProvider.distance || 1.4}km</Text>
+                </View>
+                <Text style={styles.availableNowText}>Available now</Text>
               </View>
-              <Text style={styles.topRatedCategory}>
-                {nearbyProvider.specialization || 'Electrician'} • {nearbyProvider.experienceYears || 8} years
-              </Text>
-              <View style={styles.ratingRow}>
-                <Ionicons name="star" size={11} color="#F59E0B" />
-                <Text style={styles.ratingNum}>
-                  {nearbyProvider.rating?.average ? nearbyProvider.rating.average.toFixed(1) : '4.8'}
-                </Text>
-                <Text style={styles.dotDivider}>•</Text>
-                <Text style={styles.expText}>{nearbyProvider.distance || 1.4}km</Text>
-              </View>
-              <Text style={styles.availableNowText}>Available now</Text>
-            </View>
 
-            <TouchableOpacity
-              style={styles.requestOutlineBtn}
-              onPress={() => navigation.navigate('ProviderDetail', { providerId: nearbyProvider._id })}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.requestBtnText}>Request</Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                style={styles.requestOutlineBtn}
+                onPress={() => navigation.navigate('ProviderDetail', { providerId: nearbyProvider._id })}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.requestBtnText}>Request</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.emptySectionBox}>
+              <Text style={styles.emptySectionText}>No active providers currently nearby.</Text>
+            </View>
+          )}
         </View>
 
         {/* Promotional Coupon Banner matching Figma */}

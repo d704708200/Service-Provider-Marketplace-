@@ -44,11 +44,14 @@ const ProvidersPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [verificationFilter, setVerificationFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [topRatedFilter, setTopRatedFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [updatingTopRatedId, setUpdatingTopRatedId] = useState(null);
 
   // Detail Modal State
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [modalTopRatedOrder, setModalTopRatedOrder] = useState(0);
 
   // Confirmation Modal State (e.g. for account activation toggle)
   const [confirmModal, setConfirmModal] = useState({
@@ -83,7 +86,8 @@ const ProvidersPage = () => {
         limit: 10,
         search: searchTerm.trim() || undefined,
         verificationStatus: verificationFilter !== 'all' ? verificationFilter : undefined,
-        category: categoryFilter !== 'all' ? categoryFilter : undefined
+        category: categoryFilter !== 'all' ? categoryFilter : undefined,
+        topRated: topRatedFilter !== 'all' ? topRatedFilter : undefined
       };
       const response = await providerApi.getAdminProviders(params);
       if (response?.success) {
@@ -99,7 +103,7 @@ const ProvidersPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, searchTerm, verificationFilter, categoryFilter]);
+  }, [currentPage, searchTerm, verificationFilter, categoryFilter, topRatedFilter]);
 
   useEffect(() => {
     fetchCategories();
@@ -120,7 +124,75 @@ const ProvidersPage = () => {
   // Open Provider Detail Modal
   const handleOpenDetailModal = (provider) => {
     setSelectedProvider(provider);
+    setModalTopRatedOrder(provider.topRatedOrder ?? 0);
     setIsDetailModalOpen(true);
+  };
+
+  // Toggle Top Rated Professionals feature
+  const handleToggleTopRated = async (provider, nextOrder) => {
+    const isEnabling = !provider.showInTopRated;
+
+    if (isEnabling && provider.verificationStatus !== 'verified') {
+      setApiError('Only verified providers can be added to Top Rated Professionals.');
+      return;
+    }
+
+    if (isEnabling && !provider.user?.isActive) {
+      setApiError('Cannot feature an inactive or suspended provider.');
+      return;
+    }
+
+    setUpdatingTopRatedId(provider._id);
+    try {
+      const orderToSet = nextOrder !== undefined ? nextOrder : (provider.topRatedOrder || 0);
+      const res = await providerApi.updateTopRatedStatus(provider._id, {
+        showInTopRated: isEnabling,
+        topRatedOrder: orderToSet
+      });
+      if (res?.success) {
+        setSuccessMessage(
+          `Provider '${provider.businessName || provider.user?.name}' ${
+            isEnabling ? 'featured in' : 'removed from'
+          } Top Rated Professionals.`
+        );
+        fetchProviders();
+        if (selectedProvider?._id === provider._id) {
+          setSelectedProvider(res.data);
+          setModalTopRatedOrder(res.data.topRatedOrder ?? 0);
+        }
+      } else {
+        setApiError(res?.message || 'Failed to update Top Rated status');
+      }
+    } catch (err) {
+      setApiError(err.userMessage || 'Failed to update Top Rated status');
+    } finally {
+      setUpdatingTopRatedId(null);
+    }
+  };
+
+  // Update Top Rated order directly
+  const handleUpdateTopRatedOrder = async (provider, newOrder) => {
+    const parsedOrder = parseInt(newOrder, 10);
+    if (isNaN(parsedOrder) || parsedOrder < 0) return;
+
+    setUpdatingTopRatedId(provider._id);
+    try {
+      const res = await providerApi.updateTopRatedStatus(provider._id, {
+        topRatedOrder: parsedOrder
+      });
+      if (res?.success) {
+        setSuccessMessage(`Display order updated to #${parsedOrder}.`);
+        fetchProviders();
+        if (selectedProvider?._id === provider._id) {
+          setSelectedProvider(res.data);
+          setModalTopRatedOrder(res.data.topRatedOrder ?? 0);
+        }
+      }
+    } catch (err) {
+      setApiError(err.userMessage || 'Failed to update display order');
+    } finally {
+      setUpdatingTopRatedId(null);
+    }
   };
 
   // Toggle Account Active / Inactive
@@ -266,7 +338,7 @@ const ProvidersPage = () => {
 
       {/* Filter and Search Bar */}
       <Card>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           {/* Search */}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -297,6 +369,22 @@ const ProvidersPage = () => {
               <option value="verified">Verified (Approved)</option>
               <option value="rejected">Rejected</option>
               <option value="suspended">Suspended</option>
+            </select>
+          </div>
+
+          {/* Top Rated Filter */}
+          <div>
+            <select
+              value={topRatedFilter}
+              onChange={(e) => {
+                setTopRatedFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
+            >
+              <option value="all">Top Rated: All</option>
+              <option value="true">★ Featured in Top Rated</option>
+              <option value="false">Not Featured</option>
             </select>
           </div>
 
@@ -332,23 +420,24 @@ const ProvidersPage = () => {
             <EmptyState
               icon={Briefcase}
               title={
-                searchTerm || verificationFilter !== 'all' || categoryFilter !== 'all'
+                searchTerm || verificationFilter !== 'all' || categoryFilter !== 'all' || topRatedFilter !== 'all'
                   ? 'No matching providers found'
                   : 'No Providers Registered'
               }
               description={
-                searchTerm || verificationFilter !== 'all' || categoryFilter !== 'all'
+                searchTerm || verificationFilter !== 'all' || categoryFilter !== 'all' || topRatedFilter !== 'all'
                   ? 'Try adjusting your search criteria or resetting verification status filters.'
                   : 'New provider onboarding registrations will appear here once submitted.'
               }
               action={
-                searchTerm || verificationFilter !== 'all' || categoryFilter !== 'all' ? (
+                searchTerm || verificationFilter !== 'all' || categoryFilter !== 'all' || topRatedFilter !== 'all' ? (
                   <button
                     type="button"
                     onClick={() => {
                       setSearchTerm('');
                       setVerificationFilter('all');
                       setCategoryFilter('all');
+                      setTopRatedFilter('all');
                       setCurrentPage(1);
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
@@ -376,6 +465,9 @@ const ProvidersPage = () => {
                     </th>
                     <th scope="col" className="px-6 py-3.5">
                       Verification
+                    </th>
+                    <th scope="col" className="px-6 py-3.5">
+                      Top Rated Featured
                     </th>
                     <th scope="col" className="px-6 py-3.5 text-center">
                       Documents
@@ -456,6 +548,58 @@ const ProvidersPage = () => {
 
                       {/* Verification Status */}
                       <td className="px-6 py-4">{renderVerificationBadge(provider.verificationStatus)}</td>
+
+                      {/* Top Rated Professionals Toggle & Order */}
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1.5 items-start">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleTopRated(provider)}
+                            disabled={updatingTopRatedId === provider._id}
+                            className="inline-flex items-center gap-1.5 text-xs transition-colors"
+                            title={
+                              provider.verificationStatus !== 'verified'
+                                ? 'Provider must be verified to enable Top Rated'
+                                : !provider.user?.isActive
+                                ? 'Provider must be active to enable Top Rated'
+                                : provider.showInTopRated
+                                ? 'Remove from Top Rated'
+                                : 'Enable for Top Rated'
+                            }
+                          >
+                            {provider.showInTopRated ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200">
+                                <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                                <span>Featured</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200">
+                                <Star className="w-3 h-3 text-slate-400" />
+                                <span>Not Featured</span>
+                              </span>
+                            )}
+                          </button>
+
+                          {provider.showInTopRated && (
+                            <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                              <span>Order:</span>
+                              <input
+                                type="number"
+                                min="0"
+                                defaultValue={provider.topRatedOrder || 0}
+                                onBlur={(e) => handleUpdateTopRatedOrder(provider, e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleUpdateTopRatedOrder(provider, e.target.value);
+                                  }
+                                }}
+                                className="w-12 px-1 py-0.5 text-center text-xs font-semibold bg-slate-50 border border-slate-200 rounded focus:bg-white focus:outline-hidden focus:border-amber-500"
+                                title="Press Enter or blur to save order"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </td>
 
                       {/* Submitted Documents Count */}
                       <td className="px-6 py-4 text-center">
@@ -610,6 +754,66 @@ const ProvidersPage = () => {
                     Experience: {selectedProvider.experienceYears || 0} years
                   </span>
                 </div>
+              </div>
+
+              {/* Top Rated Professionals Configuration Section */}
+              <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Star className="w-4 h-4 fill-amber-500 text-amber-500" />
+                    <span className="text-sm font-bold text-amber-950">Top Rated Professionals Section</span>
+                  </div>
+                  <span className="text-xs font-semibold text-amber-700">Customer App Home Screen</span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(selectedProvider.showInTopRated)}
+                      disabled={
+                        selectedProvider.verificationStatus !== 'verified' ||
+                        !selectedProvider.user?.isActive ||
+                        updatingTopRatedId === selectedProvider._id
+                      }
+                      onChange={() => handleToggleTopRated(selectedProvider, modalTopRatedOrder)}
+                      className="w-4 h-4 text-amber-600 rounded border-amber-300 focus:ring-amber-500"
+                    />
+                    <span className="text-xs font-semibold text-slate-800">
+                      Feature in "Top Rated Professionals"
+                    </span>
+                  </label>
+
+                  {selectedProvider.showInTopRated && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-medium text-amber-900 whitespace-nowrap">
+                        Display Order:
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={modalTopRatedOrder}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10) || 0;
+                          setModalTopRatedOrder(val);
+                        }}
+                        onBlur={() => handleUpdateTopRatedOrder(selectedProvider, modalTopRatedOrder)}
+                        className="w-20 px-2 py-1 bg-white border border-amber-300 rounded-lg text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500 text-center"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {selectedProvider.verificationStatus !== 'verified' && (
+                  <p className="text-[11px] text-amber-700 italic">
+                    Note: Provider must be verified before they can appear in Top Rated Professionals.
+                  </p>
+                )}
+                {selectedProvider.user?.isActive === false && (
+                  <p className="text-[11px] text-rose-700 italic">
+                    Note: Inactive or suspended providers cannot appear in Top Rated Professionals.
+                  </p>
+                )}
               </div>
 
               {/* Bio */}

@@ -189,6 +189,13 @@ export const providerApi = {
     );
     return response.data;
   },
+  updateTopRatedStatus: async (providerId, topRatedData) => {
+    const response = await api.patch(
+      `/providers/admin/${providerId}/top-rated`,
+      topRatedData
+    );
+    return response.data;
+  },
   getPublicProviders: async (params = {}) => {
     const response = await api.get('/providers', { params });
     return response.data;
