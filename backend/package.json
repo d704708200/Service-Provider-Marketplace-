@@ -13,6 +13,7 @@
     "test:categories": "node test_category_integration.js",
     "test:services": "node test_service_unit.js && node test_service_integration.js",
     "test:providers": "node test_provider_unit.js && node test_provider_integration.js",
+    "test:bookings": "node test_booking_unit.js && node test_booking_integration.js",
     "seed:admin": "node src/seeds/provisionAdmin.js"
   },
   "dependencies": {

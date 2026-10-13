@@ -1,11 +1,12 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 const bookingSchema = new mongoose.Schema(
   {
     bookingReference: {
       type: String,
       unique: true,
-      required: true
+      required: true,
+      index: true
     },
     customer: {
       type: mongoose.Schema.Types.ObjectId,
@@ -15,12 +16,20 @@ const bookingSchema = new mongoose.Schema(
     provider: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Provider',
-      default: null // Can be null if broadcast to multiple providers initially
+      default: null // Can be null if instant broadcast to eligible providers initially
     },
     service: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Service',
       required: [true, 'Service is required']
+    },
+    bookingMode: {
+      type: String,
+      enum: {
+        values: ['instant', 'scheduled'],
+        message: '{VALUE} is not a valid booking mode (instant or scheduled required)'
+      },
+      default: 'scheduled'
     },
     status: {
       type: String,
@@ -39,10 +48,10 @@ const bookingSchema = new mongoose.Schema(
       endTime: { type: String, required: true }
     },
     address: {
-      street: { type: String, required: true },
-      city: { type: String, required: true },
-      state: { type: String },
-      zipCode: { type: String },
+      street: { type: String, required: true, trim: true },
+      city: { type: String, required: true, trim: true },
+      state: { type: String, trim: true, default: '' },
+      zipCode: { type: String, trim: true, default: '' },
       location: {
         type: { type: String, enum: ['Point'], default: 'Point' },
         coordinates: { type: [Number], default: [0, 0] }
@@ -64,11 +73,34 @@ const bookingSchema = new mongoose.Schema(
       enum: ['cash', 'card', 'upi', 'wallet'],
       default: 'cash'
     },
+    statusTimestamps: {
+      acceptedAt: { type: Date, default: null },
+      inProgressAt: { type: Date, default: null },
+      completedAt: { type: Date, default: null },
+      cancelledAt: { type: Date, default: null },
+      rejectedAt: { type: Date, default: null }
+    },
+    cancelledBy: {
+      type: String,
+      enum: ['customer', 'provider', 'admin', null],
+      default: null
+    },
     cancellationReason: {
       type: String,
       trim: true,
       default: null
     },
+    rejectionReason: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    candidateProviders: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Provider'
+      }
+    ],
     notes: {
       type: String,
       trim: true,
@@ -82,6 +114,7 @@ const bookingSchema = new mongoose.Schema(
 
 bookingSchema.index({ customer: 1, status: 1 });
 bookingSchema.index({ provider: 1, status: 1 });
+bookingSchema.index({ status: 1, bookingMode: 1 });
 bookingSchema.index({ scheduledDate: 1 });
 bookingSchema.index({ 'address.location': '2dsphere' });
 

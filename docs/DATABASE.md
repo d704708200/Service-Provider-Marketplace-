@@ -82,6 +82,14 @@ The database schema supports multi-role users (Customer, Provider, Admin), hiera
    - Providers may only associate active categories.
    - Suspended or rejected providers are excluded from public search and cannot receive bookings.
 
+8. **Booking Lifecycle & Scheduling Rules**:
+   - Two booking modes: `instant` (immediate request with ASAP time slot broadcast to eligible candidate providers) and `scheduled` (future date validation and time slot).
+   - Validated State Machine: `pending -> accepted -> in_progress -> completed`.
+   - Concurrency Safety: Atomic conditional update (`findOneAndUpdate({ status: 'pending', ... })`) ensures that only one provider can accept an open instant booking request; competing candidates receive a 409 Conflict.
+   - Cancellation Policy: Customers can only cancel `pending` or `accepted` bookings. Services `in_progress` or `completed` cannot be cancelled.
+   - Pricing Immutability: Total amounts are derived exclusively from database service prices and trusted server-side rules.
+   - Status Timestamps: `statusTimestamps` tracks `acceptedAt`, `inProgressAt`, `completedAt`, `cancelledAt`, and `rejectedAt`.
+
 ---
 
 ## Running Verification Tests
@@ -94,6 +102,7 @@ npm run test:auth         # Runs auth unit and HTTP validation tests
 npm run test:categories   # Runs category live integration tests (against MongoDB Atlas)
 npm run test:services     # Runs service unit validation & Atlas integration tests
 npm run test:providers    # Runs provider unit validation & Atlas integration tests
+npm run test:bookings     # Runs booking unit validation & Atlas integration tests
 npm test                  # Runs core backend test suites
 ```
 

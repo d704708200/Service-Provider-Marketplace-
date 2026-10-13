@@ -199,4 +199,21 @@ export const providerApi = {
   }
 };
 
+// Bookings & Service Requests API Methods
+export const bookingApi = {
+  getAdminBookings: async (params = {}) => {
+    const response = await api.get('/bookings/admin', { params });
+    return response.data;
+  },
+  getAdminBookingById: async (id) => {
+    const response = await api.get(`/bookings/admin/${id}`);
+    return response.data;
+  },
+  cancelBooking: async (id, cancellationReason) => {
+    const response = await api.patch(`/bookings/admin/${id}/cancel`, { cancellationReason });
+    return response.data;
+  }
+};
+
 export default api;
+

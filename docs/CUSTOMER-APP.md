@@ -130,14 +130,19 @@ node test_customer_flow.js
 
 ---
 
-## 6. Known Limitations & Deferred Functionality (Phase 9 Boundary)
+## 6. Booking Lifecycle Integration (Phase 10)
 
-1. **Service Request Preparation vs. Live Booking**:
-   - `RequestServiceScreen` collects service address, preferred schedule date/time, customer problem description, and contact info with thorough client-side validation.
-   - `POST /api/bookings` is intentionally deferred to **Phase 10 (Booking & Scheduling Lifecycle)**. No fake booking IDs or fake persistence calls are generated.
-2. **Booking History**:
-   - `BookingHistoryScreen` serves as a clean, styled placeholder that informs customers their active appointments will populate once Phase 10 is active.
-3. **Notifications**:
-   - `NotificationsScreen` serves as a placeholder until booking status notification feeds and WebSockets are connected in upcoming phases.
-4. **Customer Profile Updates & Saved Address Book**:
-   - The backend currently exposes customer registration, login, and `/api/auth/me`. Endpoints for updating customer address lists and profile avatars will be added in customer profile management backend phases.
+1. **Live Booking Creation (`POST /api/bookings`)**:
+   - `RequestServiceScreen` connects to the live backend booking creation endpoint.
+   - Supports both `Instant (ASAP)` and `Scheduled` booking modes.
+   - Prevents duplicate submissions with pending states.
+   - Shows real confirmation screen with the exact `bookingReference` (e.g. `BK-20261013-XXXX`) returned by the database.
+2. **Booking History & Cancellations (`GET /api/bookings/customer`)**:
+   - `BookingHistoryScreen` fetches customer's active and historical orders.
+   - Supports filter tabs: `All`, `Pending`, `Accepted`, `In Progress`, `Completed`, `Cancelled`.
+   - Customers can cancel `pending` or `accepted` bookings directly from the mobile app (`PATCH /api/bookings/customer/:id/cancel`).
+3. **Deferred to Subsequent Phases**:
+   - Payment gateway integration (cash on delivery / offline is currently used).
+   - Real-time WebSockets / push notifications feed.
+   - Customer profile address book manager.
+

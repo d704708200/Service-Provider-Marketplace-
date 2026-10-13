@@ -1,0 +1,122 @@
+import axios from 'axios';
+import { authStorage } from '../storage/authStorage';
+
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+const api = axios.create({
+  baseURL: BASE_URL,
+  timeout: 15000,
+  headers: {
+    'Content-Type': 'application/json',
+    Accept: 'application/json'
+  }
+});
+
+let onUnauthorizedCallback = null;
+
+export const setOnUnauthorizedCallback = (callback) => {
+  onUnauthorizedCallback = callback;
+};
+
+// Request Interceptor: Attach Bearer token
+api.interceptors.request.use(
+  async (config) => {
+    const token = await authStorage.getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response Interceptor: Format error and handle 401
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response) {
+      const { status, data } = error.response;
+      const message =
+        data?.error?.message ||
+        data?.message ||
+        (status === 401
+          ? 'Session expired. Please sign in again.'
+          : status === 403
+          ? 'Access denied: You lack permission for this provider action.'
+          : status === 404
+          ? 'The requested booking or resource was not found.'
+          : status === 409
+          ? 'State conflict: Booking already claimed or modified by another provider.'
+          : status >= 500
+          ? 'Server error occurred. Please try again later.'
+          : 'An unexpected error occurred.');
+
+      error.userMessage = message;
+
+      if (status === 401) {
+        await authStorage.clearAuth();
+        if (typeof onUnauthorizedCallback === 'function') {
+          onUnauthorizedCallback(message);
+        }
+      }
+    } else if (error.request) {
+      error.userMessage =
+        'Unable to reach backend server. Check connection or verify backend is running at ' +
+        BASE_URL;
+    } else {
+      error.userMessage = error.message || 'Request configuration error.';
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+// Provider Authentication APIs
+export const authApi = {
+  loginProvider: async (credentials) => {
+    const response = await api.post('/auth/login/provider', credentials);
+    return response.data;
+  },
+  registerProvider: async (providerData) => {
+    const response = await api.post('/auth/register/provider', providerData);
+    return response.data;
+  },
+  getMe: async () => {
+    const response = await api.get('/auth/me');
+    return response.data;
+  }
+};
+
+// Provider Bookings & Requests APIs
+export const bookingApi = {
+  getPendingRequests: async (params = {}) => {
+    const response = await api.get('/bookings/provider/requests', { params });
+    return response.data;
+  },
+  getHistory: async (params = {}) => {
+    const response = await api.get('/bookings/provider/history', { params });
+    return response.data;
+  },
+  getBookingById: async (id) => {
+    const response = await api.get(`/bookings/provider/${id}`);
+    return response.data;
+  },
+  acceptBooking: async (id) => {
+    const response = await api.patch(`/bookings/provider/${id}/accept`);
+    return response.data;
+  },
+  rejectBooking: async (id, rejectionReason) => {
+    const response = await api.patch(`/bookings/provider/${id}/reject`, { rejectionReason });
+    return response.data;
+  },
+  startService: async (id) => {
+    const response = await api.patch(`/bookings/provider/${id}/start`);
+    return response.data;
+  },
+  completeService: async (id) => {
+    const response = await api.patch(`/bookings/provider/${id}/complete`);
+    return response.data;
+  }
+};
+
+export default api;

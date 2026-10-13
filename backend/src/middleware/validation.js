@@ -562,6 +562,125 @@ const validateAccountStatus = (req, res, next) => {
   next();
 };
 
+const validateCreateBooking = (req, res, next) => {
+  const { serviceId, providerId, bookingMode = 'scheduled', scheduledDate, scheduledTimeSlot, address, notes, problemDescription, paymentMethod } = req.body;
+  const errors = [];
+
+  // Service ID validation
+  if (!serviceId || !mongoose.Types.ObjectId.isValid(serviceId)) {
+    errors.push('A valid serviceId (MongoDB ObjectId) is required');
+  }
+
+  // Provider ID validation (optional)
+  if (providerId !== undefined && providerId !== null && !mongoose.Types.ObjectId.isValid(providerId)) {
+    errors.push('Provider ID if provided must be a valid MongoDB ObjectId');
+  }
+
+  // Booking mode validation
+  const validModes = ['instant', 'scheduled'];
+  if (bookingMode && !validModes.includes(bookingMode)) {
+    errors.push(`Booking mode must be one of: ${validModes.join(', ')}`);
+  }
+
+  // Address validation
+  if (!address || typeof address !== 'object') {
+    errors.push('Service address object is required');
+  } else {
+    if (!address.street || typeof address.street !== 'string' || !address.street.trim()) {
+      errors.push('Street address is required');
+    }
+    if (!address.city || typeof address.city !== 'string' || !address.city.trim()) {
+      errors.push('City is required');
+    }
+  }
+
+  // Scheduled date & time slot validation for scheduled bookings
+  if (bookingMode === 'scheduled') {
+    if (!scheduledDate) {
+      errors.push('scheduledDate is required for scheduled bookings');
+    } else {
+      const parsedDate = new Date(scheduledDate);
+      if (isNaN(parsedDate.getTime())) {
+        errors.push('scheduledDate must be a valid date');
+      } else {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const checkDate = new Date(parsedDate);
+        checkDate.setHours(23, 59, 59, 999);
+        if (checkDate < todayStart) {
+          errors.push('Scheduled date cannot be in the past');
+        }
+      }
+    }
+
+    if (!scheduledTimeSlot || typeof scheduledTimeSlot !== 'object') {
+      errors.push('scheduledTimeSlot with startTime and endTime is required for scheduled bookings');
+    } else {
+      if (!scheduledTimeSlot.startTime || typeof scheduledTimeSlot.startTime !== 'string' || !scheduledTimeSlot.startTime.trim()) {
+        errors.push('scheduledTimeSlot.startTime is required');
+      }
+      if (!scheduledTimeSlot.endTime || typeof scheduledTimeSlot.endTime !== 'string' || !scheduledTimeSlot.endTime.trim()) {
+        errors.push('scheduledTimeSlot.endTime is required');
+      }
+    }
+  }
+
+  // Optional notes validation
+  const effectiveNotes = notes || problemDescription;
+  if (effectiveNotes !== undefined && typeof effectiveNotes !== 'string') {
+    errors.push('Notes or problem description must be a string');
+  }
+
+  // Optional payment method
+  const validPaymentMethods = ['cash', 'card', 'upi', 'wallet'];
+  if (paymentMethod && !validPaymentMethods.includes(paymentMethod)) {
+    errors.push(`Payment method must be one of: ${validPaymentMethods.join(', ')}`);
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateCancelBooking = (req, res, next) => {
+  const { cancellationReason } = req.body;
+  if (cancellationReason !== undefined && typeof cancellationReason !== 'string') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'cancellationReason must be a string if provided',
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+  next();
+};
+
+const validateRejectBooking = (req, res, next) => {
+  const { rejectionReason } = req.body;
+  if (rejectionReason !== undefined && typeof rejectionReason !== 'string') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'rejectionReason must be a string if provided',
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+  next();
+};
+
 module.exports = {
   validateRegisterCustomer,
   validateRegisterProvider,
@@ -577,5 +696,9 @@ module.exports = {
   validateSubmitDocument,
   validateDocumentReview,
   validateProviderVerification,
-  validateAccountStatus
+  validateAccountStatus,
+  validateCreateBooking,
+  validateCancelBooking,
+  validateRejectBooking
 };
+

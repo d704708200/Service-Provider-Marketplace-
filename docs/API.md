@@ -571,4 +571,104 @@ Role-based access control enforces `admin`, `provider`, or `customer` roles.
 | `GET` | `/api/providers` | Public | List verified & active marketplace providers (documents and sensitive fields excluded) |
 | `GET` | `/api/providers/:id` | Public | View verified provider public profile (returns 404 if pending, rejected, suspended, or inactive) |
 
+---
+
+## 5. Booking & Scheduling Endpoints (`/api/bookings`)
+
+### Booking Modes
+- **`instant`**: Request service as soon as possible. Automatically defaults schedule to current timestamp and `ASAP` time slot. Broadcast to verified provider candidates offering the category.
+- **`scheduled`**: Customer books a future date and time slot. Validates date is not in the past and requires `scheduledTimeSlot` with `startTime` and `endTime`.
+
+### Booking State Machine
+```
+              [Create Booking]
+                     │
+                     ▼
+                 PENDING ──────────────┐
+                 │     │               │
+      Accept     │     │ Reject        │ Cancel
+   (Provider)    │     │ (Provider)    │ (Customer / Admin)
+                 ▼     ▼               ▼
+             ACCEPTED REJECTED     CANCELLED
+                 │                     ▲
+   Start Service │                     │ Cancel (Customer / Admin)
+   (Provider)    ▼                     │
+           IN_PROGRESS ────────────────┘
+                 │
+Complete Service │
+   (Provider)    ▼
+             COMPLETED
+```
+
+---
+
+### Customer Booking Routes (`role: customer`)
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/bookings` | Customer | Create service booking (`instant` or `scheduled`) |
+| `GET` | `/api/bookings/customer` | Customer | List authenticated customer's bookings with pagination and filters |
+| `GET` | `/api/bookings/customer/:id` | Customer | View booking details (ownership enforced) |
+| `PATCH`| `/api/bookings/customer/:id/cancel` | Customer | Cancel a `pending` or `accepted` booking with reason |
+
+#### `POST /api/bookings`
+- **Request Body (Scheduled)**:
+```json
+{
+  "serviceId": "67098a1f865f1a3089d7fb01",
+  "providerId": "67099b2f865f1a3089d7fc22",
+  "bookingMode": "scheduled",
+  "address": {
+    "street": "123 Marine Drive",
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "zipCode": "400020"
+  },
+  "scheduledDate": "2026-10-18",
+  "scheduledTimeSlot": {
+    "startTime": "10:00",
+    "endTime": "12:00"
+  },
+  "notes": "Main valve leaking into laundry cabinet",
+  "paymentMethod": "cash"
+}
+```
+- **Request Body (Instant)**:
+```json
+{
+  "serviceId": "67098a1f865f1a3089d7fb01",
+  "bookingMode": "instant",
+  "address": {
+    "street": "123 Marine Drive",
+    "city": "Mumbai"
+  },
+  "notes": "Emergency pipe leak"
+}
+```
+
+---
+
+### Provider Booking Routes (`role: provider`)
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/bookings/provider/requests` | Provider | List pending requests (assigned + instant pool candidates) |
+| `GET` | `/api/bookings/provider/history` | Provider | List provider job history (`accepted`, `in_progress`, `completed`, `cancelled`) |
+| `GET` | `/api/bookings/provider/:id` | Provider | Get single booking details (restricted to assigned or candidate provider) |
+| `PATCH`| `/api/bookings/provider/:id/accept` | Provider | Accept request (concurrency-safe atomic claim; rejects with 409 if already claimed) |
+| `PATCH`| `/api/bookings/provider/:id/reject` | Provider | Decline pending request |
+| `PATCH`| `/api/bookings/provider/:id/start` | Provider | Mark accepted job as `in_progress` |
+| `PATCH`| `/api/bookings/provider/:id/complete` | Provider | Mark in-progress job as `completed` (increments provider completed count) |
+
+---
+
+### Admin Booking Routes (`role: admin`)
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/bookings/admin` | Admin | List all bookings with search, status filters, and pagination |
+| `GET` | `/api/bookings/admin/:id` | Admin | View complete booking dossier with customer, provider, and timestamps |
+| `PATCH`| `/api/bookings/admin/:id/cancel` | Admin | Supervised cancellation with administrative reason |
+
+
 

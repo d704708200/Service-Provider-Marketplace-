@@ -45,6 +45,8 @@ api.interceptors.response.use(
           ? 'Access denied: You lack permission for this action.'
           : status === 404
           ? 'The requested resource was not found.'
+          : status === 409
+          ? 'Conflict: State conflict or already accepted by another user.'
           : status >= 500
           ? 'Server error occurred. Please try again later.'
           : 'An unexpected error occurred.');
@@ -91,8 +93,16 @@ export const authApi = {
 // 2. Categories Catalog APIs
 // ==========================================
 export const categoryApi = {
+  getAll: async (params = {}) => {
+    const response = await api.get('/categories', { params });
+    return response.data;
+  },
   getCategories: async (params = {}) => {
     const response = await api.get('/categories', { params });
+    return response.data;
+  },
+  getById: async (id) => {
+    const response = await api.get(`/categories/${id}`);
     return response.data;
   },
   getCategoryById: async (id) => {
@@ -105,8 +115,16 @@ export const categoryApi = {
 // 3. Services Catalog APIs
 // ==========================================
 export const serviceApi = {
+  getAll: async (params = {}) => {
+    const response = await api.get('/services', { params });
+    return response.data;
+  },
   getServices: async (params = {}) => {
     const response = await api.get('/services', { params });
+    return response.data;
+  },
+  getById: async (id) => {
+    const response = await api.get(`/services/${id}`);
     return response.data;
   },
   getServiceById: async (id) => {
@@ -119,12 +137,42 @@ export const serviceApi = {
 // 4. Provider Discovery APIs
 // ==========================================
 export const providerApi = {
+  getAll: async (params = {}) => {
+    const response = await api.get('/providers', { params });
+    return response.data;
+  },
   getProviders: async (params = {}) => {
     const response = await api.get('/providers', { params });
     return response.data;
   },
+  getById: async (id) => {
+    const response = await api.get(`/providers/${id}`);
+    return response.data;
+  },
   getProviderById: async (id) => {
     const response = await api.get(`/providers/${id}`);
+    return response.data;
+  }
+};
+
+// ==========================================
+// 5. Booking & Scheduling APIs
+// ==========================================
+export const bookingApi = {
+  createBooking: async (bookingData) => {
+    const response = await api.post('/bookings', bookingData);
+    return response.data;
+  },
+  getMyBookings: async (params = {}) => {
+    const response = await api.get('/bookings/customer', { params });
+    return response.data;
+  },
+  getBookingById: async (id) => {
+    const response = await api.get(`/bookings/customer/${id}`);
+    return response.data;
+  },
+  cancelBooking: async (id, cancellationReason) => {
+    const response = await api.patch(`/bookings/customer/${id}/cancel`, { cancellationReason });
     return response.data;
   }
 };

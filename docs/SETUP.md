@@ -48,6 +48,14 @@ npm run web     # Launch on browser
 node test_customer_flow.js # Run customer backend integration test suite
 ```
 
+#### Provider App Commands:
+```bash
+cd provider-app
+npm start       # Start Expo bundler
+npm run android # Launch on Android emulator or connected device
+npm run web     # Launch on browser
+```
+
 For complete architecture, device IP configuration, screens, and API endpoints, see [CUSTOMER-APP.md](./CUSTOMER-APP.md).
 
 ### 3. Admin Panel
@@ -77,6 +85,7 @@ npm run test:integration  # User authentication integration tests
 npm run test:categories   # Category taxonomy integration tests
 npm run test:services     # Services catalog integration tests
 npm run test:providers    # Provider management & verification tests
+npm run test:bookings     # Booking & scheduling lifecycle tests (Phase 10)
 ```
 This tests:
 - Customer registration and login

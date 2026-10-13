@@ -201,15 +201,35 @@ async function runTests() {
     );
   }
 
-  // 11. Verification that unsupported booking submission is deferred
-  console.log('\n--- 11. Testing Booking Endpoint Boundaries ---');
-  const fakeBooking = await client.post('/bookings', { test: true }, {
-    headers: { Authorization: `Bearer ${testCustomerToken}` }
-  });
-  assert(
-    fakeBooking.status === 404,
-    `Confirms /api/bookings is not yet implemented (Phase 10 boundary preserved, Status: ${fakeBooking.status})`
-  );
+  // 11. Testing Booking Endpoints (Phase 10)
+  console.log('\n--- 11. Testing Customer Booking Endpoints ---');
+  if (testServiceId) {
+    const createRes = await client.post('/bookings', {
+      serviceId: testServiceId,
+      bookingMode: 'instant',
+      address: { street: '123 Test St', city: 'Mumbai' },
+      notes: 'Test customer app flow'
+    }, {
+      headers: { Authorization: `Bearer ${testCustomerToken}` }
+    });
+    assert(createRes.status === 201, `Customer creates instant booking (Status: 201)`);
+    assert(createRes.data.data.bookingReference.startsWith('BK-'), `Returns valid bookingReference`);
+
+    const myBookings = await client.get('/bookings/customer', {
+      headers: { Authorization: `Bearer ${testCustomerToken}` }
+    });
+    assert(myBookings.status === 200 && myBookings.data.data.length > 0, `Customer retrieves my-bookings list`);
+  } else {
+    // Non-existent service validation check
+    const valRes = await client.post('/bookings', {
+      serviceId: '661842813134912384729182',
+      bookingMode: 'instant',
+      address: { street: '123 Test St', city: 'Mumbai' }
+    }, {
+      headers: { Authorization: `Bearer ${testCustomerToken}` }
+    });
+    assert(valRes.status === 404, `Rejects non-existent serviceId with 404`);
+  }
 
   console.log('\n====================================================');
   console.log(`RESULTS: ${passed} PASSED, ${failed} FAILED`);
