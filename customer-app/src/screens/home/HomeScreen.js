@@ -220,44 +220,36 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.quickServicesGrid}>
-            {(quickServices.length > 0
-              ? quickServices.slice(0, 4)
-              : categories.filter((c) => c.showInQuickServices).length > 0
-              ? categories.filter((c) => c.showInQuickServices).slice(0, 4)
-              : [
-                  { _id: 'q1', name: 'Electrician', description: 'Repairs & Fittings', icon: 'flash-outline' },
-                  { _id: 'q2', name: 'Mechanic', description: 'Quick Emergency', icon: 'construct-outline' },
-                  { _id: 'q3', name: 'Plumber', description: 'Leaks & Pipework', icon: 'water-outline' },
-                  { _id: 'q4', name: 'AC Service', description: 'Repair & Cleaning', icon: 'snow-outline' }
-                ]
-            ).map((item) => (
-              <TouchableOpacity
-                key={item._id || item.id}
-                style={styles.quickServiceCard}
-                onPress={() => {
-                  if (item._id && !item._id.startsWith('q')) {
+          {quickServices.length === 0 ? (
+            <View style={styles.emptySectionBox}>
+              <Text style={styles.emptySectionText}>No quick services currently featured.</Text>
+            </View>
+          ) : (
+            <View style={styles.quickServicesGrid}>
+              {quickServices.slice(0, 4).map((item) => (
+                <TouchableOpacity
+                  key={item._id || item.id}
+                  style={styles.quickServiceCard}
+                  onPress={() => {
                     navigation.navigate('CategoryServices', {
                       categoryId: item._id,
                       categoryName: item.name,
                       categoryDescription: item.description
                     });
-                  } else {
-                    navigation.navigate('SearchTab');
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={styles.quickIconCircle}>
-                  <Ionicons name={resolveIconName(item.icon, item.name)} size={18} color="#A78BFA" />
-                </View>
-                <Text style={styles.quickServiceTitle} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.quickServiceSubtitle} numberOfLines={1}>
-                  {item.description || 'Repairs & Care'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.quickIconCircle}>
+                    <Ionicons name={resolveIconName(item.icon, item.name)} size={18} color="#A78BFA" />
+                  </View>
+                  <Text style={styles.quickServiceTitle} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.quickServiceSubtitle} numberOfLines={1}>
+                    {item.description || 'Repairs & Care'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Popular Services Section matching Figma */}
@@ -269,47 +261,40 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.popularRow}>
-            {(popularServices.length > 0
-              ? popularServices.slice(0, 3)
-              : categories.filter((c) => c.showInPopularServices).length > 0
-              ? categories.filter((c) => c.showInPopularServices).slice(0, 3)
-              : [
-                  { _id: 'p1', name: 'Electrical Repair', basePrice: 299, icon: 'flash-outline' },
-                  { _id: 'p2', name: 'AC Repair', basePrice: 499, icon: 'snow-outline' },
-                  { _id: 'p3', name: 'Bike Service', basePrice: 599, icon: 'bicycle-outline' }
-                ]
-            ).map((item, index) => {
-              const defaultPrices = [299, 499, 599];
-              const displayPrice = item.basePrice || item.price || defaultPrices[index % defaultPrices.length];
-              return (
-                <TouchableOpacity
-                  key={item._id || item.id}
-                  style={styles.popularServiceCard}
-                  onPress={() => {
-                    if (item._id && !item._id.startsWith('p')) {
+          {popularServices.length === 0 ? (
+            <View style={styles.emptySectionBox}>
+              <Text style={styles.emptySectionText}>No popular services currently featured.</Text>
+            </View>
+          ) : (
+            <View style={styles.popularRow}>
+              {popularServices.slice(0, 3).map((item, index) => {
+                const defaultPrices = [299, 499, 599];
+                const displayPrice = item.basePrice || item.price || defaultPrices[index % defaultPrices.length];
+                return (
+                  <TouchableOpacity
+                    key={item._id || item.id}
+                    style={styles.popularServiceCard}
+                    onPress={() => {
                       navigation.navigate('CategoryServices', {
                         categoryId: item._id,
                         categoryName: item.name,
                         categoryDescription: item.description
                       });
-                    } else {
-                      navigation.navigate('SearchTab');
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.popularIconCircle}>
-                    <Ionicons name={resolveIconName(item.icon, item.name)} size={18} color="#A78BFA" />
-                  </View>
-                  <Text style={styles.popularCardTitle} numberOfLines={1}>{item.name}</Text>
-                  <Text style={styles.popularPriceFrom}>
-                    From <Text style={styles.popularPriceVal}>₹{displayPrice}</Text>
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.popularIconCircle}>
+                      <Ionicons name={resolveIconName(item.icon, item.name)} size={18} color="#A78BFA" />
+                    </View>
+                    <Text style={styles.popularCardTitle} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.popularPriceFrom}>
+                      From <Text style={styles.popularPriceVal}>₹{displayPrice}</Text>
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         {/* Top Rated Professionals matching Figma */}
@@ -921,5 +906,19 @@ const styles = StyleSheet.create({
     color: '#71717A',
     marginTop: 2,
     lineHeight: 14
+  },
+  emptySectionBox: {
+    backgroundColor: '#161420',
+    borderWidth: 1,
+    borderColor: '#252136',
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 4
+  },
+  emptySectionText: {
+    fontSize: 12,
+    color: '#71717A'
   }
 });
