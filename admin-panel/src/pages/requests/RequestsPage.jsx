@@ -287,23 +287,34 @@ const RequestsPage = () => {
         </div>
       </Card>
 
-      {/* Error Banner */}
+      {/* Error Banner with Retry */}
       {error && (
-        <div className="flex items-center gap-3 p-4 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-sm">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <p>{error}</p>
+        <div className="flex items-center justify-between p-4 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-sm">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <p>{error}</p>
+          </div>
+          <button
+            type="button"
+            onClick={fetchBookings}
+            className="px-3 py-1 text-xs font-semibold bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-md transition-colors"
+          >
+            Retry
+          </button>
         </div>
       )}
 
       {/* Requests Data Table */}
-      <DataTable
-        columns={columns}
-        data={bookings}
-        isLoading={isLoading}
-        emptyTitle="No Service Bookings Recorded"
-        emptyDescription="Consumer requests and provider assignments will stream here in real time as bookings are created."
-        pendingApi={false}
-      />
+      {!error && (
+        <DataTable
+          columns={columns}
+          data={bookings}
+          isLoading={isLoading}
+          emptyTitle="No Service Bookings Recorded"
+          emptyDescription="Consumer requests and provider assignments will stream here in real time as bookings are created."
+          pendingApi={false}
+        />
+      )}
 
       {/* Pagination Controls */}
       {pagination.totalPages > 1 && (
