@@ -7,7 +7,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  TouchableOpacity
+  TouchableOpacity,
+  ActivityIndicator
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,15 @@ import { Header, Card, Input, Button, Badge } from '../../components/common';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 import { PRICING_LABELS } from '../../constants';
+
+// Pre-defined convenient time slots
+const TIME_SLOTS = [
+  { startTime: '09:00', endTime: '11:00', label: '09:00 AM - 11:00 AM (Morning)' },
+  { startTime: '11:00', endTime: '13:00', label: '11:00 AM - 01:00 PM (Midday)' },
+  { startTime: '14:00', endTime: '16:00', label: '02:00 PM - 04:00 PM (Afternoon)' },
+  { startTime: '16:00', endTime: '18:00', label: '04:00 PM - 06:00 PM (Evening)' },
+  { startTime: '18:00', endTime: '20:00', label: '06:00 PM - 08:00 PM (Night)' }
+];
 
 export default function RequestServiceScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -31,20 +41,47 @@ export default function RequestServiceScreen({ route, navigation }) {
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const [useCustomAddress, setUseCustomAddress] = useState(false);
 
-  // Form states
+  // Address inputs
   const [street, setStreet] = useState('');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [postalCode, setPostalCode] = useState('');
-  const [preferredDate, setPreferredDate] = useState('');
-  const [startTime, setStartTime] = useState('10:00');
-  const [endTime, setEndTime] = useState('12:00');
+
+  // Scheduled date selection
+  // Generate selectable dates for next 14 days
+  const selectableDates = React.useMemo(() => {
+    const list = [];
+    const now = new Date();
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(now);
+      d.setDate(now.getDate() + i);
+      const iso = d.toISOString().slice(0, 10);
+      const dayName = i === 0 ? 'Today' : i === 1 ? 'Tmrw' : d.toLocaleDateString('en-US', { weekday: 'short' });
+      const dayNum = d.getDate();
+      const monthName = d.toLocaleDateString('en-US', { month: 'short' });
+      list.push({ iso, dayName, dayNum, monthName });
+    }
+    return list;
+  }, []);
+
+  const [selectedDate, setSelectedDate] = useState(selectableDates[1]?.iso || selectableDates[0]?.iso);
+  const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
+  const [startTime, setStartTime] = useState(TIME_SLOTS[0].startTime);
+  const [endTime, setEndTime] = useState(TIME_SLOTS[0].endTime);
+
+  // Details
   const [problemDescription, setProblemDescription] = useState('');
   const [contactPhone, setContactPhone] = useState(user?.phone || '');
 
+  // Payment method: 'online' | 'cash'
+  const [paymentMethod, setPaymentMethod] = useState('online');
+
+  // Status & submission states
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState(null);
+  const [paymentFailedNotice, setPaymentFailedNotice] = useState(null);
 
   // Load saved addresses on screen mount
   React.useEffect(() => {
@@ -101,25 +138,31 @@ export default function RequestServiceScreen({ route, navigation }) {
     if (!city.trim()) errors.city = 'City is required';
 
     if (bookingMode === 'scheduled') {
-      if (!preferredDate.trim()) {
-        errors.preferredDate = 'Date is required (YYYY-MM-DD)';
+      if (!selectedDate) {
+        errors.selectedDate = 'Please select a service date';
       } else {
-        const parsed = new Date(preferredDate.trim());
-        if (isNaN(parsed.getTime())) {
-          errors.preferredDate = 'Please enter a valid date (YYYY-MM-DD)';
-        } else {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const checkDate = new Date(parsed);
-          checkDate.setHours(23, 59, 59, 999);
-          if (checkDate < today) {
-            errors.preferredDate = 'Scheduled date cannot be in the past';
-          }
+        const parsed = new Date(selectedDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const check = new Date(parsed);
+        check.setHours(23, 59, 59, 999);
+        if (check < today) {
+          errors.selectedDate = 'Scheduled date cannot be in the past';
         }
       }
 
-      if (!startTime.trim()) errors.startTime = 'Start time required (e.g. 10:00)';
-      if (!endTime.trim()) errors.endTime = 'End time required (e.g. 12:00)';
+      if (!startTime || !endTime) {
+        errors.timeSlot = 'Please select a valid time slot';
+      } else {
+        // Validate end time is after start time
+        const [sh, sm] = startTime.split(':').map(Number);
+        const [eh, em] = endTime.split(':').map(Number);
+        const startMinutes = sh * 60 + sm;
+        const endMinutes = eh * 60 + em;
+        if (endMinutes <= startMinutes) {
+          errors.timeSlot = 'End time must be later than start time';
+        }
+      }
     }
 
     if (!problemDescription.trim()) {
@@ -132,6 +175,104 @@ export default function RequestServiceScreen({ route, navigation }) {
     return Object.keys(errors).length === 0;
   };
 
+  /**
+   * Loads Razorpay checkout script dynamically on Expo Web
+   */
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined') {
+        resolve(false);
+        return;
+      }
+      if (window.Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  /**
+   * Launches Razorpay web checkout modal
+   */
+  const launchRazorpayWebCheckout = async (orderData, bookingId) => {
+    const scriptLoaded = await loadRazorpayScript();
+    if (!scriptLoaded || typeof window.Razorpay === 'undefined') {
+      Alert.alert(
+        'Checkout Notice',
+        'Could not initialize Razorpay checkout script. You can complete cash on delivery or retry online payment.'
+      );
+      setPaymentProcessing(false);
+      return;
+    }
+
+    const options = {
+      key: orderData.keyId,
+      amount: orderData.amount,
+      currency: orderData.currency || 'INR',
+      name: 'Service Marketplace',
+      description: `${service?.name || 'Service Booking'} (${orderData.bookingReference})`,
+      order_id: orderData.orderId,
+      prefill: {
+        name: orderData.customer?.name || user?.name || 'Customer',
+        contact: orderData.customer?.phone || user?.phone || contactPhone || ''
+      },
+      theme: {
+        color: '#7C3AED'
+      },
+      handler: async function (response) {
+        try {
+          setPaymentProcessing(true);
+          const verifyRes = await bookingApi.verifyPayment(bookingId, {
+            razorpayOrderId: response.razorpay_order_id,
+            razorpayPaymentId: response.razorpay_payment_id,
+            razorpaySignature: response.razorpay_signature
+          });
+          if (verifyRes?.success && verifyRes.data) {
+            setConfirmedBooking(verifyRes.data);
+          } else {
+            Alert.alert('Verification Issue', 'Payment was processed but verification failed. Please contact support.');
+          }
+        } catch (err) {
+          Alert.alert('Payment Verification Failed', err.userMessage || 'Payment signature could not be verified.');
+        } finally {
+          setPaymentProcessing(false);
+        }
+      },
+      modal: {
+        ondismiss: async function () {
+          setPaymentProcessing(false);
+          setPaymentFailedNotice('Payment was cancelled or closed. You can retry payment anytime.');
+          try {
+            await bookingApi.recordPaymentFailure(bookingId, 'Customer closed payment window');
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.on('payment.failed', async function (response) {
+      setPaymentProcessing(false);
+      setPaymentFailedNotice(response.error?.description || 'Payment failed. Please try again.');
+      try {
+        await bookingApi.recordPaymentFailure(bookingId, response.error?.description || 'Payment failed');
+      } catch (e) {
+        // ignore
+      }
+    });
+    rzp.open();
+  };
+
+  /**
+   * Main submission handler: Creates booking, then opens Razorpay if online
+   */
   const handleBookingSubmit = async () => {
     if (!service) {
       Alert.alert('Missing Service', 'Please select a service from the catalog before booking.');
@@ -144,11 +285,14 @@ export default function RequestServiceScreen({ route, navigation }) {
     }
 
     setSubmitting(true);
+    setPaymentFailedNotice(null);
+
     try {
       const payload = {
         serviceId: service._id,
         providerId: provider?._id || undefined,
         bookingMode,
+        paymentMethod,
         address: {
           street: street.trim(),
           city: city.trim(),
@@ -159,30 +303,71 @@ export default function RequestServiceScreen({ route, navigation }) {
       };
 
       if (bookingMode === 'scheduled') {
-        payload.scheduledDate = preferredDate.trim();
+        payload.scheduledDate = selectedDate;
         payload.scheduledTimeSlot = {
           startTime: startTime.trim(),
           endTime: endTime.trim()
         };
       }
 
+      // Step 1: Create server-side booking record
       const res = await bookingApi.createBooking(payload);
-      if (res?.success && res.data) {
-        setConfirmedBooking(res.data);
-      } else {
+      if (!res?.success || !res.data) {
         Alert.alert('Booking Error', 'Could not create booking. Please try again.');
+        setSubmitting(false);
+        return;
+      }
+
+      const createdBooking = res.data;
+
+      // Step 2: Handle Cash payment vs Online Razorpay payment
+      if (paymentMethod === 'cash') {
+        setConfirmedBooking(createdBooking);
+        setSubmitting(false);
+        return;
+      }
+
+      // Step 3: Online Payment via Razorpay
+      setPaymentProcessing(true);
+      try {
+        const orderRes = await bookingApi.createPaymentOrder(createdBooking._id);
+        if (orderRes?.success && orderRes.data) {
+          if (Platform.OS === 'web') {
+            await launchRazorpayWebCheckout(orderRes.data, createdBooking._id);
+          } else {
+            // Android / Native note: If custom native module not linked, inform customer
+            Alert.alert(
+              'Online Checkout',
+              `Razorpay order ${orderRes.data.orderId} created for ₹${(orderRes.data.amount / 100).toFixed(0)}. Please complete via mobile web or pay on arrival.`,
+              [
+                {
+                  text: 'View Booking',
+                  onPress: () => setConfirmedBooking(createdBooking)
+                }
+              ]
+            );
+          }
+        } else {
+          Alert.alert('Payment Order Error', 'Could not create payment order. Booking saved as pending.');
+          setConfirmedBooking(createdBooking);
+        }
+      } catch (err) {
+        Alert.alert('Payment Initiation Notice', err.userMessage || 'Could not initiate online payment. Booking saved as pending.');
+        setConfirmedBooking(createdBooking);
+      } finally {
+        setPaymentProcessing(false);
+        setSubmitting(false);
       }
     } catch (err) {
       Alert.alert(
         'Booking Submission Failed',
         err.userMessage || err.message || 'Unable to confirm booking. Please try again.'
       );
-    } finally {
       setSubmitting(false);
     }
   };
 
-  // If booking is successfully confirmed, show the Real Confirmation View
+  // If booking is successfully confirmed, show the Confirmation View
   if (confirmedBooking) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -225,15 +410,54 @@ export default function RequestServiceScreen({ route, navigation }) {
               />
             </View>
 
+            {confirmedBooking.bookingMode === 'scheduled' && (
+              <View style={styles.confirmRow}>
+                <Text style={styles.confirmKey}>Scheduled Time</Text>
+                <Text style={styles.confirmVal}>
+                  {new Date(confirmedBooking.scheduledDate).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric'
+                  })}{' '}
+                  ({confirmedBooking.scheduledTimeSlot?.startTime} - {confirmedBooking.scheduledTimeSlot?.endTime})
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.confirmRow}>
+              <Text style={styles.confirmKey}>Payment Method</Text>
+              <Text style={[styles.confirmVal, { textTransform: 'uppercase', fontWeight: '700' }]}>
+                {confirmedBooking.paymentMethod || paymentMethod}
+              </Text>
+            </View>
+
+            <View style={styles.confirmRow}>
+              <Text style={styles.confirmKey}>Payment Status</Text>
+              <Badge
+                label={confirmedBooking.paymentStatus?.toUpperCase() || 'PENDING'}
+                variant={confirmedBooking.paymentStatus === 'paid' ? 'success' : 'warning'}
+                size="sm"
+              />
+            </View>
+
+            {confirmedBooking.paymentDetails?.razorpayPaymentId && (
+              <View style={styles.confirmRow}>
+                <Text style={styles.confirmKey}>Payment ID</Text>
+                <Text style={[styles.confirmVal, { fontFamily: 'monospace', fontSize: 11 }]}>
+                  {confirmedBooking.paymentDetails.razorpayPaymentId}
+                </Text>
+              </View>
+            )}
+
             <View style={styles.confirmRow}>
               <Text style={styles.confirmKey}>Status</Text>
               <Badge label={confirmedBooking.status.toUpperCase()} variant="warning" size="sm" />
             </View>
 
             <View style={styles.confirmRow}>
-              <Text style={styles.confirmKey}>Base Amount</Text>
+              <Text style={styles.confirmKey}>Order Total</Text>
               <Text style={styles.confirmValPrice}>
-                ₹{confirmedBooking.pricing?.totalAmount?.toLocaleString('en-IN') || service?.basePrice}
+                ₹{confirmedBooking.pricing?.totalAmount?.toLocaleString('en-IN') || service?.basePrice || service?.price}
               </Text>
             </View>
 
@@ -345,7 +569,7 @@ export default function RequestServiceScreen({ route, navigation }) {
               </View>
               <View style={styles.summaryPriceCol}>
                 <Text style={styles.summaryPrice}>
-                  ₹{service.basePrice?.toLocaleString('en-IN') || service.price || 0}
+                  ₹{(service.basePrice || service.price || 0).toLocaleString('en-IN')}
                 </Text>
                 <Badge
                   label={PRICING_LABELS[service.pricingType] || service.pricingType || 'Fixed'}
@@ -371,6 +595,95 @@ export default function RequestServiceScreen({ route, navigation }) {
                 </Text>
               </View>
               <Badge label="Verified" variant="success" size="sm" />
+            </View>
+          </Card>
+        )}
+
+        {/* Schedule & Interactive Date/Time Slot Selection Card */}
+        {bookingMode === 'scheduled' && (
+          <Card style={styles.formCard}>
+            <View style={styles.cardHeaderWithIcon}>
+              <Ionicons name="calendar" size={18} color={colors.primary} />
+              <Text style={styles.sectionTitleNoMargin}>Select Preferred Date</Text>
+            </View>
+
+            {formErrors.selectedDate && (
+              <Text style={styles.errorBannerText}>{formErrors.selectedDate}</Text>
+            )}
+
+            {/* Interactive 14-day horizontal calendar chip list */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.dateChipsScroll}
+            >
+              {selectableDates.map((item) => {
+                const isSelected = selectedDate === item.iso;
+                return (
+                  <TouchableOpacity
+                    key={item.iso}
+                    style={[styles.dateChip, isSelected && styles.dateChipActive]}
+                    onPress={() => {
+                      setSelectedDate(item.iso);
+                      if (formErrors.selectedDate) {
+                        setFormErrors((prev) => ({ ...prev, selectedDate: null }));
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipDay, isSelected && styles.dateChipDayActive]}>
+                      {item.dayName}
+                    </Text>
+                    <Text style={[styles.dateChipNumber, isSelected && styles.dateChipNumberActive]}>
+                      {item.dayNum}
+                    </Text>
+                    <Text style={[styles.dateChipMonth, isSelected && styles.dateChipMonthActive]}>
+                      {item.monthName}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={[styles.cardHeaderWithIcon, { marginTop: spacing.md }]}>
+              <Ionicons name="time" size={18} color={colors.primary} />
+              <Text style={styles.sectionTitleNoMargin}>Select Time Window</Text>
+            </View>
+
+            {formErrors.timeSlot && (
+              <Text style={styles.errorBannerText}>{formErrors.timeSlot}</Text>
+            )}
+
+            {/* Predefined Time Slots Grid */}
+            <View style={styles.timeSlotsGrid}>
+              {TIME_SLOTS.map((slot, idx) => {
+                const isSelected = selectedSlotIndex === idx;
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[styles.timeSlotCard, isSelected && styles.timeSlotCardActive]}
+                    onPress={() => {
+                      setSelectedSlotIndex(idx);
+                      setStartTime(slot.startTime);
+                      setEndTime(slot.endTime);
+                      if (formErrors.timeSlot) {
+                        setFormErrors((prev) => ({ ...prev, timeSlot: null }));
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.slotRadioCircle}>
+                      {isSelected && <View style={styles.slotRadioInner} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.timeSlotText, isSelected && styles.timeSlotTextActive]}>
+                        {slot.startTime} - {slot.endTime}
+                      </Text>
+                      <Text style={styles.timeSlotSubText}>{slot.label.split('(')[1]?.replace(')', '') || ''}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </Card>
         )}
@@ -474,54 +787,6 @@ export default function RequestServiceScreen({ route, navigation }) {
           />
         </Card>
 
-        {/* Schedule & Timing Card (shown only for scheduled mode) */}
-        {bookingMode === 'scheduled' && (
-          <Card style={styles.formCard}>
-            <Text style={styles.sectionTitle}>Scheduled Date & Time Slot</Text>
-
-            <Input
-              label="Preferred Date (YYYY-MM-DD) *"
-              placeholder="e.g. 2026-10-15"
-              value={preferredDate}
-              onChangeText={(t) => {
-                setPreferredDate(t);
-                if (formErrors.preferredDate) setFormErrors({ ...formErrors, preferredDate: null });
-              }}
-              leftIcon="calendar-outline"
-              error={formErrors.preferredDate}
-            />
-
-            <View style={styles.row}>
-              <View style={styles.halfCol}>
-                <Input
-                  label="Start Time *"
-                  placeholder="10:00"
-                  value={startTime}
-                  onChangeText={(t) => {
-                    setStartTime(t);
-                    if (formErrors.startTime) setFormErrors({ ...formErrors, startTime: null });
-                  }}
-                  leftIcon="time-outline"
-                  error={formErrors.startTime}
-                />
-              </View>
-              <View style={styles.halfCol}>
-                <Input
-                  label="End Time *"
-                  placeholder="12:00"
-                  value={endTime}
-                  onChangeText={(t) => {
-                    setEndTime(t);
-                    if (formErrors.endTime) setFormErrors({ ...formErrors, endTime: null });
-                  }}
-                  leftIcon="time-outline"
-                  error={formErrors.endTime}
-                />
-              </View>
-            </View>
-          </Card>
-        )}
-
         {/* Details & Description Card */}
         <Card style={styles.formCard}>
           <Text style={styles.sectionTitle}>Service Details</Text>
@@ -535,7 +800,7 @@ export default function RequestServiceScreen({ route, navigation }) {
               if (formErrors.problemDescription) setFormErrors({ ...formErrors, problemDescription: null });
             }}
             multiline
-            numberOfLines={4}
+            numberOfLines={3}
             error={formErrors.problemDescription}
           />
 
@@ -550,18 +815,110 @@ export default function RequestServiceScreen({ route, navigation }) {
           />
         </Card>
 
+        {/* Payment Method Selector Card */}
+        <Card style={styles.formCard}>
+          <Text style={styles.sectionTitle}>Choose Payment Method</Text>
+
+          <View style={styles.paymentOptionsContainer}>
+            {/* Razorpay Online */}
+            <TouchableOpacity
+              style={[
+                styles.paymentOptionCard,
+                paymentMethod === 'online' && styles.paymentOptionCardActive
+              ]}
+              onPress={() => setPaymentMethod('online')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.paymentOptionIconWrap}>
+                <Ionicons name="card" size={20} color={paymentMethod === 'online' ? colors.primary : colors.slate500} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.paymentOptionTitle, paymentMethod === 'online' && styles.paymentOptionTitleActive]}>
+                    Pay Online via Razorpay
+                  </Text>
+                  <Badge label="SECURE" variant="success" size="sm" />
+                </View>
+                <Text style={styles.paymentOptionSub}>
+                  UPI, Cards, Netbanking, Wallets
+                </Text>
+              </View>
+              <View style={styles.slotRadioCircle}>
+                {paymentMethod === 'online' && <View style={styles.slotRadioInner} />}
+              </View>
+            </TouchableOpacity>
+
+            {/* Cash on Delivery */}
+            <TouchableOpacity
+              style={[
+                styles.paymentOptionCard,
+                paymentMethod === 'cash' && styles.paymentOptionCardActive
+              ]}
+              onPress={() => setPaymentMethod('cash')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.paymentOptionIconWrap}>
+                <Ionicons name="cash-outline" size={20} color={paymentMethod === 'cash' ? colors.primary : colors.slate500} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.paymentOptionTitle, paymentMethod === 'cash' && styles.paymentOptionTitleActive]}>
+                  Cash / Pay on Service
+                </Text>
+                <Text style={styles.paymentOptionSub}>
+                  Pay verified professional after work completion
+                </Text>
+              </View>
+              <View style={styles.slotRadioCircle}>
+                {paymentMethod === 'cash' && <View style={styles.slotRadioInner} />}
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* Payment Notice */}
+          {paymentFailedNotice && (
+            <View style={styles.paymentNoticeBox}>
+              <Ionicons name="alert-circle-outline" size={16} color="#DC2626" />
+              <Text style={styles.paymentNoticeText}>{paymentFailedNotice}</Text>
+            </View>
+          )}
+        </Card>
+
+        {/* Pricing Summary */}
+        <Card style={styles.summaryCard}>
+          <Text style={styles.sectionTitle}>Price Summary</Text>
+          <View style={styles.confirmRow}>
+            <Text style={styles.confirmKey}>Base Service Price</Text>
+            <Text style={styles.confirmVal}>₹{(service?.basePrice || service?.price || 0).toLocaleString('en-IN')}</Text>
+          </View>
+          <View style={styles.confirmRow}>
+            <Text style={styles.confirmKey}>Platform Convenience Fee</Text>
+            <Text style={styles.confirmVal}>FREE</Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.confirmRow}>
+            <Text style={[styles.confirmKey, { fontWeight: '700', color: colors.slate900 }]}>Total Payable</Text>
+            <Text style={styles.confirmValPrice}>
+              ₹{(service?.basePrice || service?.price || 0).toLocaleString('en-IN')}
+            </Text>
+          </View>
+        </Card>
+
         {/* Submit Booking Button */}
         <Button
           title={
-            submitting
-              ? 'Creating Booking...'
+            submitting || paymentProcessing
+              ? paymentProcessing
+                ? 'Opening Razorpay Checkout...'
+                : 'Confirming Booking...'
+              : paymentMethod === 'online'
+              ? `Pay ₹${(service?.basePrice || service?.price || 0).toLocaleString('en-IN')} & Book Service`
               : bookingMode === 'instant'
-              ? 'Request Instant Booking Now'
+              ? 'Request Instant Booking (Pay on Service)'
               : 'Confirm Scheduled Booking'
           }
           onPress={handleBookingSubmit}
-          loading={submitting}
-          disabled={submitting}
+          loading={submitting || paymentProcessing}
+          disabled={submitting || paymentProcessing}
           style={styles.submitBtn}
         />
       </ScrollView>
@@ -620,6 +977,169 @@ const styles = StyleSheet.create({
     ...typography.titleSmall,
     color: colors.slate900,
     marginBottom: spacing.md
+  },
+  sectionTitleNoMargin: {
+    ...typography.titleSmall,
+    color: colors.slate900
+  },
+  cardHeaderWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.sm
+  },
+  dateChipsScroll: {
+    gap: spacing.sm,
+    paddingVertical: 4
+  },
+  dateChip: {
+    width: 64,
+    height: 76,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.slate50,
+    borderWidth: 1.5,
+    borderColor: colors.slate200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4
+  },
+  dateChipActive: {
+    backgroundColor: colors.primarySubtle,
+    borderColor: colors.primary
+  },
+  dateChipDay: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.slate500,
+    textTransform: 'uppercase'
+  },
+  dateChipDayActive: {
+    color: colors.primaryDark
+  },
+  dateChipNumber: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.slate800,
+    marginVertical: 1
+  },
+  dateChipNumberActive: {
+    color: colors.primaryDark
+  },
+  dateChipMonth: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.slate400
+  },
+  dateChipMonthActive: {
+    color: colors.primary
+  },
+  timeSlotsGrid: {
+    gap: spacing.sm,
+    marginTop: spacing.xs
+  },
+  timeSlotCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1.5,
+    borderColor: colors.slate200,
+    backgroundColor: colors.slate50
+  },
+  timeSlotCardActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySubtle
+  },
+  timeSlotText: {
+    ...typography.bodyMedium,
+    fontWeight: '600',
+    color: colors.slate800
+  },
+  timeSlotTextActive: {
+    color: colors.primaryDark,
+    fontWeight: '700'
+  },
+  timeSlotSubText: {
+    ...typography.caption,
+    color: colors.slate500
+  },
+  slotRadioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  slotRadioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary
+  },
+  errorBannerText: {
+    ...typography.caption,
+    color: colors.error,
+    marginBottom: spacing.xs
+  },
+  paymentOptionsContainer: {
+    gap: spacing.sm
+  },
+  paymentOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1.5,
+    borderColor: colors.slate200,
+    backgroundColor: colors.slate50
+  },
+  paymentOptionCardActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySubtle
+  },
+  paymentOptionIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.slate200
+  },
+  paymentOptionTitle: {
+    ...typography.bodyMedium,
+    fontWeight: '600',
+    color: colors.slate800
+  },
+  paymentOptionTitleActive: {
+    color: colors.primaryDark,
+    fontWeight: '700'
+  },
+  paymentOptionSub: {
+    ...typography.caption,
+    color: colors.slate500,
+    marginTop: 2
+  },
+  paymentNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    padding: spacing.sm,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.sm
+  },
+  paymentNoticeText: {
+    ...typography.caption,
+    color: '#B91C1C',
+    flex: 1
   },
   summaryRow: {
     flexDirection: 'row',

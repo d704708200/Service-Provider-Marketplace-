@@ -1227,6 +1227,41 @@ const validateUpdateProviderServiceArea = (req, res, next) => {
   next();
 };
 
+const validateVerifyPayment = (req, res, next) => {
+  const orderId = req.body.razorpayOrderId || req.body.razorpay_order_id;
+  const paymentId = req.body.razorpayPaymentId || req.body.razorpay_payment_id;
+  const signature = req.body.razorpaySignature || req.body.razorpay_signature;
+  const errors = [];
+
+  if (!orderId || typeof orderId !== 'string' || !orderId.trim()) {
+    errors.push('razorpayOrderId is required');
+  }
+  if (!paymentId || typeof paymentId !== 'string' || !paymentId.trim()) {
+    errors.push('razorpayPaymentId is required');
+  }
+  if (!signature || typeof signature !== 'string' || !signature.trim()) {
+    errors.push('razorpaySignature is required');
+  }
+
+  // Normalize onto req.body for downstream handlers
+  req.body.razorpayOrderId = orderId;
+  req.body.razorpayPaymentId = paymentId;
+  req.body.razorpaySignature = signature;
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   validateRegisterCustomer,
   validateRegisterProvider,
@@ -1253,7 +1288,8 @@ module.exports = {
   validateProviderAvailability,
   validateProviderServiceArea,
   validateUpdateProviderServiceArea,
-  validateUpdateBannerConfig
+  validateUpdateBannerConfig,
+  validateVerifyPayment
 };
 
 

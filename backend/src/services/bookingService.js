@@ -7,6 +7,7 @@ const Category = require('../models/Category');
 const Availability = require('../models/Availability');
 const ServiceArea = require('../models/ServiceArea');
 const User = require('../models/User');
+const paymentService = require('./paymentService');
 
 /**
  * Generate unique, human-readable booking reference (e.g. BK-20261013-A1B2)
@@ -864,6 +865,167 @@ const cancelBookingByAdmin = async (bookingId, cancellationReason) => {
     });
 };
 
+/**
+ * Creates or retrieves existing Razorpay order for an eligible booking
+ */
+const createPaymentOrder = async (userId, bookingId) => {
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) {
+    const err = new Error('Customer profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const booking = await Booking.findOne({ _id: bookingId, customer: customer._id })
+    .populate('service', 'name price');
+
+  if (!booking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (booking.status === 'cancelled' || booking.status === 'rejected') {
+    const err = new Error(`Cannot initiate payment for '${booking.status}' booking`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (booking.paymentStatus === 'paid') {
+    const err = new Error('This booking has already been paid for');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const totalAmount = booking.pricing?.totalAmount || booking.service?.price;
+  if (!totalAmount || totalAmount <= 0) {
+    const err = new Error('Invalid booking amount for online payment');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Idempotency: if already has order and still pending, return current order info
+  const existingOrderId = booking.paymentDetails?.razorpayOrderId;
+  const keyId = process.env.RAZORPAY_KEY_ID;
+
+  let order;
+  try {
+    order = await paymentService.createOrder({
+      amountInRupees: totalAmount,
+      receipt: booking.bookingReference,
+      notes: {
+        bookingId: booking._id.toString(),
+        bookingReference: booking.bookingReference,
+        customerId: customer._id.toString()
+      }
+    });
+  } catch (err) {
+    err.statusCode = err.statusCode || 500;
+    throw err;
+  }
+
+  // Persist Razorpay order details on booking
+  booking.paymentMethod = 'online';
+  if (!booking.paymentDetails) {
+    booking.paymentDetails = {};
+  }
+  booking.paymentDetails.razorpayOrderId = order.id;
+  await booking.save();
+
+  return {
+    orderId: order.id,
+    amount: order.amount,
+    currency: order.currency || 'INR',
+    keyId,
+    bookingReference: booking.bookingReference,
+    customer: {
+      name: (await User.findById(userId))?.name || 'Customer',
+      phone: (await User.findById(userId))?.phone || ''
+    }
+  };
+};
+
+/**
+ * Verifies Razorpay payment signature and confirms payment
+ */
+const verifyPayment = async (userId, bookingId, paymentPayload) => {
+  const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = paymentPayload;
+
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) {
+    const err = new Error('Customer profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const booking = await Booking.findOne({ _id: bookingId, customer: customer._id });
+  if (!booking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (booking.paymentStatus === 'paid') {
+    return booking;
+  }
+
+  // Verify HMAC SHA-256 signature
+  const isValid = paymentService.verifyPaymentSignature({
+    orderId: razorpayOrderId,
+    paymentId: razorpayPaymentId,
+    signature: razorpaySignature
+  });
+
+  if (!isValid) {
+    if (!booking.paymentDetails) booking.paymentDetails = {};
+    booking.paymentDetails.failureReason = 'Invalid Razorpay payment signature';
+    booking.paymentStatus = 'failed';
+    await booking.save();
+
+    const err = new Error('Payment verification failed: Invalid payment signature');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Mark paid
+  booking.paymentStatus = 'paid';
+  booking.paymentMethod = 'online';
+  if (!booking.paymentDetails) booking.paymentDetails = {};
+  booking.paymentDetails.razorpayOrderId = razorpayOrderId;
+  booking.paymentDetails.razorpayPaymentId = razorpayPaymentId;
+  booking.paymentDetails.razorpaySignature = razorpaySignature;
+  booking.paymentDetails.paidAt = new Date();
+  booking.paymentDetails.failureReason = null;
+  await booking.save();
+
+  return await Booking.findById(booking._id)
+    .populate('service', 'name price priceType estimatedDurationMinutes')
+    .populate({
+      path: 'provider',
+      select: 'businessName rating experienceYears',
+      populate: { path: 'user', select: 'name phone' }
+    });
+};
+
+/**
+ * Customer reports payment cancelled or failed
+ */
+const recordPaymentFailure = async (userId, bookingId, reason) => {
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) return null;
+
+  const booking = await Booking.findOne({ _id: bookingId, customer: customer._id });
+  if (!booking) return null;
+
+  if (booking.paymentStatus !== 'paid') {
+    if (!booking.paymentDetails) booking.paymentDetails = {};
+    booking.paymentDetails.failureReason = reason || 'Payment cancelled by customer';
+    booking.paymentStatus = 'failed';
+    await booking.save();
+  }
+  return booking;
+};
+
 module.exports = {
   createBooking,
   getCustomerBookings,
@@ -878,5 +1040,8 @@ module.exports = {
   completeServiceByProvider,
   getAdminBookings,
   getAdminBookingById,
-  cancelBookingByAdmin
+  cancelBookingByAdmin,
+  createPaymentOrder,
+  verifyPayment,
+  recordPaymentFailure
 };

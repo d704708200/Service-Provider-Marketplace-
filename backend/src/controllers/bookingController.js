@@ -195,6 +195,49 @@ const cancelAdminBooking = async (req, res, next) => {
   }
 };
 
+const createPaymentOrder = async (req, res, next) => {
+  try {
+    const orderData = await bookingService.createPaymentOrder(req.user._id, req.params.id);
+    res.status(200).json({
+      success: true,
+      message: 'Razorpay order created successfully',
+      data: orderData
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const verifyPayment = async (req, res, next) => {
+  try {
+    const updatedBooking = await bookingService.verifyPayment(req.user._id, req.params.id, req.body);
+    res.status(200).json({
+      success: true,
+      message: 'Payment verified and booking confirmed successfully',
+      data: updatedBooking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const recordPaymentFailure = async (req, res, next) => {
+  try {
+    const booking = await bookingService.recordPaymentFailure(
+      req.user._id,
+      req.params.id,
+      req.body.reason
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Payment failure recorded',
+      data: booking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createBooking,
   getCustomerBookings,
@@ -209,5 +252,8 @@ module.exports = {
   completeProviderService,
   getAdminBookings,
   getAdminBookingById,
-  cancelAdminBooking
+  cancelAdminBooking,
+  createPaymentOrder,
+  verifyPayment,
+  recordPaymentFailure
 };

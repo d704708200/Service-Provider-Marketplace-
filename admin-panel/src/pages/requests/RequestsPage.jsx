@@ -180,6 +180,28 @@ const RequestsPage = () => {
       )
     },
     {
+      header: 'Payment',
+      key: 'payment',
+      render: (item) => (
+        <div>
+          <span className="font-semibold text-xs text-slate-800 uppercase block">
+            {item.paymentMethod || 'CASH'}
+          </span>
+          <span
+            className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mt-0.5 ${
+              item.paymentStatus === 'paid'
+                ? 'bg-emerald-50 text-emerald-700'
+                : item.paymentStatus === 'failed'
+                ? 'bg-rose-50 text-rose-700'
+                : 'bg-amber-50 text-amber-700'
+            }`}
+          >
+            {item.paymentStatus?.toUpperCase() || 'PENDING'}
+          </span>
+        </div>
+      )
+    },
+    {
       header: 'Order Total',
       key: 'amount',
       render: (item) => (
@@ -393,8 +415,23 @@ const RequestsPage = () => {
                   Base Price: ₹{selectedBooking.pricing?.basePrice} | Total: ₹{selectedBooking.pricing?.totalAmount}
                 </p>
                 <p className="text-xs text-slate-500">
-                  Payment: {selectedBooking.paymentMethod?.toUpperCase()} ({selectedBooking.paymentStatus})
+                  Payment: <span className="font-semibold text-slate-700">{selectedBooking.paymentMethod?.toUpperCase()}</span> ({selectedBooking.paymentStatus})
                 </p>
+                {selectedBooking.paymentDetails?.razorpayOrderId && (
+                  <p className="text-[11px] font-mono text-slate-500">
+                    Order Ref: {selectedBooking.paymentDetails.razorpayOrderId}
+                  </p>
+                )}
+                {selectedBooking.paymentDetails?.razorpayPaymentId && (
+                  <p className="text-[11px] font-mono text-emerald-600">
+                    Payment ID: {selectedBooking.paymentDetails.razorpayPaymentId}
+                  </p>
+                )}
+                {selectedBooking.paymentDetails?.paidAt && (
+                  <p className="text-[11px] text-slate-500">
+                    Paid At: {new Date(selectedBooking.paymentDetails.paidAt).toLocaleString()}
+                  </p>
+                )}
               </div>
 
               <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-2">

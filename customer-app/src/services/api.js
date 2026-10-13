@@ -174,6 +174,18 @@ export const bookingApi = {
   cancelBooking: async (id, cancellationReason) => {
     const response = await api.patch(`/bookings/customer/${id}/cancel`, { cancellationReason });
     return response.data;
+  },
+  createPaymentOrder: async (id) => {
+    const response = await api.post(`/bookings/customer/${id}/payment/order`);
+    return response.data;
+  },
+  verifyPayment: async (id, paymentData) => {
+    const response = await api.post(`/bookings/customer/${id}/payment/verify`, paymentData);
+    return response.data;
+  },
+  recordPaymentFailure: async (id, reason) => {
+    const response = await api.post(`/bookings/customer/${id}/payment/failure`, { reason });
+    return response.data;
   }
 };
 

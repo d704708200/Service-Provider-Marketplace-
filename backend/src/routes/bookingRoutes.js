@@ -6,7 +6,8 @@ const {
   validateObjectId,
   validateCreateBooking,
   validateCancelBooking,
-  validateRejectBooking
+  validateRejectBooking,
+  validateVerifyPayment
 } = require('../middleware/validation');
 
 // ==========================================
@@ -47,6 +48,34 @@ router.patch(
   validateObjectId('id'),
   validateCancelBooking,
   bookingController.cancelCustomerBooking
+);
+
+// Initiate Razorpay payment order for customer booking
+router.post(
+  '/customer/:id/payment/order',
+  authenticate,
+  requireRole('customer'),
+  validateObjectId('id'),
+  bookingController.createPaymentOrder
+);
+
+// Verify Razorpay payment signature for customer booking
+router.post(
+  '/customer/:id/payment/verify',
+  authenticate,
+  requireRole('customer'),
+  validateObjectId('id'),
+  validateVerifyPayment,
+  bookingController.verifyPayment
+);
+
+// Record payment failure or cancellation for customer booking
+router.post(
+  '/customer/:id/payment/failure',
+  authenticate,
+  requireRole('customer'),
+  validateObjectId('id'),
+  bookingController.recordPaymentFailure
 );
 
 // ==========================================

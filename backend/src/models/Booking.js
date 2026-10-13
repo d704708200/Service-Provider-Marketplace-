@@ -70,8 +70,15 @@ const bookingSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ['cash', 'card', 'upi', 'wallet'],
+      enum: ['cash', 'card', 'upi', 'wallet', 'online'],
       default: 'cash'
+    },
+    paymentDetails: {
+      razorpayOrderId: { type: String, trim: true, default: null },
+      razorpayPaymentId: { type: String, trim: true, default: null },
+      razorpaySignature: { type: String, trim: true, default: null },
+      paidAt: { type: Date, default: null },
+      failureReason: { type: String, trim: true, default: null }
     },
     statusTimestamps: {
       acceptedAt: { type: Date, default: null },
