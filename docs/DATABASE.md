@@ -58,11 +58,35 @@ The database schema supports multi-role users (Customer, Provider, Admin), hiera
 
 ---
 
+---
+
+## Data Integrity & Referential Rules
+
+1. **Category Deletion**:
+   - Protected against deletion if referenced by any `Service` records (`servicesCount > 0`).
+   - Returns HTTP 409 Conflict with guidance to deactivate the category instead.
+2. **Service Deletion**:
+   - Protected against deletion if referenced by any `Booking` records (`bookingsCount > 0`).
+   - Returns HTTP 409 Conflict with guidance to deactivate the service instead, preserving historical booking and audit records.
+3. **Service Active State**:
+   - An active service (`isActive: true`) cannot be created under or moved to an inactive category.
+4. **Duplicate Service Prevention**:
+   - Services must have unique names within the same category (case-insensitive).
+5. **Pricing Constraints**:
+   - Fixed and hourly services require positive prices (`price > 0`).
+   - Quote-based services allow `price >= 0` (where `0` denotes quote on consultation).
+
+---
+
 ## Running Verification Tests
 
 From `backend` directory:
 ```bash
-npm run test:models   # Validates all 11 Mongoose schemas and relationships
-npm run test:health   # Runs health check and 404 middleware against an active Express instance
-npm test              # Runs both test suites
+npm run test:models       # Validates all 11 Mongoose schemas and relationships
+npm run test:health       # Runs health check and 404 middleware against an active Express instance
+npm run test:auth         # Runs auth unit and HTTP validation tests
+npm run test:categories   # Runs category live integration tests (against MongoDB Atlas)
+npm run test:services     # Runs service unit validation & Atlas integration tests
+npm test                  # Runs core backend test suites
 ```
+

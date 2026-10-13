@@ -96,6 +96,10 @@ export const categoryApi = {
     const response = await api.get('/categories/admin', { params });
     return response.data;
   },
+  getPublicCategories: async (params = {}) => {
+    const response = await api.get('/categories', { params });
+    return response.data;
+  },
   getCategoryById: async (id) => {
     const response = await api.get(`/categories/${id}`);
     return response.data;
@@ -114,6 +118,38 @@ export const categoryApi = {
   },
   deleteCategory: async (id) => {
     const response = await api.delete(`/categories/${id}`);
+    return response.data;
+  }
+};
+
+// Services Catalog API Methods
+export const serviceApi = {
+  getAdminServices: async (params = {}) => {
+    const response = await api.get('/services/admin', { params });
+    return response.data;
+  },
+  getPublicServices: async (params = {}) => {
+    const response = await api.get('/services', { params });
+    return response.data;
+  },
+  getServiceById: async (id) => {
+    const response = await api.get(`/services/${id}`);
+    return response.data;
+  },
+  createService: async (serviceData) => {
+    const response = await api.post('/services', serviceData);
+    return response.data;
+  },
+  updateService: async (id, serviceData) => {
+    const response = await api.put(`/services/${id}`, serviceData);
+    return response.data;
+  },
+  updateServiceStatus: async (id, isActive) => {
+    const response = await api.patch(`/services/${id}/status`, { isActive });
+    return response.data;
+  },
+  deleteService: async (id) => {
+    const response = await api.delete(`/services/${id}`);
     return response.data;
   }
 };

@@ -7,6 +7,7 @@ const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 // Route Imports
 const authRoutes = require('./routes/authRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
+const serviceRoutes = require('./routes/serviceRoutes');
 
 const app = express();
 
@@ -52,6 +53,7 @@ app.get('/', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/services', serviceRoutes);
 
 // 404 Handler
 app.use(notFoundHandler);

@@ -11,6 +11,7 @@
     "test:auth": "node test_auth_unit.js && node test_auth_http.js",
     "test:integration": "node test_auth_integration.js",
     "test:categories": "node test_category_integration.js",
+    "test:services": "node test_service_unit.js && node test_service_integration.js",
     "seed:admin": "node src/seeds/provisionAdmin.js"
   },
   "dependencies": {
