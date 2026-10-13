@@ -58,10 +58,14 @@ npm test
 ```
 
 ### Live Database Integration Tests
-When `MONGODB_URI` and `JWT_SECRET` are configured in `backend/.env`, run the end-to-end database authentication tests:
+When `MONGODB_URI` and `JWT_SECRET` are configured in `backend/.env`, run the end-to-end database tests:
 ```bash
 cd backend
-npm run test:integration
+npm test                  # Core unit tests (models, health check, auth)
+npm run test:integration  # User authentication integration tests
+npm run test:categories   # Category taxonomy integration tests
+npm run test:services     # Services catalog integration tests
+npm run test:providers    # Provider management & verification tests
 ```
 This tests:
 - Customer registration and login

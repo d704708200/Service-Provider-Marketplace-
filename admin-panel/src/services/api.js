@@ -154,4 +154,49 @@ export const serviceApi = {
   }
 };
 
+// Provider & Verification API Methods
+export const providerApi = {
+  getAdminProviders: async (params = {}) => {
+    const response = await api.get('/providers/admin', { params });
+    return response.data;
+  },
+  getPendingVerifications: async (params = {}) => {
+    const response = await api.get('/providers/admin/pending', { params });
+    return response.data;
+  },
+  getAdminProviderById: async (id) => {
+    const response = await api.get(`/providers/admin/${id}`);
+    return response.data;
+  },
+  reviewDocument: async (providerId, documentId, reviewData) => {
+    const response = await api.patch(
+      `/providers/admin/${providerId}/documents/${documentId}/status`,
+      reviewData
+    );
+    return response.data;
+  },
+  updateVerification: async (providerId, verificationData) => {
+    const response = await api.patch(
+      `/providers/admin/${providerId}/verification`,
+      verificationData
+    );
+    return response.data;
+  },
+  updateAccountStatus: async (providerId, isActive) => {
+    const response = await api.patch(
+      `/providers/admin/${providerId}/account-status`,
+      { isActive }
+    );
+    return response.data;
+  },
+  getPublicProviders: async (params = {}) => {
+    const response = await api.get('/providers', { params });
+    return response.data;
+  },
+  getPublicProviderById: async (id) => {
+    const response = await api.get(`/providers/${id}`);
+    return response.data;
+  }
+};
+
 export default api;

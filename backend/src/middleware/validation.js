@@ -360,6 +360,208 @@ const validateUpdateServiceStatus = (req, res, next) => {
   next();
 };
 
+const validateUpdateProviderProfile = (req, res, next) => {
+  const {
+    businessName,
+    bio,
+    experienceYears,
+    avatar,
+    categories,
+    phone,
+    isAvailable,
+    // Disallow modifying protected fields
+    role,
+    verificationStatus,
+    rating,
+    reviewCount,
+    completedBookingsCount,
+    rejectionReason,
+    verifiedAt,
+    isActive
+  } = req.body;
+
+  const errors = [];
+
+  // Check for forbidden fields
+  if (role !== undefined || verificationStatus !== undefined || rating !== undefined ||
+      reviewCount !== undefined || completedBookingsCount !== undefined ||
+      rejectionReason !== undefined || verifiedAt !== undefined || isActive !== undefined) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        message: 'Security violation: Attempted to modify protected profile fields (role, verification status, rating, or account status)',
+        statusCode: 403,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  if (businessName !== undefined) {
+    if (typeof businessName !== 'string') {
+      errors.push('Business name must be a string');
+    } else if (businessName.trim().length > 100) {
+      errors.push('Business name cannot exceed 100 characters');
+    }
+  }
+
+  if (bio !== undefined) {
+    if (typeof bio !== 'string') {
+      errors.push('Bio must be a string');
+    } else if (bio.trim().length > 500) {
+      errors.push('Bio cannot exceed 500 characters');
+    }
+  }
+
+  if (experienceYears !== undefined) {
+    if (typeof experienceYears !== 'number' || experienceYears < 0) {
+      errors.push('Experience years must be a non-negative number');
+    }
+  }
+
+  if (avatar !== undefined && avatar !== null && typeof avatar !== 'string') {
+    errors.push('Avatar must be a string URL or null');
+  }
+
+  if (phone !== undefined) {
+    if (typeof phone !== 'string' || phone.trim().length < 7) {
+      errors.push('Phone number must be at least 7 characters long');
+    }
+  }
+
+  if (categories !== undefined) {
+    if (!Array.isArray(categories)) {
+      errors.push('Categories must be an array of category ObjectIds');
+    } else {
+      for (const catId of categories) {
+        if (!mongoose.Types.ObjectId.isValid(catId)) {
+          errors.push(`Invalid category ObjectId format: '${catId}'`);
+          break;
+        }
+      }
+    }
+  }
+
+  if (isAvailable !== undefined && typeof isAvailable !== 'boolean') {
+    errors.push('isAvailable must be a boolean');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateSubmitDocument = (req, res, next) => {
+  const { type, documentUrl } = req.body;
+  const errors = [];
+
+  const validTypes = ['identity', 'address', 'certificate', 'license', 'other'];
+  if (!type || typeof type !== 'string' || !validTypes.includes(type.trim().toLowerCase())) {
+    errors.push(`Document type is required and must be one of: ${validTypes.join(', ')}`);
+  }
+
+  if (!documentUrl || typeof documentUrl !== 'string' || !documentUrl.trim()) {
+    errors.push('Document URL is required');
+  } else {
+    const trimmedUrl = documentUrl.trim();
+    if (!/^https?:\/\/.+/i.test(trimmedUrl)) {
+      errors.push('Document URL must be a valid HTTP or HTTPS URL');
+    } else if (trimmedUrl.length > 1000) {
+      errors.push('Document URL exceeds maximum length (1000 characters)');
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateDocumentReview = (req, res, next) => {
+  const { status, reviewNote } = req.body;
+  const errors = [];
+
+  const validStatuses = ['approved', 'rejected'];
+  if (!status || !validStatuses.includes(status)) {
+    errors.push(`Review status must be one of: ${validStatuses.join(', ')}`);
+  }
+
+  if (status === 'rejected' && (!reviewNote || typeof reviewNote !== 'string' || !reviewNote.trim())) {
+    errors.push('A review note is required when rejecting a document');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateProviderVerification = (req, res, next) => {
+  const { status, rejectionReason } = req.body;
+  const errors = [];
+
+  const validStatuses = ['verified', 'rejected', 'suspended'];
+  if (!status || !validStatuses.includes(status)) {
+    errors.push(`Verification status must be one of: ${validStatuses.join(', ')}`);
+  }
+
+  if ((status === 'rejected' || status === 'suspended') && (!rejectionReason || typeof rejectionReason !== 'string' || !rejectionReason.trim())) {
+    errors.push(`A reason is required when status is '${status}'`);
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateAccountStatus = (req, res, next) => {
+  const { isActive } = req.body;
+  if (isActive === undefined || typeof isActive !== 'boolean') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: "Validation failed: 'isActive' boolean is required",
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+  next();
+};
+
 module.exports = {
   validateRegisterCustomer,
   validateRegisterProvider,
@@ -370,5 +572,10 @@ module.exports = {
   validateUpdateCategoryStatus,
   validateCreateService,
   validateUpdateService,
-  validateUpdateServiceStatus
+  validateUpdateServiceStatus,
+  validateUpdateProviderProfile,
+  validateSubmitDocument,
+  validateDocumentReview,
+  validateProviderVerification,
+  validateAccountStatus
 };

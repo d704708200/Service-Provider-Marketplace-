@@ -479,3 +479,96 @@ Role-based access control enforces `admin`, `provider`, or `customer` roles.
 }
 ```
 
+---
+
+## 4. Provider & Verification Endpoints (`/api/providers`)
+
+### Provider Self-Service Routes (`role: provider`)
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/providers/me` | Provider | Retrieve authenticated provider's complete profile, documents & status |
+| `PUT` | `/api/providers/me` | Provider | Update permitted profile fields (businessName, bio, experienceYears, categories, phone, avatar) |
+| `GET` | `/api/providers/me/services` | Provider | List marketplace services owned by this provider |
+| `GET` | `/api/providers/me/availability` | Provider | Retrieve provider weekly schedule and slot configuration |
+| `GET` | `/api/providers/me/service-areas`| Provider | List assigned geographic service areas |
+| `POST`| `/api/providers/me/documents` | Provider | Submit or resubmit a verification document (`identity`, `address`, `certificate`, `license`, `other`) |
+| `DELETE`| `/api/providers/me/documents/:id` | Provider | Remove unapproved document prior to verification |
+
+#### `GET /api/providers/me`
+- **Access**: Authenticated Provider
+- **Success Response** (`200 OK`):
+```json
+{
+  "success": true,
+  "message": "Provider profile retrieved successfully",
+  "data": {
+    "_id": "67099b2f865f1a3089d7fc22",
+    "businessName": "Apex Plumbing & Heating",
+    "bio": "Certified residential plumbing contractor",
+    "experienceYears": 6,
+    "verificationStatus": "pending",
+    "rejectionReason": null,
+    "isAvailable": true,
+    "categories": [ ... ],
+    "documents": [
+      {
+        "_id": "67099b50865f1a3089d7fc23",
+        "type": "identity",
+        "documentUrl": "https://storage.example.com/id.pdf",
+        "verificationStatus": "pending",
+        "reviewNote": "",
+        "uploadedAt": "2026-10-13T10:15:00.000Z"
+      }
+    ],
+    "user": {
+      "name": "Alex Smith",
+      "email": "alex@apexplumbing.com",
+      "phone": "+1555123456",
+      "role": "provider",
+      "isActive": true,
+      "isVerified": false
+    }
+  }
+}
+```
+
+---
+
+### Admin Verification Queue & Management (`role: admin`)
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/providers/admin` | Admin | Directory of all providers with search, pagination, status and category filtering |
+| `GET` | `/api/providers/admin/pending` | Admin | Dedicated queue of candidate providers awaiting document verification |
+| `GET` | `/api/providers/admin/:id` | Admin | Full dossier view of candidate provider including all documents and user details |
+| `PATCH`| `/api/providers/admin/:id/documents/:docId/status` | Admin | Approve or reject individual document (`status`: `approved` \| `rejected`; note required on rejection) |
+| `PATCH`| `/api/providers/admin/:id/verification` | Admin | Approve, reject, or suspend provider verification (`status`: `verified` \| `rejected` \| `suspended`; reason required on rejection/suspension) |
+| `PATCH`| `/api/providers/admin/:id/account-status` | Admin | Activate or suspend provider account (`isActive`: boolean) |
+
+#### `PATCH /api/providers/admin/:id/verification`
+- **Access**: Admin only
+- **Request Body**:
+```json
+{
+  "status": "verified"
+}
+```
+*When rejecting or suspending, `rejectionReason` is required:*
+```json
+{
+  "status": "rejected",
+  "rejectionReason": "Government identity document expired. Please upload a valid document."
+}
+```
+
+---
+
+### Public Provider Discovery (Unauthenticated / Customer)
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/providers` | Public | List verified & active marketplace providers (documents and sensitive fields excluded) |
+| `GET` | `/api/providers/:id` | Public | View verified provider public profile (returns 404 if pending, rejected, suspended, or inactive) |
+
+

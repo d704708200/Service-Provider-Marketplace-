@@ -74,7 +74,13 @@ The database schema supports multi-role users (Customer, Provider, Admin), hiera
    - Services must have unique names within the same category (case-insensitive).
 5. **Pricing Constraints**:
    - Fixed and hourly services require positive prices (`price > 0`).
-   - Quote-based services allow `price >= 0` (where `0` denotes quote on consultation).
+6. **Provider Verification Lifecycle**:
+   - Provider starts in `pending` verification status with unverified user account.
+   - Documents are tracked via `documents` array (`type`, `documentUrl`, `verificationStatus`: `pending` | `approved` | `rejected`, `reviewNote`, `reviewedAt`).
+   - Resubmitting a rejected document automatically resets document status to `pending`, and resets provider status to `pending` if previously rejected.
+   - Provider only becomes discoverable on public endpoints when `verificationStatus === 'verified'` AND user `isActive === true`.
+   - Providers may only associate active categories.
+   - Suspended or rejected providers are excluded from public search and cannot receive bookings.
 
 ---
 
@@ -87,6 +93,8 @@ npm run test:health       # Runs health check and 404 middleware against an acti
 npm run test:auth         # Runs auth unit and HTTP validation tests
 npm run test:categories   # Runs category live integration tests (against MongoDB Atlas)
 npm run test:services     # Runs service unit validation & Atlas integration tests
+npm run test:providers    # Runs provider unit validation & Atlas integration tests
 npm test                  # Runs core backend test suites
 ```
+
 

@@ -1,4 +1,4 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 const documentSchema = new mongoose.Schema(
   {
@@ -19,6 +19,15 @@ const documentSchema = new mongoose.Schema(
     uploadedAt: {
       type: Date,
       default: Date.now
+    },
+    reviewNote: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    reviewedAt: {
+      type: Date,
+      default: null
     }
   },
   { _id: true }
@@ -64,6 +73,15 @@ const providerSchema = new mongoose.Schema(
       type: String,
       enum: ['pending', 'verified', 'rejected', 'suspended'],
       default: 'pending'
+    },
+    rejectionReason: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    verifiedAt: {
+      type: Date,
+      default: null
     },
     isAvailable: {
       type: Boolean,
