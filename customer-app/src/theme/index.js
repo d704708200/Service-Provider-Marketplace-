@@ -16,47 +16,47 @@ export const typography = {
   titleLarge: {
     fontSize: 24,
     fontWeight: '700',
-    color: colors.slate900,
+    color: '#FFFFFF',
     letterSpacing: -0.5
   },
   titleMedium: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.slate900,
+    color: '#FFFFFF',
     letterSpacing: -0.3
   },
   titleSmall: {
     fontSize: 17,
     fontWeight: '600',
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   bodyLarge: {
     fontSize: 15,
     fontWeight: '400',
-    color: colors.slate700,
+    color: '#E2E8F0',
     lineHeight: 22
   },
   bodyMedium: {
     fontSize: 14,
     fontWeight: '400',
-    color: colors.slate600,
+    color: '#CBD5E1',
     lineHeight: 20
   },
   bodySmall: {
     fontSize: 12,
     fontWeight: '400',
-    color: colors.slate500,
+    color: '#9CA3AF',
     lineHeight: 16
   },
   caption: {
     fontSize: 11,
     fontWeight: '500',
-    color: colors.slate400
+    color: '#71717A'
   },
   button: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.white
+    color: '#FFFFFF'
   }
 };
 

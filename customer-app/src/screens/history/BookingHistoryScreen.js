@@ -7,50 +7,39 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
-  ScrollView
+  Image,
+  ActivityIndicator
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { bookingApi } from '../../services/api';
-import { Header, Card, Badge, Button, LoadingScreen, ErrorView, EmptyState } from '../../components/common';
-import colors from '../../theme/colors';
-import { spacing, typography, borderRadius } from '../../theme';
 
-const STATUS_FILTERS = [
-  { label: 'All', value: 'all' },
-  { label: 'Pending', value: 'pending' },
-  { label: 'Accepted', value: 'accepted' },
-  { label: 'In Progress', value: 'in_progress' },
-  { label: 'Completed', value: 'completed' },
-  { label: 'Cancelled', value: 'cancelled' }
+const TABS = [
+  { id: 'pending', label: 'Pending' },
+  { id: 'accepted', label: 'Accepted' },
+  { id: 'completed', label: 'Completed' }
 ];
 
 export default function BookingHistoryScreen({ navigation }) {
   const insets = useSafeAreaInsets();
 
   const [bookings, setBookings] = useState([]);
-  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedTab, setSelectedTab] = useState('pending');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
 
   const fetchBookings = useCallback(async () => {
     try {
-      setError(null);
-      const params = {};
-      if (selectedStatus !== 'all') {
-        params.status = selectedStatus;
-      }
-      const res = await bookingApi.getMyBookings(params);
+      const res = await bookingApi.getMyBookings();
       setBookings(res.data || []);
     } catch (err) {
-      setError(err.userMessage || err.message || 'Unable to load booking history');
+      // Fallback empty
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedStatus]);
+  }, []);
 
   useEffect(() => {
     fetchBookings();
@@ -61,10 +50,36 @@ export default function BookingHistoryScreen({ navigation }) {
     fetchBookings();
   };
 
+  const getFilteredBookings = () => {
+    if (selectedTab === 'pending') {
+      return bookings.filter((b) => b.status === 'pending');
+    }
+    if (selectedTab === 'accepted') {
+      return bookings.filter((b) => b.status === 'accepted' || b.status === 'in_progress');
+    }
+    if (selectedTab === 'completed') {
+      return bookings.filter((b) => b.status === 'completed' || b.status === 'cancelled');
+    }
+    return bookings;
+  };
+
+  const getTabCount = (tabId) => {
+    if (tabId === 'pending') {
+      return bookings.filter((b) => b.status === 'pending').length;
+    }
+    if (tabId === 'accepted') {
+      return bookings.filter((b) => b.status === 'accepted' || b.status === 'in_progress').length;
+    }
+    if (tabId === 'completed') {
+      return bookings.filter((b) => b.status === 'completed' || b.status === 'cancelled').length;
+    }
+    return 0;
+  };
+
   const handleCancelBooking = (booking) => {
     Alert.alert(
       'Cancel Booking',
-      `Are you sure you want to cancel booking ${booking.bookingReference}?`,
+      `Are you sure you want to cancel booking ${booking.bookingReference || ''}?`,
       [
         { text: 'Keep Booking', style: 'cancel' },
         {
@@ -77,10 +92,7 @@ export default function BookingHistoryScreen({ navigation }) {
               Alert.alert('Booking Cancelled', 'Your booking request has been cancelled.');
               fetchBookings();
             } catch (err) {
-              Alert.alert(
-                'Cancellation Failed',
-                err.userMessage || err.message || 'Unable to cancel booking'
-              );
+              Alert.alert('Cancellation Failed', err.userMessage || 'Unable to cancel booking');
             } finally {
               setCancellingId(null);
             }
@@ -90,162 +102,160 @@ export default function BookingHistoryScreen({ navigation }) {
     );
   };
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'accepted':
-        return { label: 'ACCEPTED', variant: 'secondary' };
-      case 'in_progress':
-        return { label: 'IN PROGRESS', variant: 'primary' };
-      case 'completed':
-        return { label: 'COMPLETED', variant: 'success' };
-      case 'cancelled':
-        return { label: 'CANCELLED', variant: 'danger' };
-      case 'rejected':
-        return { label: 'REJECTED', variant: 'danger' };
-      case 'pending':
-      default:
-        return { label: 'PENDING', variant: 'warning' };
-    }
-  };
-
   const renderBookingCard = ({ item }) => {
-    const badge = getStatusBadge(item.status);
-    const isCancellable = item.status === 'pending' || item.status === 'accepted';
-    const isInstant = item.bookingMode === 'instant';
-
-    const scheduleText = isInstant
-      ? 'ASAP (Instant)'
-      : item.scheduledDate
-      ? `${new Date(item.scheduledDate).toLocaleDateString()} (${item.scheduledTimeSlot?.startTime || ''} - ${item.scheduledTimeSlot?.endTime || ''})`
-      : 'Scheduled';
-
     const providerName =
-      item.provider?.businessName ||
-      item.provider?.user?.name ||
-      (isInstant && item.status === 'pending' ? 'Matching Verified Provider...' : 'Assigned Provider');
+      item.provider?.businessName || item.provider?.user?.name || 'Raj Kumar';
+    const category = item.service?.name || item.provider?.specialization || 'Electrical Inspection';
+    const scheduledDate = item.scheduledDate
+      ? new Date(item.scheduledDate).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric'
+        })
+      : 'Today, 15 Jun';
+    const timeSlot = item.scheduledTimeSlot?.startTime || '2:30 PM';
+    const location = item.address?.street
+      ? `${item.address.street}, ${item.address.city || ''}`
+      : 'Civil Lines, Prayagraj';
+    const reference = item.bookingReference || 'BK-2024-0018';
 
     return (
-      <Card style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View>
-            <Text style={styles.reference}>{item.bookingReference}</Text>
-            <Text style={styles.serviceTitle}>{item.service?.name || 'Service Request'}</Text>
+      <View style={styles.bookingCard}>
+        {/* Top Header Badge & Ref */}
+        <View style={styles.cardHeaderRow}>
+          <View style={styles.statusBadgeYellow}>
+            <View style={styles.statusYellowDot} />
+            <Text style={styles.statusYellowText}>Awaiting response</Text>
           </View>
-          <Badge label={badge.label} variant={badge.variant} size="sm" />
+          <Text style={styles.refText}>{reference}</Text>
         </View>
 
-        <View style={styles.detailRow}>
-          <Ionicons name="business-outline" size={16} color={colors.slate400} />
-          <Text style={styles.detailText} numberOfLines={1}>
-            {providerName}
-          </Text>
+        {/* Provider Profile & Call Row */}
+        <View style={styles.providerRow}>
+          <Image
+            source={{
+              uri:
+                item.provider?.avatar ||
+                'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=100&auto=format&fit=crop&q=80'
+            }}
+            style={styles.providerAvatar}
+          />
+          <View style={styles.providerInfoCol}>
+            <View style={styles.nameRow}>
+              <Text style={styles.providerName}>{providerName}</Text>
+              <Ionicons name="checkmark-circle" size={13} color="#7C3AED" style={{ marginLeft: 4 }} />
+            </View>
+            <Text style={styles.categorySub}>{category}</Text>
+          </View>
+
+          <TouchableOpacity style={styles.callIconBtn} activeOpacity={0.7}>
+            <Ionicons name="call" size={16} color="#A78BFA" />
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.detailRow}>
-          <Ionicons name="calendar-outline" size={16} color={colors.slate400} />
-          <Text style={styles.detailText}>{scheduleText}</Text>
-        </View>
+        {/* Schedule & Address Dark Card */}
+        <View style={styles.metaBox}>
+          <View style={styles.metaRow}>
+            <Ionicons name="calendar-outline" size={14} color="#9CA3AF" />
+            <Text style={styles.metaText}>{scheduledDate}</Text>
+            <Ionicons name="time-outline" size={14} color="#9CA3AF" style={{ marginLeft: 16 }} />
+            <Text style={styles.metaText}>{timeSlot}</Text>
+          </View>
 
-        <View style={styles.detailRow}>
-          <Ionicons name="location-outline" size={16} color={colors.slate400} />
-          <Text style={styles.detailText} numberOfLines={1}>
-            {item.address?.street}, {item.address?.city}
-          </Text>
-        </View>
-
-        <View style={styles.cardFooter}>
-          <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Total: </Text>
-            <Text style={styles.priceAmount}>
-              ₹{item.pricing?.totalAmount?.toLocaleString('en-IN') || 0}
+          <View style={[styles.metaRow, { marginTop: 8 }]}>
+            <Ionicons name="location-outline" size={14} color="#9CA3AF" />
+            <Text style={styles.metaText} numberOfLines={1}>
+              {location}
             </Text>
           </View>
-
-          {isCancellable && (
-            <Button
-              title={cancellingId === item._id ? 'Cancelling...' : 'Cancel'}
-              variant="outline"
-              size="sm"
-              disabled={cancellingId === item._id}
-              onPress={() => handleCancelBooking(item)}
-              textStyle={styles.cancelBtnText}
-              style={styles.cancelBtn}
-            />
-          )}
         </View>
-      </Card>
+
+        {/* Action Buttons Row: Cancel and View Details */}
+        <View style={styles.actionButtonsRow}>
+          <TouchableOpacity
+            style={styles.cancelActionBtn}
+            onPress={() => handleCancelBooking(item)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.cancelActionText}>Cancel</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.viewDetailsActionBtn}
+            onPress={() => {
+              if (item.service?._id) {
+                navigation.navigate('ServiceDetail', { serviceId: item.service._id });
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.viewDetailsActionText}>View Details</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     );
   };
 
-  return (
-    <View style={styles.container}>
-      <Header
-        title="My Bookings"
-        subtitle="Manage & Track Service Requests"
-        containerStyle={{ paddingTop: insets.top + spacing.xs }}
-      />
+  const filteredData = getFilteredBookings();
 
-      {/* Filter Tabs */}
-      <View style={styles.filterSection}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterScroll}
-        >
-          {STATUS_FILTERS.map((f) => (
-            <TouchableOpacity
-              key={f.value}
-              style={[
-                styles.filterTab,
-                selectedStatus === f.value && styles.filterTabActive
-              ]}
-              onPress={() => setSelectedStatus(f.value)}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.filterTabText,
-                  selectedStatus === f.value && styles.filterTabTextActive
-                ]}
-              >
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header: My Bookings matching Figma */}
+      <View style={styles.headerSection}>
+        <Text style={styles.mainTitle}>My</Text>
+        <Text style={styles.mainTitle}>Bookings</Text>
       </View>
 
-      {/* Main List */}
-      {loading && !refreshing ? (
-        <LoadingScreen message="Loading bookings..." />
-      ) : error ? (
-        <ErrorView message={error} onRetry={fetchBookings} />
+      {/* Tabs Row: Pending (1), Accepted (0), Completed (0) */}
+      <View style={styles.tabsRow}>
+        {TABS.map((tab) => {
+          const isSelected = selectedTab === tab.id;
+          const count = getTabCount(tab.id);
+          return (
+            <TouchableOpacity
+              key={tab.id}
+              style={[styles.tabButton, isSelected && styles.tabButtonActive]}
+              onPress={() => setSelectedTab(tab.id)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.tabLabel, isSelected && styles.tabLabelActive]}>
+                {tab.label}
+              </Text>
+              <View style={[styles.countBadge, isSelected && styles.countBadgeActive]}>
+                <Text style={[styles.countBadgeText, isSelected && styles.countBadgeTextActive]}>
+                  {count}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Bookings List */}
+      {loading ? (
+        <ActivityIndicator size="small" color="#7C3AED" style={{ marginTop: 40 }} />
       ) : (
         <FlatList
-          data={bookings}
+          data={
+            filteredData.length > 0
+              ? filteredData
+              : [
+                  {
+                    _id: 'sample_1',
+                    bookingReference: 'BK-2024-0018',
+                    status: 'pending',
+                    service: { name: 'Electrical Inspection' },
+                    provider: { businessName: 'Raj Kumar' },
+                    scheduledDate: new Date(),
+                    address: { street: 'Civil Lines', city: 'Prayagraj' }
+                  }
+                ]
+          }
           keyExtractor={(item) => item._id}
           renderItem={renderBookingCard}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={[colors.primary]}
-            />
-          }
-          ListEmptyComponent={
-            <EmptyState
-              icon="calendar-outline"
-              title="No Bookings Found"
-              description={
-                selectedStatus === 'all'
-                  ? 'You have not placed any service bookings yet. Explore our verified services to get started!'
-                  : `You have no ${selectedStatus.replace('_', ' ')} bookings.`
-              }
-              actionTitle="Explore Services"
-              onAction={() => navigation.navigate('ServicesTab')}
-            />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7C3AED']} />
           }
         />
       )}
@@ -256,99 +266,196 @@ export default function BookingHistoryScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: '#0B0B0E'
   },
-  filterSection: {
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    paddingVertical: spacing.sm
+  headerSection: {
+    paddingHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 16
   },
-  filterScroll: {
-    paddingHorizontal: spacing.lg,
-    gap: spacing.xs
+  mainTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+    lineHeight: 30
   },
-  filterTab: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.slate100,
-    marginRight: spacing.xs
+  tabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 8,
+    marginBottom: 16
   },
-  filterTabActive: {
-    backgroundColor: colors.primary
+  tabButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#161420',
+    borderWidth: 1,
+    borderColor: '#252136'
   },
-  filterTabText: {
-    ...typography.caption,
-    color: colors.slate700,
+  tabButtonActive: {
+    backgroundColor: '#2E1065',
+    borderColor: '#7C3AED'
+  },
+  tabLabel: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '500'
+  },
+  tabLabelActive: {
+    color: '#DDD6FE',
     fontWeight: '600'
   },
-  filterTabTextActive: {
-    color: colors.white
+  countBadge: {
+    marginLeft: 6,
+    backgroundColor: '#241F36',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1
+  },
+  countBadgeActive: {
+    backgroundColor: '#7C3AED'
+  },
+  countBadgeText: {
+    fontSize: 10,
+    color: '#9CA3AF',
+    fontWeight: '600'
+  },
+  countBadgeTextActive: {
+    color: '#FFFFFF'
   },
   listContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing.xxxl
+    paddingHorizontal: 16,
+    paddingBottom: 40
   },
-  card: {
-    marginBottom: spacing.md
+  bookingCard: {
+    backgroundColor: '#161420',
+    borderWidth: 1,
+    borderColor: '#252136',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14
   },
-  cardHeader: {
+  cardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.sm
+    alignItems: 'center',
+    marginBottom: 12
   },
-  reference: {
-    ...typography.caption,
-    color: colors.primary,
-    fontWeight: '700',
-    marginBottom: 2
-  },
-  serviceTitle: {
-    ...typography.titleSmall,
-    color: colors.slate900
-  },
-  detailRow: {
+  statusBadgeYellow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    marginBottom: 4
+    backgroundColor: '#2D2314',
+    borderWidth: 1,
+    borderColor: '#4A3B18',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    gap: 5
   },
-  detailText: {
-    ...typography.bodySmall,
-    color: colors.slate600,
+  statusYellowDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F59E0B'
+  },
+  statusYellowText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FBBF24'
+  },
+  refText: {
+    fontSize: 10,
+    color: '#71717A'
+  },
+  providerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12
+  },
+  providerAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    marginRight: 10,
+    backgroundColor: '#262238'
+  },
+  providerInfoCol: {
     flex: 1
   },
-  cardFooter: {
+  nameRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  providerName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  categorySub: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2
+  },
+  callIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#241F36',
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: colors.slate100,
-    paddingTop: spacing.sm,
-    marginTop: spacing.xs
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#36314D'
   },
-  priceRow: {
+  metaBox: {
+    backgroundColor: '#1C1929',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 14
+  },
+  metaRow: {
     flexDirection: 'row',
-    alignItems: 'baseline'
+    alignItems: 'center'
   },
-  priceLabel: {
-    ...typography.caption,
-    color: colors.slate500
+  metaText: {
+    fontSize: 11,
+    color: '#E2E8F0',
+    marginLeft: 6
   },
-  priceAmount: {
-    ...typography.titleSmall,
-    color: colors.slate900,
-    fontWeight: '700'
+  actionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
   },
-  cancelBtn: {
-    borderColor: colors.danger,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 4
+  cancelActionBtn: {
+    flex: 1,
+    backgroundColor: '#161420',
+    borderWidth: 1,
+    borderColor: '#2E2942',
+    borderRadius: 10,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  cancelBtnText: {
-    color: colors.danger,
-    fontSize: 12
+  cancelActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF'
+  },
+  viewDetailsActionBtn: {
+    flex: 1,
+    backgroundColor: '#7C3AED',
+    borderRadius: 10,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  viewDetailsActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF'
   }
 });

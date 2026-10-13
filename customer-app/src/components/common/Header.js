@@ -23,7 +23,7 @@ export default function Header({
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={24} color={colors.slate900} />
+            <Ionicons name="arrow-back" size={24} color={colors.white} />
           </TouchableOpacity>
         )}
         <View style={styles.titleContainer}>
@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     borderBottomWidth: 1,
     borderBottomColor: colors.border
   },
@@ -68,11 +68,11 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.titleMedium,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   subtitle: {
     ...typography.bodySmall,
-    color: colors.slate500,
+    color: '#9CA3AF',
     marginTop: 2
   },
   rightContainer: {

@@ -14,34 +14,34 @@ export default function Badge({
     switch (variant) {
       case 'success':
         return {
-          bg: colors.successSubtle,
-          text: colors.success
+          bg: '#064E3B',
+          text: '#34D399'
         };
       case 'warning':
         return {
-          bg: colors.warningSubtle,
-          text: colors.warning
+          bg: '#451A03',
+          text: '#FBBF24'
         };
       case 'danger':
         return {
-          bg: colors.dangerSubtle,
-          text: colors.danger
+          bg: '#4C0519',
+          text: '#F87171'
         };
       case 'secondary':
         return {
-          bg: colors.secondarySubtle,
-          text: colors.secondary
+          bg: '#2E1065',
+          text: '#C084FC'
         };
       case 'slate':
         return {
-          bg: colors.slate100,
-          text: colors.slate600
+          bg: '#252136',
+          text: '#9CA3AF'
         };
       case 'primary':
       default:
         return {
-          bg: colors.primarySubtle,
-          text: colors.primary
+          bg: '#2E1065',
+          text: '#A78BFA'
         };
     }
   };

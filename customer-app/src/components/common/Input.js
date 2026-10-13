@@ -135,35 +135,35 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.slate700,
+    color: '#E2E8F0',
     marginBottom: spacing.xs + 2
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.inputBackground,
+    backgroundColor: '#161420',
     borderWidth: 1.5,
-    borderColor: colors.border,
+    borderColor: '#252136',
     borderRadius: borderRadius.md,
     paddingHorizontal: spacing.md
   },
   focusedInput: {
-    borderColor: colors.primary,
-    backgroundColor: colors.white
+    borderColor: '#7C3AED',
+    backgroundColor: '#1C1929'
   },
   errorInput: {
     borderColor: colors.danger,
-    backgroundColor: colors.dangerSubtle
+    backgroundColor: '#4C0519'
   },
   disabledInput: {
     opacity: 0.6,
-    backgroundColor: colors.slate200
+    backgroundColor: '#27272A'
   },
   input: {
     flex: 1,
     paddingVertical: spacing.sm + 4,
     fontSize: 15,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   multilineInput: {
     minHeight: 80,

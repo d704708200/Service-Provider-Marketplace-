@@ -8,7 +8,7 @@ import RootNavigator from './src/navigation/RootNavigator';
 export default function App() {
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <AuthProvider>
         <NavigationContainer>
           <RootNavigator />

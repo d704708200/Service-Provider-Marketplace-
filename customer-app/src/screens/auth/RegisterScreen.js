@@ -223,7 +223,7 @@ export default function RegisterScreen({ navigation }) {
 const styles = StyleSheet.create({
   keyboardContainer: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: '#0B0B0E'
   },
   scrollContent: {
     paddingHorizontal: spacing.lg,
@@ -240,33 +240,40 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.titleLarge,
-    color: colors.slate900,
+    color: '#FFFFFF',
     marginBottom: spacing.xs
   },
   subtitle: {
     ...typography.bodyMedium,
-    color: colors.slate500
+    color: '#9CA3AF'
   },
   formCard: {
+    backgroundColor: '#161420',
+    borderWidth: 1,
+    borderColor: '#252136',
+    borderRadius: 18,
     padding: spacing.xl
   },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.dangerSubtle,
+    backgroundColor: '#4C0519',
     borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: '#991B1B',
     padding: spacing.md,
     marginBottom: spacing.lg
   },
   errorBannerText: {
     ...typography.bodySmall,
-    color: colors.danger,
+    color: '#F87171',
     marginLeft: spacing.sm,
     flex: 1,
     fontWeight: '500'
   },
   submitBtn: {
-    marginTop: spacing.sm
+    marginTop: spacing.sm,
+    backgroundColor: '#7C3AED'
   },
   loginRow: {
     flexDirection: 'row',
@@ -276,11 +283,11 @@ const styles = StyleSheet.create({
   },
   loginPrompt: {
     ...typography.bodyMedium,
-    color: colors.slate600
+    color: '#9CA3AF'
   },
   loginLink: {
     ...typography.bodyMedium,
-    color: colors.primary,
+    color: '#A78BFA',
     fontWeight: '700'
   }
 });

@@ -586,13 +586,17 @@ export default function ProfileScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: '#0B0B0E'
   },
   scrollContent: {
     padding: spacing.lg
   },
   profileCard: {
-    marginBottom: spacing.lg
+    marginBottom: spacing.lg,
+    backgroundColor: '#161420',
+    borderColor: '#252136',
+    borderWidth: 1,
+    borderRadius: 16
   },
   userRow: {
     flexDirection: 'row',
@@ -602,10 +606,12 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: colors.primarySubtle,
+    backgroundColor: '#241F36',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.lg
+    marginRight: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#36314D'
   },
   userInfo: {
     flex: 1
@@ -618,18 +624,18 @@ const styles = StyleSheet.create({
   },
   userName: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: '#FFFFFF',
     flex: 1,
     marginRight: spacing.sm
   },
   userEmail: {
     ...typography.bodySmall,
-    color: colors.slate500,
+    color: '#9CA3AF',
     marginBottom: 2
   },
   userPhone: {
     ...typography.caption,
-    color: colors.slate400
+    color: '#71717A'
   },
   editProfileButton: {
     flexDirection: 'row',
@@ -637,19 +643,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
     marginTop: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xs + 2,
     borderWidth: 1,
-    borderColor: colors.primarySubtle,
-    backgroundColor: colors.primarySubtle,
+    borderColor: '#36314D',
+    backgroundColor: '#241F36',
     borderRadius: borderRadius.md
   },
   editProfileButtonText: {
     ...typography.bodySmall,
-    color: colors.primaryDark,
+    color: '#C084FC',
     fontWeight: '600'
   },
   sectionCard: {
-    marginBottom: spacing.lg
+    marginBottom: spacing.lg,
+    backgroundColor: '#161420',
+    borderColor: '#252136',
+    borderWidth: 1,
+    borderRadius: 16
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -659,7 +669,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.titleSmall,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   addAddressBtn: {
     flexDirection: 'row',
@@ -668,7 +678,7 @@ const styles = StyleSheet.create({
   },
   addAddressText: {
     ...typography.bodySmall,
-    color: colors.primary,
+    color: '#8B5CF6',
     fontWeight: '600'
   },
   detailRow: {
@@ -684,25 +694,25 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     ...typography.bodyMedium,
-    color: colors.slate600
+    color: '#9CA3AF'
   },
   detailValue: {
     ...typography.bodyMedium,
-    color: colors.slate900,
+    color: '#FFFFFF',
     fontWeight: '500'
   },
   divider: {
     height: 1,
-    backgroundColor: colors.slate100,
+    backgroundColor: '#252136',
     marginVertical: spacing.sm
   },
   addressBox: {
-    backgroundColor: colors.slate50,
+    backgroundColor: '#1C1929',
     padding: spacing.md,
     borderRadius: borderRadius.md,
     marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: colors.slate200
+    borderColor: '#2D2742'
   },
   addressTopRow: {
     flexDirection: 'row',
@@ -718,7 +728,7 @@ const styles = StyleSheet.create({
   addressTitle: {
     ...typography.bodyMedium,
     fontWeight: '700',
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   addressActions: {
     flexDirection: 'row',
@@ -730,12 +740,12 @@ const styles = StyleSheet.create({
   },
   addressStreet: {
     ...typography.bodyMedium,
-    color: colors.slate800,
+    color: '#E2E8F0',
     marginTop: 2
   },
   addressCity: {
     ...typography.bodySmall,
-    color: colors.slate500,
+    color: '#9CA3AF',
     marginTop: 2
   },
   emptyAddress: {
@@ -763,9 +773,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   modalContent: {
-    backgroundColor: colors.white,
+    backgroundColor: '#161420',
     borderRadius: borderRadius.lg,
-    padding: spacing.lg
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#252136'
   },
   modalHeader: {
     flexDirection: 'row',
@@ -775,11 +787,11 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     ...typography.titleMedium,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   inputLabel: {
     ...typography.caption,
-    color: colors.slate700,
+    color: '#CBD5E1',
     fontWeight: '600',
     marginBottom: 6
   },
@@ -793,20 +805,20 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: borderRadius.sm,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.slate50
+    borderColor: '#2D2742',
+    backgroundColor: '#1C1929'
   },
   paymentMethodTabActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySubtle
+    borderColor: '#7C3AED',
+    backgroundColor: '#2E1065'
   },
   paymentMethodText: {
     ...typography.caption,
-    color: colors.slate600,
+    color: '#9CA3AF',
     fontWeight: '600'
   },
   paymentMethodTextActive: {
-    color: colors.primary,
+    color: '#DDD6FE',
     fontWeight: '700'
   },
   row: {
