@@ -104,6 +104,14 @@ const providerSchema = new mongoose.Schema(
       type: Number,
       min: 0,
       default: 0
+    },
+    showInTopRated: {
+      type: Boolean,
+      default: false
+    },
+    topRatedOrder: {
+      type: Number,
+      default: 0
     }
   },
   {
@@ -115,6 +123,7 @@ providerSchema.index({ verificationStatus: 1 });
 providerSchema.index({ isAvailable: 1 });
 providerSchema.index({ categories: 1 });
 providerSchema.index({ 'rating.average': -1 });
+providerSchema.index({ showInTopRated: 1, topRatedOrder: 1 });
 
 const Provider = mongoose.model('Provider', providerSchema);
 

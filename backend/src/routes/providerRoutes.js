@@ -9,6 +9,7 @@ const {
   validateDocumentReview,
   validateProviderVerification,
   validateAccountStatus,
+  validateUpdateTopRatedStatus,
   validateProviderAvailability,
   validateProviderServiceArea,
   validateUpdateProviderServiceArea,
@@ -180,6 +181,15 @@ router.patch(
   validateObjectId('id'),
   validateAccountStatus,
   providerController.updateProviderAccountStatus
+);
+
+router.patch(
+  '/admin/:id/top-rated',
+  authenticate,
+  requireRole('admin'),
+  validateObjectId('id'),
+  validateUpdateTopRatedStatus,
+  providerController.updateTopRatedStatus
 );
 
 // =========================================================

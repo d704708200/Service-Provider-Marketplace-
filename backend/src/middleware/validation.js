@@ -610,6 +610,36 @@ const validateAccountStatus = (req, res, next) => {
   next();
 };
 
+const validateUpdateTopRatedStatus = (req, res, next) => {
+  const { showInTopRated, topRatedOrder } = req.body;
+  const errors = [];
+
+  if (showInTopRated !== undefined && typeof showInTopRated !== 'boolean') {
+    errors.push("'showInTopRated' must be a boolean");
+  }
+
+  if (topRatedOrder !== undefined && (typeof topRatedOrder !== 'number' || isNaN(topRatedOrder) || topRatedOrder < 0)) {
+    errors.push("'topRatedOrder' must be a non-negative number");
+  }
+
+  if (showInTopRated === undefined && topRatedOrder === undefined) {
+    errors.push("At least one of 'showInTopRated' or 'topRatedOrder' must be provided");
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
 const validateCreateBooking = (req, res, next) => {
   const { serviceId, providerId, bookingMode = 'scheduled', scheduledDate, scheduledTimeSlot, address, notes, problemDescription, paymentMethod } = req.body;
   const errors = [];
@@ -1162,6 +1192,7 @@ module.exports = {
   validateDocumentReview,
   validateProviderVerification,
   validateAccountStatus,
+  validateUpdateTopRatedStatus,
   validateCreateBooking,
   validateCancelBooking,
   validateRejectBooking,

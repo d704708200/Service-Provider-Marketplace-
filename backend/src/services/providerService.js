@@ -5,6 +5,8 @@ const Category = require('../models/Category');
 const Service = require('../models/Service');
 const Availability = require('../models/Availability');
 const ServiceArea = require('../models/ServiceArea');
+const Review = require('../models/Review');
+const Booking = require('../models/Booking');
 
 const escapeRegex = (string) => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -534,6 +536,11 @@ const getPublicProviders = async (query = {}) => {
     isAvailable: true
   };
 
+  const isTopRatedOnly = query.topRated === 'true' || query.topRated === true;
+  if (isTopRatedOnly) {
+    filter.showInTopRated = true;
+  }
+
   if (query.category) {
     filter.categories = query.category;
   }
@@ -543,30 +550,75 @@ const getPublicProviders = async (query = {}) => {
     filter.$or = [{ businessName: searchRegex }, { bio: searchRegex }];
   }
 
-  const providers = await Provider.find(filter)
+  const sortOrder = isTopRatedOnly
+    ? { topRatedOrder: 1, 'rating.average': -1, createdAt: -1 }
+    : { 'rating.average': -1, completedBookingsCount: -1 };
+
+  const limit = query.limit ? Math.max(1, parseInt(query.limit, 10)) : undefined;
+
+  let queryBuilder = Provider.find(filter)
     .populate({
       path: 'user',
       match: { isActive: true },
       select: 'name avatar createdAt'
     })
     .populate('categories', 'name slug icon')
-    .sort({ 'rating.average': -1, completedBookingsCount: -1 })
-    .lean();
+    .sort(sortOrder);
+
+  if (limit) {
+    queryBuilder = queryBuilder.limit(limit);
+  }
+
+  const providers = await queryBuilder.lean();
 
   // Filter out any where user account is inactive (user was matched null)
-  return providers
-    .filter((p) => p.user)
-    .map((p) => ({
-      _id: p._id,
-      businessName: p.businessName,
-      bio: p.bio,
-      experienceYears: p.experienceYears,
-      categories: p.categories,
-      rating: p.rating,
-      completedBookingsCount: p.completedBookingsCount,
-      user: p.user,
-      isAvailable: p.isAvailable
-    }));
+  const activeProviders = providers.filter((p) => p.user);
+
+  // Augment with base price from services & persisted reviews calculation
+  return await Promise.all(
+    activeProviders.map(async (p) => {
+      // Calculate rating from persistent reviews if available
+      const reviews = await Review.find({ provider: p._id, isPublic: true }).lean();
+      let ratingObj = p.rating || { average: 0, count: 0 };
+      if (reviews && reviews.length > 0) {
+        const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
+        ratingObj = {
+          average: Number((totalRating / reviews.length).toFixed(1)),
+          count: reviews.length
+        };
+      }
+
+      // Get starting price from active services
+      const minService = await Service.findOne({ provider: p._id, isActive: true })
+        .sort({ price: 1 })
+        .select('price')
+        .lean();
+
+      const startingPrice = minService ? minService.price : null;
+
+      const specialization =
+        p.categories && p.categories.length > 0 ? p.categories[0].name : '';
+
+      return {
+        _id: p._id,
+        businessName: p.businessName || p.user?.name || '',
+        bio: p.bio,
+        avatar: p.user?.avatar || null,
+        experienceYears: p.experienceYears || 0,
+        categories: p.categories,
+        specialization,
+        rating: ratingObj,
+        pricing: {
+          basePrice: startingPrice
+        },
+        completedBookingsCount: p.completedBookingsCount,
+        showInTopRated: Boolean(p.showInTopRated),
+        topRatedOrder: p.topRatedOrder || 0,
+        user: p.user,
+        isAvailable: p.isAvailable
+      };
+    })
+  );
 };
 
 /**
@@ -601,6 +653,8 @@ const getPublicProviderById = async (providerId) => {
     serviceAreas: provider.serviceAreas,
     rating: provider.rating,
     completedBookingsCount: provider.completedBookingsCount,
+    showInTopRated: Boolean(provider.showInTopRated),
+    topRatedOrder: provider.topRatedOrder || 0,
     user: {
       name: provider.user.name,
       avatar: provider.user.avatar,
@@ -627,7 +681,11 @@ const getAdminProviders = async (query = {}) => {
     filter.verificationStatus = query.verificationStatus;
   }
 
-  if (query.category) {
+  if (query.topRated !== undefined && query.topRated !== 'all') {
+    filter.showInTopRated = query.topRated === 'true' || query.topRated === true;
+  }
+
+  if (query.category && query.category !== 'all') {
     filter.categories = query.category;
   }
 
@@ -644,7 +702,7 @@ const getAdminProviders = async (query = {}) => {
     Provider.find(filter)
       .populate('user', 'name email phone avatar role isActive isVerified createdAt')
       .populate('categories', 'name slug icon isActive')
-      .sort({ createdAt: -1 })
+      .sort({ showInTopRated: -1, topRatedOrder: 1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean(),
@@ -766,6 +824,50 @@ const updateProviderAccountStatus = async (providerId, isActive) => {
   return await getAdminProviderById(providerId);
 };
 
+/**
+ * Admin: Toggle provider Top Rated status & display order
+ * Only verified providers with active user accounts are eligible for public display.
+ */
+const updateTopRatedStatus = async (providerId, { showInTopRated, topRatedOrder }) => {
+  const provider = await Provider.findById(providerId).populate('user');
+  if (!provider) {
+    const err = new Error(`Provider not found with ID '${providerId}'`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // If enabling in Top Rated, enforce that provider is verified and user account is active
+  if (showInTopRated) {
+    if (provider.verificationStatus !== 'verified') {
+      const err = new Error(
+        'Only verified providers can be featured in Top Rated Professionals. Please verify the provider first.'
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!provider.user || !provider.user.isActive) {
+      const err = new Error(
+        'Cannot feature a provider whose account is inactive or suspended.'
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  if (showInTopRated !== undefined) {
+    provider.showInTopRated = Boolean(showInTopRated);
+  }
+
+  if (topRatedOrder !== undefined) {
+    provider.topRatedOrder = Number(topRatedOrder) || 0;
+  }
+
+  await provider.save();
+
+  return await getAdminProviderById(providerId);
+};
+
 module.exports = {
   getProviderProfileByUserId,
   updateProviderProfileByUserId,
@@ -787,5 +889,6 @@ module.exports = {
   getAdminProviderById,
   reviewDocument,
   updateProviderVerification,
-  updateProviderAccountStatus
+  updateProviderAccountStatus,
+  updateTopRatedStatus
 };
