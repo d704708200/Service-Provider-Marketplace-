@@ -1,7 +1,15 @@
 import axios from 'axios';
 import { authStorage } from '../storage/authStorage';
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api';
+import { Platform } from 'react-native';
+
+let rawUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+if (Platform.OS === 'android') {
+  rawUrl = 'http://192.168.1.3:5000/api';
+}
+
+const BASE_URL = rawUrl;
 
 const api = axios.create({
   baseURL: BASE_URL,
