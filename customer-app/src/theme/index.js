@@ -1,4 +1,6 @@
-import colors from './colors';
+import colors, { COLORS } from './colors.js';
+
+export { colors, COLORS };
 
 export const spacing = {
   xs: 4,
@@ -83,10 +85,13 @@ export const shadows = {
   }
 };
 
-export default {
+export const theme = {
   colors,
+  COLORS: colors,
   spacing,
   typography,
   borderRadius,
   shadows
 };
+
+export default theme;

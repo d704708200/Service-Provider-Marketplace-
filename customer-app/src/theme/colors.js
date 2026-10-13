@@ -37,4 +37,5 @@ export const colors = {
   placeholder: '#94A3B8'
 };
 
+export const COLORS = colors;
 export default colors;
