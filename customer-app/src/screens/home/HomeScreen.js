@@ -634,7 +634,8 @@ const styles = StyleSheet.create({
   },
   quickServicesGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    justifyContent: 'flex-start',
+    gap: 8
   },
   quickServiceCard: {
     width: '23%',
@@ -669,7 +670,8 @@ const styles = StyleSheet.create({
   },
   popularRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    justifyContent: 'flex-start',
+    gap: 10
   },
   popularServiceCard: {
     width: '31%',
@@ -852,7 +854,7 @@ const styles = StyleSheet.create({
   allServicesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     gap: 8,
     marginTop: 10
   },
