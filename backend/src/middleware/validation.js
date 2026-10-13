@@ -640,6 +640,57 @@ const validateUpdateTopRatedStatus = (req, res, next) => {
   next();
 };
 
+const validateUpdateBannerConfig = (req, res, next) => {
+  const { isEnabled, badgeText, title, subtitle, discountAmount, currency, buttonLabel, targetRoute } = req.body;
+  const errors = [];
+
+  if (isEnabled !== undefined && typeof isEnabled !== 'boolean') {
+    errors.push("'isEnabled' must be a boolean");
+  }
+
+  if (badgeText !== undefined && (typeof badgeText !== 'string' || !badgeText.trim())) {
+    errors.push("'badgeText' must be a non-empty string");
+  }
+
+  if (title !== undefined && (typeof title !== 'string' || !title.trim())) {
+    errors.push("'title' must be a non-empty string");
+  }
+
+  if (subtitle !== undefined && typeof subtitle !== 'string') {
+    errors.push("'subtitle' must be a string");
+  }
+
+  if (discountAmount !== undefined && (typeof discountAmount !== 'number' || isNaN(discountAmount) || discountAmount < 0)) {
+    errors.push("'discountAmount' must be a non-negative number");
+  }
+
+  if (currency !== undefined && (typeof currency !== 'string' || !currency.trim())) {
+    errors.push("'currency' must be a non-empty string");
+  }
+
+  if (buttonLabel !== undefined && (typeof buttonLabel !== 'string' || !buttonLabel.trim())) {
+    errors.push("'buttonLabel' must be a non-empty string");
+  }
+
+  const validRoutes = ['SearchTab', 'HomeTab', 'BookingsTab', 'AlertsTab', 'ProfileTab', 'CategoryServices', 'ServiceDetail', 'ProviderDetail', 'RequestService'];
+  if (targetRoute !== undefined && !validRoutes.includes(targetRoute)) {
+    errors.push(`'targetRoute' must be one of: ${validRoutes.join(', ')}`);
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
 const validateCreateBooking = (req, res, next) => {
   const { serviceId, providerId, bookingMode = 'scheduled', scheduledDate, scheduledTimeSlot, address, notes, problemDescription, paymentMethod } = req.body;
   const errors = [];
@@ -1201,7 +1252,8 @@ module.exports = {
   validateUpdateCustomerAddress,
   validateProviderAvailability,
   validateProviderServiceArea,
-  validateUpdateProviderServiceArea
+  validateUpdateProviderServiceArea,
+  validateUpdateBannerConfig
 };
 
 

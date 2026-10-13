@@ -11,6 +11,7 @@ const serviceRoutes = require('./routes/serviceRoutes');
 const providerRoutes = require('./routes/providerRoutes');
 const customerRoutes = require('./routes/customerRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
+const bannerRoutes = require('./routes/bannerRoutes');
 
 const app = express();
 
@@ -60,6 +61,7 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/banner', bannerRoutes);
 
 // 404 Handler
 app.use(notFoundHandler);

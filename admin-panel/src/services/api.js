@@ -222,5 +222,21 @@ export const bookingApi = {
   }
 };
 
+// Home Promotional Banner API Methods
+export const bannerApi = {
+  getAdminBanner: async () => {
+    const response = await api.get('/banner/admin');
+    return response.data;
+  },
+  updateAdminBanner: async (bannerData) => {
+    const response = await api.put('/banner/admin', bannerData);
+    return response.data;
+  },
+  getPublicBanner: async () => {
+    const response = await api.get('/banner');
+    return response.data;
+  }
+};
+
 export default api;
 

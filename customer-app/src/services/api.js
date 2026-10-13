@@ -211,4 +211,14 @@ export const customerApi = {
   }
 };
 
+// ==========================================
+// 7. Home Promotional Banner API
+// ==========================================
+export const bannerApi = {
+  getBanner: async () => {
+    const response = await api.get('/banner');
+    return response.data;
+  }
+};
+
 export default api;

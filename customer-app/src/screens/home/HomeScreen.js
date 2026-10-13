@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-import { categoryApi, serviceApi, providerApi } from '../../services/api';
+import { categoryApi, serviceApi, providerApi, bannerApi } from '../../services/api';
 import colors from '../../theme/colors';
 
 const DEFAULT_CATEGORY_ICONS = {
@@ -57,18 +57,20 @@ export default function HomeScreen({ navigation }) {
   const [featuredServices, setFeaturedServices] = useState([]);
   const [topRatedProviders, setTopRatedProviders] = useState([]);
   const [nearbyProviders, setNearbyProviders] = useState([]);
+  const [bannerConfig, setBannerConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const [allCatRes, quickCatRes, popCatRes, servRes, topProvRes, allProvRes] = await Promise.all([
+      const [allCatRes, quickCatRes, popCatRes, servRes, topProvRes, allProvRes, bannerRes] = await Promise.all([
         categoryApi.getAll().catch(() => ({ data: [] })),
         categoryApi.getAll({ quickServices: true }).catch(() => ({ data: [] })),
         categoryApi.getAll({ popularServices: true }).catch(() => ({ data: [] })),
         serviceApi.getAll({ limit: 6 }).catch(() => ({ data: [] })),
         providerApi.getAll({ topRated: true }).catch(() => ({ data: [] })),
-        providerApi.getAll({ limit: 6 }).catch(() => ({ data: [] }))
+        providerApi.getAll({ limit: 6 }).catch(() => ({ data: [] })),
+        bannerApi.getBanner().catch(() => ({ data: null }))
       ]);
 
       const allCategories = allCatRes.data || [];
@@ -81,6 +83,7 @@ export default function HomeScreen({ navigation }) {
       setFeaturedServices(servRes.data || []);
       setTopRatedProviders(topProvRes.data || []);
       setNearbyProviders(allProvRes.data || []);
+      setBannerConfig(bannerRes?.data || null);
     } catch (err) {
       // Handled gracefully
     } finally {
@@ -402,21 +405,34 @@ export default function HomeScreen({ navigation }) {
           )}
         </View>
 
-        {/* Promotional Coupon Banner matching Figma */}
-        <View style={styles.promoBanner}>
-          <View style={styles.promoTextCol}>
-            <Text style={styles.promoSmallTag}>FIRST SERVICE ORDER</Text>
-            <Text style={styles.promoTitle}>Get ₹100 OFF</Text>
-            <Text style={styles.promoSub}>Book your first service today</Text>
+        {/* Promotional Coupon Banner matching Figma (Admin-Controlled) */}
+        {bannerConfig && bannerConfig.isEnabled !== false ? (
+          <View style={styles.promoBanner}>
+            <View style={styles.promoTextCol}>
+              <Text style={styles.promoSmallTag}>
+                {bannerConfig.badgeText || 'FIRST SERVICE ORDER'}
+              </Text>
+              <Text style={styles.promoTitle}>
+                {bannerConfig.title || 'Get ₹100 OFF'}
+              </Text>
+              <Text style={styles.promoSub}>
+                {bannerConfig.subtitle || 'Book your first service today'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.bookNowBtn}
+              onPress={() => {
+                const destination = bannerConfig.targetRoute || 'SearchTab';
+                navigation.navigate(destination);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.bookNowText}>
+                {bannerConfig.buttonLabel || 'Book Now'}
+              </Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={styles.bookNowBtn}
-            onPress={() => navigation.navigate('SearchTab')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.bookNowText}>Book Now</Text>
-          </TouchableOpacity>
-        </View>
+        ) : null}
 
         {/* All Services Grid matching Figma (12 categories) */}
         <View style={styles.sectionContainer}>

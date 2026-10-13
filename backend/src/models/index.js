@@ -1,4 +1,4 @@
-﻿const User = require('./User');
+const User = require('./User');
 const Customer = require('./Customer');
 const Provider = require('./Provider');
 const Category = require('./Category');
@@ -9,6 +9,7 @@ const Booking = require('./Booking');
 const Review = require('./Review');
 const Notification = require('./Notification');
 const Admin = require('./Admin');
+const BannerConfig = require('./BannerConfig');
 
 module.exports = {
   User,
@@ -21,5 +22,6 @@ module.exports = {
   Booking,
   Review,
   Notification,
-  Admin
+  Admin,
+  BannerConfig
 };
