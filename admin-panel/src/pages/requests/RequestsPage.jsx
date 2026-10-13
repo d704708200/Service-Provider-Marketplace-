@@ -202,6 +202,15 @@ const RequestsPage = () => {
       )
     },
     {
+      header: 'Created At',
+      key: 'createdAt',
+      render: (item) => (
+        <span className="text-xs text-slate-500 whitespace-nowrap">
+          {item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
+        </span>
+      )
+    },
+    {
       header: 'Actions',
       key: 'actions',
       render: (item) => (
