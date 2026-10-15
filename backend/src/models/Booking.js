@@ -78,6 +78,47 @@ const bookingSchema = new mongoose.Schema(
         coordinates: { type: [Number], default: [0, 0] }
       }
     },
+    spareParts: {
+      items: [
+        {
+          name: { type: String, required: true, trim: true },
+          description: { type: String, trim: true, default: '' },
+          quantity: { type: Number, required: true, min: 1, default: 1 },
+          unitPrice: { type: Number, required: true, min: 0 },
+          labourCharge: { type: Number, default: 0, min: 0 },
+          totalPrice: { type: Number, required: true, min: 0 },
+          notes: { type: String, trim: true, default: '' }
+        }
+      ],
+      partsSubtotal: { type: Number, default: 0, min: 0 },
+      labourSubtotal: { type: Number, default: 0, min: 0 },
+      totalAdditionalAmount: { type: Number, default: 0, min: 0 },
+      status: {
+        type: String,
+        enum: ['none', 'pending_approval', 'approved', 'rejected'],
+        default: 'none'
+      },
+      submittedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Provider',
+        default: null
+      },
+      submittedAt: { type: Date, default: null },
+      reviewedAt: { type: Date, default: null },
+      rejectionReason: { type: String, trim: true, default: null },
+      originalServiceAmount: { type: Number, default: 0, min: 0 },
+      paymentStatus: {
+        type: String,
+        enum: ['pending', 'paid', 'not_applicable'],
+        default: 'pending'
+      },
+      paymentDetails: {
+        razorpayOrderId: { type: String, trim: true, default: null },
+        razorpayPaymentId: { type: String, trim: true, default: null },
+        razorpaySignature: { type: String, trim: true, default: null },
+        paidAt: { type: Date, default: null }
+      }
+    },
     pricing: {
       basePrice: { type: Number, required: true, min: 0 },
       tax: { type: Number, default: 0, min: 0 },

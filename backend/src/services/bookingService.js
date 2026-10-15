@@ -970,6 +970,13 @@ const verifyPayment = async (userId, bookingId, paymentPayload) => {
     return booking;
   }
 
+  // Ensure orderId matches the booking's initiated Razorpay order
+  if (booking.paymentDetails?.razorpayOrderId && booking.paymentDetails.razorpayOrderId !== razorpayOrderId) {
+    const err = new Error('Payment verification failed: Razorpay order ID does not match this booking');
+    err.statusCode = 400;
+    throw err;
+  }
+
   // Verify HMAC SHA-256 signature
   const isValid = paymentService.verifyPaymentSignature({
     orderId: razorpayOrderId,
@@ -1027,6 +1034,310 @@ const recordPaymentFailure = async (userId, bookingId, reason) => {
   return booking;
 };
 
+/**
+ * Provider submits or updates spare parts / material charges for a booking
+ */
+const submitSpareParts = async (userId, bookingId, { items }) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const booking = await Booking.findById(bookingId);
+  if (!booking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Authorization: must be the assigned provider
+  if (!booking.provider || booking.provider.toString() !== provider._id.toString()) {
+    const err = new Error('Access denied: You are not the assigned provider for this booking');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // Only allowed during accepted or in_progress status
+  if (!['accepted', 'in_progress'].includes(booking.status)) {
+    const err = new Error(`Cannot add spare parts to booking in '${booking.status}' status. Must be 'accepted' or 'in_progress'.`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // If already approved or already paid, lock against edits
+  if (booking.spareParts && booking.spareParts.status === 'approved') {
+    const err = new Error('Cannot edit spare parts after customer has approved the bill. Please contact support or customer.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Validate and calculate line items server-side with paise precision
+  let partsSubtotal = 0;
+  let labourSubtotal = 0;
+
+  const sanitizedItems = items.map((item) => {
+    const name = String(item.name).trim();
+    const description = item.description ? String(item.description).trim() : '';
+    const quantity = Math.max(1, parseInt(item.quantity, 10) || 1);
+    const unitPrice = Math.max(0, Math.round(Number(item.unitPrice) * 100) / 100);
+    const labourCharge = Math.max(0, Math.round(Number(item.labourCharge || 0) * 100) / 100);
+    const totalPrice = Math.round((quantity * unitPrice + labourCharge) * 100) / 100;
+    const notes = item.notes ? String(item.notes).trim() : '';
+
+    partsSubtotal += Math.round(quantity * unitPrice * 100) / 100;
+    labourSubtotal += labourCharge;
+
+    return {
+      name,
+      description,
+      quantity,
+      unitPrice,
+      labourCharge,
+      totalPrice,
+      notes
+    };
+  });
+
+  partsSubtotal = Math.round(partsSubtotal * 100) / 100;
+  labourSubtotal = Math.round(labourSubtotal * 100) / 100;
+  const totalAdditionalAmount = Math.round((partsSubtotal + labourSubtotal) * 100) / 100;
+
+  // Preserve original service amount
+  const originalServiceAmount = booking.spareParts?.originalServiceAmount || booking.pricing.totalAmount;
+
+  booking.spareParts = {
+    items: sanitizedItems,
+    partsSubtotal,
+    labourSubtotal,
+    totalAdditionalAmount,
+    status: 'pending_approval',
+    submittedBy: provider._id,
+    submittedAt: new Date(),
+    reviewedAt: null,
+    rejectionReason: null,
+    originalServiceAmount,
+    paymentStatus: booking.paymentMethod === 'cash' ? 'not_applicable' : 'pending',
+    paymentDetails: {
+      razorpayOrderId: booking.spareParts?.paymentDetails?.razorpayOrderId || null,
+      razorpayPaymentId: booking.spareParts?.paymentDetails?.razorpayPaymentId || null,
+      razorpaySignature: booking.spareParts?.paymentDetails?.razorpaySignature || null,
+      paidAt: booking.spareParts?.paymentDetails?.paidAt || null
+    }
+  };
+
+  await booking.save();
+
+  return await Booking.findById(booking._id)
+    .populate('service', 'name price priceType')
+    .populate({
+      path: 'provider',
+      populate: { path: 'user', select: 'name phone' }
+    })
+    .populate({
+      path: 'customer',
+      populate: { path: 'user', select: 'name phone' }
+    });
+};
+
+/**
+ * Customer reviews (approve or reject) proposed spare parts charges
+ */
+const reviewSpareParts = async (userId, bookingId, { action, rejectionReason }) => {
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) {
+    const err = new Error('Customer profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const booking = await Booking.findById(bookingId);
+  if (!booking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Authorization: must be the customer who created the booking
+  if (booking.customer.toString() !== customer._id.toString()) {
+    const err = new Error('Access denied: You do not own this booking');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  if (!booking.spareParts || booking.spareParts.status !== 'pending_approval') {
+    const err = new Error(`No pending spare parts proposal to review (current status: ${booking.spareParts?.status || 'none'})`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (action === 'approve') {
+    booking.spareParts.status = 'approved';
+    booking.spareParts.reviewedAt = new Date();
+    booking.spareParts.rejectionReason = null;
+
+    // Recalculate final totalAmount on booking pricing
+    const baseServiceAmount = booking.spareParts.originalServiceAmount || booking.pricing.totalAmount;
+    const additional = booking.spareParts.totalAdditionalAmount || 0;
+    booking.pricing.totalAmount = Math.round((baseServiceAmount + additional) * 100) / 100;
+  } else if (action === 'reject') {
+    booking.spareParts.status = 'rejected';
+    booking.spareParts.reviewedAt = new Date();
+    booking.spareParts.rejectionReason = (rejectionReason || 'Customer declined proposed parts and charges').trim();
+    // Revert pricing total to originalServiceAmount
+    if (booking.spareParts.originalServiceAmount) {
+      booking.pricing.totalAmount = booking.spareParts.originalServiceAmount;
+    }
+  }
+
+  await booking.save();
+
+  return await Booking.findById(booking._id)
+    .populate('service', 'name price priceType')
+    .populate({
+      path: 'provider',
+      populate: { path: 'user', select: 'name phone' }
+    })
+    .populate({
+      path: 'customer',
+      populate: { path: 'user', select: 'name phone' }
+    });
+};
+
+/**
+ * Customer initiates Razorpay payment specifically for approved additional spare parts
+ */
+const createSparePartsPaymentOrder = async (userId, bookingId) => {
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) {
+    const err = new Error('Customer profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const booking = await Booking.findOne({ _id: bookingId, customer: customer._id });
+  if (!booking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (!booking.spareParts || booking.spareParts.status !== 'approved') {
+    const err = new Error('Spare parts must be approved before payment can be initiated');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (booking.spareParts.paymentStatus === 'paid') {
+    const err = new Error('Spare parts charges have already been paid');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const additionalAmount = booking.spareParts.totalAdditionalAmount;
+  if (!additionalAmount || additionalAmount <= 0) {
+    const err = new Error('No payable amount for spare parts');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const order = await paymentService.createOrder({
+    amountInRupees: additionalAmount,
+    receipt: `${booking.bookingReference}-PARTS`,
+    notes: {
+      bookingId: booking._id.toString(),
+      bookingReference: booking.bookingReference,
+      paymentType: 'spare_parts',
+      customerId: customer._id.toString()
+    }
+  });
+
+  if (!booking.spareParts.paymentDetails) {
+    booking.spareParts.paymentDetails = {};
+  }
+  booking.spareParts.paymentDetails.razorpayOrderId = order.id;
+  await booking.save();
+
+  return {
+    orderId: order.id,
+    amount: order.amount,
+    currency: order.currency || 'INR',
+    keyId,
+    bookingReference: booking.bookingReference,
+    customer: {
+      name: (await User.findById(userId))?.name || 'Customer',
+      phone: (await User.findById(userId))?.phone || ''
+    }
+  };
+};
+
+/**
+ * Verifies Razorpay payment signature for approved spare parts
+ */
+const verifySparePartsPayment = async (userId, bookingId, paymentPayload) => {
+  const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = paymentPayload;
+
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) {
+    const err = new Error('Customer profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const booking = await Booking.findOne({ _id: bookingId, customer: customer._id });
+  if (!booking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (!booking.spareParts || booking.spareParts.status !== 'approved') {
+    const err = new Error('Spare parts must be approved before payment verification');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (booking.spareParts.paymentStatus === 'paid') {
+    return booking;
+  }
+
+  if (booking.spareParts.paymentDetails?.razorpayOrderId && booking.spareParts.paymentDetails.razorpayOrderId !== razorpayOrderId) {
+    const err = new Error('Payment verification failed: Razorpay order ID does not match spare parts bill');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const isValid = paymentService.verifyPaymentSignature({
+    orderId: razorpayOrderId,
+    paymentId: razorpayPaymentId,
+    signature: razorpaySignature
+  });
+
+  if (!isValid) {
+    const err = new Error('Payment verification failed: Invalid payment signature');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  booking.spareParts.paymentStatus = 'paid';
+  if (!booking.spareParts.paymentDetails) booking.spareParts.paymentDetails = {};
+  booking.spareParts.paymentDetails.razorpayOrderId = razorpayOrderId;
+  booking.spareParts.paymentDetails.razorpayPaymentId = razorpayPaymentId;
+  booking.spareParts.paymentDetails.razorpaySignature = razorpaySignature;
+  booking.spareParts.paymentDetails.paidAt = new Date();
+
+  await booking.save();
+
+  return await Booking.findById(booking._id)
+    .populate('service', 'name price priceType')
+    .populate({
+      path: 'provider',
+      populate: { path: 'user', select: 'name phone' }
+    });
+};
+
 module.exports = {
   createBooking,
   getCustomerBookings,
@@ -1044,5 +1355,9 @@ module.exports = {
   cancelBookingByAdmin,
   createPaymentOrder,
   verifyPayment,
-  recordPaymentFailure
+  recordPaymentFailure,
+  submitSpareParts,
+  reviewSpareParts,
+  createSparePartsPaymentOrder,
+  verifySparePartsPayment
 };

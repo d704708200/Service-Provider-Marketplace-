@@ -238,6 +238,58 @@ const recordPaymentFailure = async (req, res, next) => {
   }
 };
 
+const submitSpareParts = async (req, res, next) => {
+  try {
+    const updatedBooking = await bookingService.submitSpareParts(req.user._id, req.params.id, req.body);
+    res.status(200).json({
+      success: true,
+      message: 'Spare parts and material charges submitted for customer approval',
+      data: updatedBooking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const reviewSpareParts = async (req, res, next) => {
+  try {
+    const updatedBooking = await bookingService.reviewSpareParts(req.user._id, req.params.id, req.body);
+    res.status(200).json({
+      success: true,
+      message: `Spare parts proposal ${req.body.action}ed successfully`,
+      data: updatedBooking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const createSparePartsPaymentOrder = async (req, res, next) => {
+  try {
+    const orderData = await bookingService.createSparePartsPaymentOrder(req.user._id, req.params.id);
+    res.status(200).json({
+      success: true,
+      message: 'Razorpay order for spare parts created successfully',
+      data: orderData
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const verifySparePartsPayment = async (req, res, next) => {
+  try {
+    const updatedBooking = await bookingService.verifySparePartsPayment(req.user._id, req.params.id, req.body);
+    res.status(200).json({
+      success: true,
+      message: 'Spare parts payment verified successfully',
+      data: updatedBooking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createBooking,
   getCustomerBookings,
@@ -255,5 +307,9 @@ module.exports = {
   cancelAdminBooking,
   createPaymentOrder,
   verifyPayment,
-  recordPaymentFailure
+  recordPaymentFailure,
+  submitSpareParts,
+  reviewSpareParts,
+  createSparePartsPaymentOrder,
+  verifySparePartsPayment
 };

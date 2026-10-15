@@ -261,11 +261,26 @@ const deleteDocument = async (req, res, next) => {
  */
 const getPublicProviders = async (req, res, next) => {
   try {
-    const providers = await providerService.getPublicProviders(req.query);
+    const result = await providerService.getPublicProviders(req.query);
+    if (result && !Array.isArray(result) && Array.isArray(result.providers)) {
+      return res.status(200).json({
+        success: true,
+        message: 'Verified marketplace providers retrieved successfully',
+        data: result.providers,
+        pagination: result.pagination
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: 'Verified marketplace providers retrieved successfully',
-      data: providers
+      data: result,
+      pagination: result?.pagination || {
+        total: result.length,
+        page: 1,
+        limit: result.length,
+        totalPages: 1
+      }
     });
   } catch (error) {
     next(error);

@@ -13,7 +13,10 @@ import {
   MapPin,
   User,
   Building,
-  CreditCard
+  CreditCard,
+  Wrench,
+  Package,
+  ShieldCheck
 } from 'lucide-react';
 import { bookingApi } from '../../services/api';
 import Card from '../../components/common/Card';
@@ -448,6 +451,97 @@ const RequestsPage = () => {
                 </p>
               </div>
             </div>
+
+            {/* Spare Parts & Materials Breakdown Section */}
+            {selectedBooking.spareParts &&
+              selectedBooking.spareParts.status !== 'none' &&
+              selectedBooking.spareParts.items?.length > 0 && (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Wrench className="w-4 h-4 text-indigo-600" />
+                      <h3 className="text-xs font-bold text-slate-800 uppercase">
+                        Spare Parts & Materials Breakdown
+                      </h3>
+                    </div>
+                    <span
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                        selectedBooking.spareParts.status === 'approved'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : selectedBooking.spareParts.status === 'rejected'
+                          ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}
+                    >
+                      {selectedBooking.spareParts.status.replace('_', ' ').toUpperCase()}
+                    </span>
+                  </div>
+
+                  <div className="divide-y divide-slate-200 text-xs">
+                    {selectedBooking.spareParts.items.map((part, pIdx) => (
+                      <div key={pIdx} className="py-2 flex items-start justify-between">
+                        <div>
+                          <p className="font-semibold text-slate-900">{part.name}</p>
+                          {part.description && (
+                            <p className="text-[11px] text-slate-500">{part.description}</p>
+                          )}
+                          <p className="text-[11px] text-indigo-600">
+                            Qty: {part.quantity} × ₹{part.unitPrice}
+                            {part.labourCharge > 0 ? ` + Labour: ₹${part.labourCharge}` : ''}
+                          </p>
+                          {part.notes && (
+                            <p className="text-[10px] text-slate-400 italic">Note: {part.notes}</p>
+                          )}
+                        </div>
+                        <span className="font-bold text-slate-800">₹{part.totalPrice}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">ORIGINAL SERVICE</span>
+                      <span className="font-bold text-slate-800">
+                        ₹{selectedBooking.spareParts.originalServiceAmount || selectedBooking.pricing?.basePrice}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">PARTS SUBTOTAL</span>
+                      <span className="font-bold text-slate-800">
+                        ₹{selectedBooking.spareParts.partsSubtotal || 0}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">LABOUR SUBTOTAL</span>
+                      <span className="font-bold text-slate-800">
+                        ₹{selectedBooking.spareParts.labourSubtotal || 0}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-indigo-600 block text-[10px] font-bold">REVISED PAYABLE</span>
+                      <span className="font-extrabold text-indigo-700">
+                        ₹{selectedBooking.pricing?.totalAmount}
+                      </span>
+                    </div>
+                  </div>
+
+                  {selectedBooking.spareParts.rejectionReason && (
+                    <div className="p-2 bg-rose-50 border border-rose-200 rounded text-xs text-rose-700">
+                      <span className="font-bold">Rejection Reason: </span>
+                      {selectedBooking.spareParts.rejectionReason}
+                    </div>
+                  )}
+
+                  {selectedBooking.spareParts.paymentStatus && (
+                    <div className="text-[11px] text-slate-500">
+                      Payment Status:{' '}
+                      <span className="font-semibold capitalize text-slate-700">
+                        {selectedBooking.spareParts.paymentStatus}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
 
             {/* Customer & Provider Columns */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

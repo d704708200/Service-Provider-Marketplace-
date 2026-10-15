@@ -541,19 +541,107 @@ const getPublicProviders = async (query = {}) => {
     filter.showInTopRated = true;
   }
 
-  if (query.category) {
-    filter.categories = query.category;
+  // 1. Resolve Category Filter (supports ObjectId, slug, name, or legacy string)
+  if (query.category && String(query.category).trim() && query.category !== 'all') {
+    const rawCategory = String(query.category).trim();
+    let categoryIds = [];
+
+    if (mongoose.Types.ObjectId.isValid(rawCategory)) {
+      categoryIds.push(new mongoose.Types.ObjectId(rawCategory));
+    } else {
+      // Find matching categories by exact name, slug, or partial name
+      const catRegex = new RegExp(`^${escapeRegex(rawCategory)}$`, 'i');
+      const matchingCats = await Category.find({
+        $or: [
+          { name: catRegex },
+          { slug: rawCategory.toLowerCase() }
+        ]
+      }).select('_id').lean();
+
+      if (matchingCats.length > 0) {
+        categoryIds = matchingCats.map((c) => c._id);
+      }
+    }
+
+    // Match on current categories array, or legacy category / specialization fields
+    const categoryConditions = [];
+    if (categoryIds.length > 0) {
+      categoryConditions.push({ categories: { $in: categoryIds } });
+      categoryConditions.push({ category: { $in: categoryIds } });
+    }
+    // Also match legacy text fields if string was passed
+    const textCatRegex = new RegExp(escapeRegex(rawCategory), 'i');
+    categoryConditions.push({ category: textCatRegex });
+    categoryConditions.push({ serviceCategories: textCatRegex });
+    categoryConditions.push({ specialization: textCatRegex });
+
+    if (categoryConditions.length === 1) {
+      Object.assign(filter, categoryConditions[0]);
+    } else {
+      filter.$and = filter.$and || [];
+      filter.$and.push({ $or: categoryConditions });
+    }
   }
 
+  // 2. Comprehensive Search Query: match businessName, bio, category name/slug, or service name
   if (query.search && query.search.trim()) {
-    const searchRegex = new RegExp(escapeRegex(query.search.trim()), 'i');
-    filter.$or = [{ businessName: searchRegex }, { bio: searchRegex }];
+    const trimmedSearch = query.search.trim();
+    const searchRegex = new RegExp(escapeRegex(trimmedSearch), 'i');
+
+    // Find any categories matching the search text
+    const matchedCategories = await Category.find({
+      $or: [
+        { name: searchRegex },
+        { slug: searchRegex }
+      ]
+    }).select('_id').lean();
+    const matchedCategoryIds = matchedCategories.map((c) => c._id);
+
+    // Find any services matching the search text
+    const matchedServices = await Service.find({
+      name: searchRegex,
+      isActive: true
+    }).select('provider category').lean();
+
+    const providerIdsFromServices = matchedServices
+      .map((s) => s.provider)
+      .filter((p) => p && mongoose.Types.ObjectId.isValid(p));
+
+    // Also collect category IDs from matched services
+    const categoryIdsFromServices = matchedServices
+      .map((s) => s.category)
+      .filter((c) => c && mongoose.Types.ObjectId.isValid(c));
+
+    const combinedCategoryIds = [
+      ...matchedCategoryIds,
+      ...categoryIdsFromServices
+    ];
+
+    const searchConditions = [
+      { businessName: searchRegex },
+      { bio: searchRegex },
+      { specialization: searchRegex },
+      { category: searchRegex },
+      { serviceCategories: searchRegex }
+    ];
+
+    if (combinedCategoryIds.length > 0) {
+      searchConditions.push({ categories: { $in: combinedCategoryIds } });
+    }
+
+    if (providerIdsFromServices.length > 0) {
+      searchConditions.push({ _id: { $in: providerIdsFromServices } });
+    }
+
+    filter.$and = filter.$and || [];
+    filter.$and.push({ $or: searchConditions });
   }
 
   const sortOrder = isTopRatedOnly
     ? { topRatedOrder: 1, 'rating.average': -1, createdAt: -1 }
     : { 'rating.average': -1, completedBookingsCount: -1 };
 
+  const page = query.page ? Math.max(1, parseInt(query.page, 10)) : undefined;
   const limit = query.limit ? Math.max(1, parseInt(query.limit, 10)) : undefined;
 
   let queryBuilder = Provider.find(filter)
@@ -565,17 +653,22 @@ const getPublicProviders = async (query = {}) => {
     .populate('categories', 'name slug icon')
     .sort(sortOrder);
 
-  if (limit) {
+  if (page && limit) {
+    queryBuilder = queryBuilder.skip((page - 1) * limit).limit(limit);
+  } else if (limit) {
     queryBuilder = queryBuilder.limit(limit);
   }
 
-  const providers = await queryBuilder.lean();
+  const [providers, totalCount] = await Promise.all([
+    queryBuilder.lean(),
+    Provider.countDocuments(filter)
+  ]);
 
   // Filter out any where user account is inactive (user was matched null)
   const activeProviders = providers.filter((p) => p.user);
 
   // Augment with base price from services & persisted reviews calculation
-  return await Promise.all(
+  const enrichedProviders = await Promise.all(
     activeProviders.map(async (p) => {
       // Calculate rating from persistent reviews if available
       const reviews = await Review.find({ provider: p._id, isPublic: true }).lean();
@@ -597,7 +690,7 @@ const getPublicProviders = async (query = {}) => {
       const startingPrice = minService ? minService.price : null;
 
       const specialization =
-        p.categories && p.categories.length > 0 ? p.categories[0].name : '';
+        p.categories && p.categories.length > 0 ? p.categories[0].name : (p.specialization || '');
 
       return {
         _id: p._id,
@@ -619,6 +712,31 @@ const getPublicProviders = async (query = {}) => {
       };
     })
   );
+
+  // If pagination parameters were explicitly passed, return pagination object
+  if (page !== undefined || (query.limit !== undefined && query.includePagination === 'true')) {
+    const currentLimit = limit || enrichedProviders.length;
+    const currentPage = page || 1;
+    return {
+      providers: enrichedProviders,
+      pagination: {
+        page: currentPage,
+        limit: currentLimit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / currentLimit) || 1
+      }
+    };
+  }
+
+  // Default array return for direct compatibility with existing clients
+  enrichedProviders.pagination = {
+    page: 1,
+    limit: limit || totalCount,
+    total: totalCount,
+    totalPages: limit ? (Math.ceil(totalCount / limit) || 1) : 1
+  };
+
+  return enrichedProviders;
 };
 
 /**

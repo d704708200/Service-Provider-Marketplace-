@@ -7,7 +7,9 @@ const {
   validateCreateBooking,
   validateCancelBooking,
   validateRejectBooking,
-  validateVerifyPayment
+  validateVerifyPayment,
+  validateSubmitSpareParts,
+  validateReviewSpareParts
 } = require('../middleware/validation');
 
 // ==========================================
@@ -48,6 +50,35 @@ router.patch(
   validateObjectId('id'),
   validateCancelBooking,
   bookingController.cancelCustomerBooking
+);
+
+// Customer reviews (approve / reject) proposed spare parts
+router.patch(
+  '/customer/:id/spare-parts/review',
+  authenticate,
+  requireRole('customer'),
+  validateObjectId('id'),
+  validateReviewSpareParts,
+  bookingController.reviewSpareParts
+);
+
+// Customer creates Razorpay order for approved spare parts
+router.post(
+  '/customer/:id/spare-parts/payment/order',
+  authenticate,
+  requireRole('customer'),
+  validateObjectId('id'),
+  bookingController.createSparePartsPaymentOrder
+);
+
+// Customer verifies Razorpay payment for approved spare parts
+router.post(
+  '/customer/:id/spare-parts/payment/verify',
+  authenticate,
+  requireRole('customer'),
+  validateObjectId('id'),
+  validateVerifyPayment,
+  bookingController.verifySparePartsPayment
 );
 
 // Initiate Razorpay payment order for customer booking
@@ -133,6 +164,16 @@ router.patch(
   requireRole('provider'),
   validateObjectId('id'),
   bookingController.startProviderService
+);
+
+// Provider submits / updates spare parts charges (accepted or in_progress)
+router.post(
+  '/provider/:id/spare-parts',
+  authenticate,
+  requireRole('provider'),
+  validateObjectId('id'),
+  validateSubmitSpareParts,
+  bookingController.submitSpareParts
 );
 
 // Complete service (in_progress -> completed)

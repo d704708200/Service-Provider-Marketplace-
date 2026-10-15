@@ -57,6 +57,21 @@ const providerSchema = new mongoose.Schema(
         ref: 'Category'
       }
     ],
+    // Legacy compatibility fields
+    category: {
+      type: mongoose.Schema.Types.Mixed,
+      default: undefined
+    },
+    serviceCategories: [
+      {
+        type: mongoose.Schema.Types.Mixed
+      }
+    ],
+    specialization: {
+      type: String,
+      trim: true,
+      default: undefined
+    },
     experienceYears: {
       type: Number,
       min: [0, 'Experience cannot be negative'],

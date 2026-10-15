@@ -316,12 +316,26 @@ export default function RequestServiceScreen({ route, navigation }) {
       }
     };
 
-    const rzp = new window.Razorpay(options);
+    let rzp;
+    try {
+      rzp = new window.Razorpay(options);
+    } catch (e) {
+      setPaymentProcessing(false);
+      const errMsg = 'Razorpay checkout initialization failed. Please check gateway test credentials or use cash on delivery.';
+      setPaymentFailedNotice(errMsg);
+      Alert.alert('Payment System Notice', errMsg);
+      return;
+    }
+
     rzp.on('payment.failed', async function (response) {
       setPaymentProcessing(false);
-      setPaymentFailedNotice(response.error?.description || 'Payment failed. Please try again.');
+      const failReason = response.error?.description || response.error?.reason || 'Payment failed at gateway';
+      setPaymentFailedNotice(
+        `${failReason}. (Note: Razorpay test keys in backend/.env may be inactive/expired on the live gateway)`
+      );
+      Alert.alert('Payment Notice', `Payment failed: ${failReason}. You can retry or choose Pay on Service.`);
       try {
-        await bookingApi.recordPaymentFailure(bookingId, response.error?.description || 'Payment failed');
+        await bookingApi.recordPaymentFailure(bookingId, failReason);
       } catch (e) {
         // ignore
       }

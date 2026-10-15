@@ -1242,6 +1242,91 @@ const validateVerifyPayment = (req, res, next) => {
   next();
 };
 
+const validateSubmitSpareParts = (req, res, next) => {
+  const { items } = req.body;
+  const errors = [];
+
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'Validation failed: At least one spare part or material item is required',
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  items.forEach((item, index) => {
+    if (!item || typeof item !== 'object') {
+      errors.push(`Item at index ${index} must be an object`);
+      return;
+    }
+
+    if (!item.name || typeof item.name !== 'string' || !item.name.trim()) {
+      errors.push(`Item #${index + 1}: Name is required`);
+    }
+
+    const qty = Number(item.quantity);
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isInteger(qty)) {
+      errors.push(`Item #${index + 1}: Quantity must be a positive integer`);
+    }
+
+    const price = Number(item.unitPrice);
+    if (!Number.isFinite(price) || price < 0) {
+      errors.push(`Item #${index + 1}: Unit price must be a non-negative number`);
+    }
+
+    if (item.labourCharge !== undefined) {
+      const labour = Number(item.labourCharge);
+      if (!Number.isFinite(labour) || labour < 0) {
+        errors.push(`Item #${index + 1}: Labour charge must be a non-negative number`);
+      }
+    }
+  });
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateReviewSpareParts = (req, res, next) => {
+  const { action, rejectionReason } = req.body;
+  const errors = [];
+
+  if (!action || !['approve', 'reject'].includes(action)) {
+    errors.push("Action must be either 'approve' or 'reject'");
+  }
+
+  if (action === 'reject') {
+    if (!rejectionReason || typeof rejectionReason !== 'string' || !rejectionReason.trim()) {
+      errors.push('Rejection reason is required when rejecting proposed parts');
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   validateRegisterCustomer,
   validateRegisterProvider,
@@ -1269,7 +1354,9 @@ module.exports = {
   validateProviderServiceArea,
   validateUpdateProviderServiceArea,
   validateUpdateBannerConfig,
-  validateVerifyPayment
+  validateVerifyPayment,
+  validateSubmitSpareParts,
+  validateReviewSpareParts
 };
 
 

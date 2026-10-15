@@ -5,7 +5,8 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
-  TouchableOpacity
+  TouchableOpacity,
+  TextInput
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -117,6 +118,143 @@ export default function BookingDetailScreen({ route, navigation }) {
     ? `${new Date(booking.scheduledDate).toLocaleDateString()} (${booking.scheduledTimeSlot?.startTime || ''} - ${booking.scheduledTimeSlot?.endTime || ''})`
     : 'N/A';
 
+  const [showPartsModal, setShowPartsModal] = useState(false);
+  const [partsList, setPartsList] = useState([]);
+  const [partsSubmitting, setPartsSubmitting] = useState(false);
+
+  // Initialize partsList from existing booking spareParts
+  const openPartsModal = () => {
+    if (booking?.spareParts?.items?.length) {
+      setPartsList(
+        booking.spareParts.items.map((item) => ({
+          name: item.name || '',
+          description: item.description || '',
+          quantity: String(item.quantity || 1),
+          unitPrice: String(item.unitPrice || 0),
+          labourCharge: String(item.labourCharge || 0),
+          notes: item.notes || ''
+        }))
+      );
+    } else {
+      setPartsList([
+        {
+          name: '',
+          description: '',
+          quantity: '1',
+          unitPrice: '',
+          labourCharge: '0',
+          notes: ''
+        }
+      ]);
+    }
+    setShowPartsModal(true);
+  };
+
+  const handleAddPartRow = () => {
+    setPartsList((prev) => [
+      ...prev,
+      {
+        name: '',
+        description: '',
+        quantity: '1',
+        unitPrice: '',
+        labourCharge: '0',
+        notes: ''
+      }
+    ]);
+  };
+
+  const handleRemovePartRow = (index) => {
+    setPartsList((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdatePartRow = (index, field, value) => {
+    setPartsList((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+  };
+
+  const calculateProposedTotals = () => {
+    let partsSubtotal = 0;
+    let labourSubtotal = 0;
+    partsList.forEach((p) => {
+      const q = Math.max(1, parseInt(p.quantity, 10) || 1);
+      const u = Math.max(0, parseFloat(p.unitPrice) || 0);
+      const l = Math.max(0, parseFloat(p.labourCharge) || 0);
+      partsSubtotal += q * u;
+      labourSubtotal += l;
+    });
+    const totalAdditional = partsSubtotal + labourSubtotal;
+    const originalAmount = booking?.spareParts?.originalServiceAmount || booking?.pricing?.totalAmount || 0;
+    return {
+      partsSubtotal: Math.round(partsSubtotal * 100) / 100,
+      labourSubtotal: Math.round(labourSubtotal * 100) / 100,
+      totalAdditional: Math.round(totalAdditional * 100) / 100,
+      newEstimatedTotal: Math.round((originalAmount + totalAdditional) * 100) / 100
+    };
+  };
+
+  const handleSubmitParts = async () => {
+    if (!partsList.length) {
+      Alert.alert('Validation Error', 'Please add at least one spare part or material.');
+      return;
+    }
+
+    for (let i = 0; i < partsList.length; i++) {
+      const p = partsList[i];
+      if (!p.name || !p.name.trim()) {
+        Alert.alert('Validation Error', `Part #${i + 1} is missing a name.`);
+        return;
+      }
+      const q = parseInt(p.quantity, 10);
+      if (isNaN(q) || q < 1) {
+        Alert.alert('Validation Error', `Part #${i + 1} must have a quantity of at least 1.`);
+        return;
+      }
+      const u = parseFloat(p.unitPrice);
+      if (isNaN(u) || u < 0) {
+        Alert.alert('Validation Error', `Part #${i + 1} must have a valid non-negative unit price.`);
+        return;
+      }
+      const l = parseFloat(p.labourCharge || 0);
+      if (isNaN(l) || l < 0) {
+        Alert.alert('Validation Error', `Part #${i + 1} labour charge cannot be negative.`);
+        return;
+      }
+    }
+
+    setPartsSubmitting(true);
+    try {
+      const itemsPayload = partsList.map((p) => ({
+        name: p.name.trim(),
+        description: p.description?.trim() || undefined,
+        quantity: parseInt(p.quantity, 10) || 1,
+        unitPrice: parseFloat(p.unitPrice) || 0,
+        labourCharge: parseFloat(p.labourCharge) || 0,
+        notes: p.notes?.trim() || undefined
+      }));
+
+      const res = await bookingApi.submitSpareParts(booking._id, { items: itemsPayload });
+      if (res?.success) {
+        Alert.alert('Success', 'Spare parts bill submitted for customer approval.');
+        setBooking(res.data);
+        setShowPartsModal(false);
+      }
+    } catch (err) {
+      Alert.alert('Submission Failed', err.userMessage || 'Could not submit spare parts');
+    } finally {
+      setPartsSubmitting(false);
+    }
+  };
+
+  const canAddParts =
+    (booking.status === 'accepted' || booking.status === 'in_progress') &&
+    booking.spareParts?.status !== 'approved';
+
+  const modalTotals = calculateProposedTotals();
+
   return (
     <View style={styles.container}>
       <Header
@@ -128,7 +266,7 @@ export default function BookingDetailScreen({ route, navigation }) {
       />
 
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 140 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Status Card */}
@@ -165,6 +303,13 @@ export default function BookingDetailScreen({ route, navigation }) {
           </View>
 
           <View style={styles.metaRow}>
+            <Text style={styles.metaLabel}>Payment Status</Text>
+            <Text style={[styles.metaVal, { textTransform: 'capitalize' }]}>
+              {booking.paymentStatus || 'Pending'} ({booking.paymentMethod?.toUpperCase() || 'CASH'})
+            </Text>
+          </View>
+
+          <View style={styles.metaRow}>
             <Text style={styles.metaLabel}>Mode</Text>
             <Text style={styles.metaVal}>{isInstant ? 'Instant Request' : 'Scheduled'}</Text>
           </View>
@@ -173,6 +318,105 @@ export default function BookingDetailScreen({ route, navigation }) {
             <Text style={styles.metaLabel}>Schedule</Text>
             <Text style={styles.metaVal}>{scheduleText}</Text>
           </View>
+        </Card>
+
+        {/* Spare Parts & Materials Card */}
+        <Card style={styles.card}>
+          <View style={styles.partsHeaderRow}>
+            <View>
+              <Text style={styles.sectionTitle}>Spare Parts & Materials</Text>
+              <Text style={styles.sectionSubtitle}>
+                Add replacement components & installation fees
+              </Text>
+            </View>
+            {booking.spareParts?.status && booking.spareParts.status !== 'none' && (
+              <Badge
+                label={booking.spareParts.status.replace('_', ' ').toUpperCase()}
+                variant={
+                  booking.spareParts.status === 'approved'
+                    ? 'success'
+                    : booking.spareParts.status === 'rejected'
+                    ? 'danger'
+                    : 'warning'
+                }
+                size="sm"
+              />
+            )}
+          </View>
+
+          {booking.spareParts?.items?.length > 0 ? (
+            <View style={styles.partsBreakdownBox}>
+              {booking.spareParts.items.map((item, idx) => (
+                <View key={idx} style={styles.partItemRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.partItemName}>{item.name}</Text>
+                    {item.description ? (
+                      <Text style={styles.partItemDesc}>{item.description}</Text>
+                    ) : null}
+                    <Text style={styles.partItemMeta}>
+                      Qty: {item.quantity} × ₹{item.unitPrice}
+                      {item.labourCharge > 0 ? ` + Labour: ₹${item.labourCharge}` : ''}
+                    </Text>
+                    {item.notes ? (
+                      <Text style={styles.partItemNotes}>Note: {item.notes}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={styles.partItemTotal}>₹{item.totalPrice}</Text>
+                </View>
+              ))}
+
+              <View style={styles.partsDivider} />
+
+              <View style={styles.partsSummaryRow}>
+                <Text style={styles.partsSummaryLabel}>Parts Subtotal</Text>
+                <Text style={styles.partsSummaryVal}>₹{booking.spareParts.partsSubtotal || 0}</Text>
+              </View>
+              <View style={styles.partsSummaryRow}>
+                <Text style={styles.partsSummaryLabel}>Labour Subtotal</Text>
+                <Text style={styles.partsSummaryVal}>₹{booking.spareParts.labourSubtotal || 0}</Text>
+              </View>
+              <View style={styles.partsSummaryRow}>
+                <Text style={styles.partsSummaryTotalLabel}>Additional Charges</Text>
+                <Text style={styles.partsSummaryTotalVal}>
+                  ₹{booking.spareParts.totalAdditionalAmount || 0}
+                </Text>
+              </View>
+
+              {booking.spareParts.status === 'rejected' && booking.spareParts.rejectionReason ? (
+                <View style={styles.rejectionBox}>
+                  <Ionicons name="alert-circle" size={16} color="#F43F5E" />
+                  <Text style={styles.rejectionText}>
+                    Customer rejected: {booking.spareParts.rejectionReason}
+                  </Text>
+                </View>
+              ) : null}
+
+              {booking.spareParts.status === 'approved' && (
+                <View style={styles.approvedBox}>
+                  <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                  <Text style={styles.approvedText}>
+                    Approved by customer. Total revised to ₹{booking.pricing?.totalAmount}.
+                    {booking.spareParts.paymentStatus === 'paid' ? ' (Paid)' : ' (Payment pending)'}
+                  </Text>
+                </View>
+              )}
+            </View>
+          ) : (
+            <Text style={styles.noPartsText}>No spare parts added to this booking yet.</Text>
+          )}
+
+          {canAddParts && (
+            <TouchableOpacity
+              style={styles.addPartsBtn}
+              onPress={openPartsModal}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="construct-outline" size={16} color="#A78BFA" />
+              <Text style={styles.addPartsBtnText}>
+                {booking.spareParts?.items?.length ? 'Edit Spare Parts Bill' : '+ Add Spare Parts & Labour'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </Card>
 
         {/* Customer & Location Details */}
@@ -282,6 +526,168 @@ export default function BookingDetailScreen({ route, navigation }) {
               style={styles.actionBtn}
             />
           )}
+        </View>
+      )}
+
+      {/* Spare Parts Entry Modal */}
+      {showPartsModal && (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Spare Parts & Materials</Text>
+                <Text style={styles.modalSubtitle}>Bill items used for this job</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowPartsModal(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {partsList.map((item, index) => {
+                const q = Math.max(1, parseInt(item.quantity, 10) || 1);
+                const u = Math.max(0, parseFloat(item.unitPrice) || 0);
+                const l = Math.max(0, parseFloat(item.labourCharge) || 0);
+                const lineTotal = Math.round((q * u + l) * 100) / 100;
+
+                return (
+                  <View key={index} style={styles.partCardInput}>
+                    <View style={styles.partCardInputHeader}>
+                      <Text style={styles.partCardIndexText}>Part / Material #{index + 1}</Text>
+                      {partsList.length > 1 && (
+                        <TouchableOpacity
+                          onPress={() => handleRemovePartRow(index)}
+                          style={styles.removePartBtn}
+                        >
+                          <Ionicons name="trash-outline" size={16} color="#F43F5E" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    <Text style={styles.inputLabel}>Item Name *</Text>
+                    <TextInput
+                      style={styles.inputField}
+                      placeholder="e.g. Copper Pipe, Motor Capacitor, MCB"
+                      placeholderTextColor="#6B7280"
+                      value={item.name}
+                      onChangeText={(val) => handleUpdatePartRow(index, 'name', val)}
+                    />
+
+                    <Text style={styles.inputLabel}>Description / Model (Optional)</Text>
+                    <TextInput
+                      style={styles.inputField}
+                      placeholder="e.g. Havells 25A 10kA C-Curve"
+                      placeholderTextColor="#6B7280"
+                      value={item.description}
+                      onChangeText={(val) => handleUpdatePartRow(index, 'description', val)}
+                    />
+
+                    <View style={styles.inputRow}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.inputLabel}>Qty *</Text>
+                        <TextInput
+                          style={styles.inputField}
+                          keyboardType="numeric"
+                          placeholder="1"
+                          placeholderTextColor="#6B7280"
+                          value={item.quantity}
+                          onChangeText={(val) => handleUpdatePartRow(index, 'quantity', val)}
+                        />
+                      </View>
+                      <View style={{ flex: 1.5, marginRight: 8 }}>
+                        <Text style={styles.inputLabel}>Unit Price (₹) *</Text>
+                        <TextInput
+                          style={styles.inputField}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          placeholderTextColor="#6B7280"
+                          value={item.unitPrice}
+                          onChangeText={(val) => handleUpdatePartRow(index, 'unitPrice', val)}
+                        />
+                      </View>
+                      <View style={{ flex: 1.5 }}>
+                        <Text style={styles.inputLabel}>Labour (₹)</Text>
+                        <TextInput
+                          style={styles.inputField}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          placeholderTextColor="#6B7280"
+                          value={item.labourCharge}
+                          onChangeText={(val) => handleUpdatePartRow(index, 'labourCharge', val)}
+                        />
+                      </View>
+                    </View>
+
+                    <Text style={styles.inputLabel}>Notes (Optional)</Text>
+                    <TextInput
+                      style={styles.inputField}
+                      placeholder="e.g. Original Havells box provided to customer"
+                      placeholderTextColor="#6B7280"
+                      value={item.notes}
+                      onChangeText={(val) => handleUpdatePartRow(index, 'notes', val)}
+                    />
+
+                    <View style={styles.lineTotalRow}>
+                      <Text style={styles.lineTotalLabel}>Line Total:</Text>
+                      <Text style={styles.lineTotalVal}>₹{lineTotal.toFixed(2)}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+
+              <TouchableOpacity
+                style={styles.addAnotherBtn}
+                onPress={handleAddPartRow}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="add-circle-outline" size={18} color="#A78BFA" />
+                <Text style={styles.addAnotherText}>+ Add Another Part / Item</Text>
+              </TouchableOpacity>
+
+              {/* Estimate Summary Box */}
+              <View style={styles.estimateBox}>
+                <View style={styles.estimateRow}>
+                  <Text style={styles.estimateLabel}>Original Service Amount:</Text>
+                  <Text style={styles.estimateVal}>
+                    ₹{booking?.spareParts?.originalServiceAmount || booking?.pricing?.totalAmount || 0}
+                  </Text>
+                </View>
+                <View style={styles.estimateRow}>
+                  <Text style={styles.estimateLabel}>Parts Subtotal:</Text>
+                  <Text style={styles.estimateVal}>₹{modalTotals.partsSubtotal}</Text>
+                </View>
+                <View style={styles.estimateRow}>
+                  <Text style={styles.estimateLabel}>Labour Subtotal:</Text>
+                  <Text style={styles.estimateVal}>₹{modalTotals.labourSubtotal}</Text>
+                </View>
+                <View style={styles.estimateDivider} />
+                <View style={styles.estimateRow}>
+                  <Text style={styles.estimateTotalLabel}>New Revised Total:</Text>
+                  <Text style={styles.estimateTotalVal}>₹{modalTotals.newEstimatedTotal}</Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.cancelModalBtn}
+                onPress={() => setShowPartsModal(false)}
+              >
+                <Text style={styles.cancelModalText}>Cancel</Text>
+              </TouchableOpacity>
+              <Button
+                title={partsSubmitting ? 'Submitting...' : 'Submit for Approval'}
+                variant="primary"
+                loading={partsSubmitting}
+                disabled={partsSubmitting}
+                onPress={handleSubmitParts}
+                style={{ flex: 2 }}
+              />
+            </View>
+          </View>
         </View>
       )}
     </View>
@@ -421,5 +827,317 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     width: '100%'
+  },
+  sectionSubtitle: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2,
+    marginBottom: spacing.xs
+  },
+  partsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm
+  },
+  partsBreakdownBox: {
+    marginTop: spacing.xs
+  },
+  partItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: '#201C30'
+  },
+  partItemName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#F3F4F6'
+  },
+  partItemDesc: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2
+  },
+  partItemMeta: {
+    fontSize: 11,
+    color: '#A78BFA',
+    marginTop: 2
+  },
+  partItemNotes: {
+    fontSize: 11,
+    fontStyle: 'italic',
+    color: '#6B7280',
+    marginTop: 2
+  },
+  partItemTotal: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginLeft: 8
+  },
+  partsDivider: {
+    height: 1,
+    backgroundColor: '#252136',
+    marginVertical: spacing.sm
+  },
+  partsSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 3
+  },
+  partsSummaryLabel: {
+    fontSize: 12,
+    color: '#9CA3AF'
+  },
+  partsSummaryVal: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#E5E7EB'
+  },
+  partsSummaryTotalLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#A78BFA'
+  },
+  partsSummaryTotalVal: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#A78BFA'
+  },
+  rejectionBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#311018',
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.sm
+  },
+  rejectionText: {
+    fontSize: 11,
+    color: '#FDA4AF',
+    flex: 1
+  },
+  approvedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#062E1F',
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.sm
+  },
+  approvedText: {
+    fontSize: 11,
+    color: '#6EE7B7',
+    flex: 1
+  },
+  noPartsText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    paddingVertical: spacing.sm
+  },
+  addPartsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#7C3AED',
+    backgroundColor: '#1E1238',
+    paddingVertical: 10,
+    borderRadius: borderRadius.md,
+    marginTop: spacing.md
+  },
+  addPartsBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#A78BFA'
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.md,
+    zIndex: 999
+  },
+  modalContainer: {
+    backgroundColor: '#161420',
+    width: '100%',
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#2A253E',
+    overflow: 'hidden'
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: '#252136'
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  modalSubtitle: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2
+  },
+  modalCloseBtn: {
+    padding: 4
+  },
+  modalBody: {
+    padding: spacing.md
+  },
+  partCardInput: {
+    backgroundColor: '#1C1929',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: '#2D2845',
+    marginBottom: spacing.md
+  },
+  partCardInputHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6
+  },
+  partCardIndexText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#A78BFA'
+  },
+  removePartBtn: {
+    padding: 4
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    marginTop: 6,
+    marginBottom: 4
+  },
+  inputField: {
+    backgroundColor: '#0F0E16',
+    borderWidth: 1,
+    borderColor: '#2F2947',
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+    color: '#FFFFFF',
+    fontSize: 13
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  lineTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#262238'
+  },
+  lineTotalLabel: {
+    fontSize: 11,
+    color: '#9CA3AF'
+  },
+  lineTotalVal: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#34D399'
+  },
+  addAnotherBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    backgroundColor: '#1E1430',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: '#3D2F66',
+    marginBottom: spacing.md
+  },
+  addAnotherText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#A78BFA'
+  },
+  estimateBox: {
+    backgroundColor: '#12101C',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: '#26213B',
+    marginBottom: spacing.sm
+  },
+  estimateRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 3
+  },
+  estimateLabel: {
+    fontSize: 12,
+    color: '#9CA3AF'
+  },
+  estimateVal: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#FFFFFF'
+  },
+  estimateDivider: {
+    height: 1,
+    backgroundColor: '#26213B',
+    marginVertical: 6
+  },
+  estimateTotalLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#A78BFA'
+  },
+  estimateTotalVal: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#34D399'
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: '#252136',
+    gap: spacing.md
+  },
+  cancelModalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: '#362E52'
+  },
+  cancelModalText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#9CA3AF'
   }
 });

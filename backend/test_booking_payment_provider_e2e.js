@@ -275,6 +275,19 @@ async function runE2ETests() {
   assert.strictEqual(tamperedSigRes.status, 400, 'Tampered signature must be rejected with 400');
   console.log('  ✓ Tampered payment signature correctly rejected (HTTP 400)');
 
+  // 5.2b Test Mismatched Order ID Rejection
+  const wrongOrderRes = await request(`/bookings/customer/${testScheduledBooking._id}/payment/verify`, {
+    method: 'POST',
+    token: customerToken,
+    body: {
+      razorpayOrderId: 'order_wrong_mismatched_99999',
+      razorpayPaymentId: 'pay_test_mismatched123',
+      razorpaySignature: 'any_signature'
+    }
+  });
+  assert.strictEqual(wrongOrderRes.status, 400, 'Mismatched order ID must be rejected with 400');
+  console.log('  ✓ Mismatched Razorpay order ID correctly rejected (HTTP 400)');
+
   // 5.3 Test Valid Signature Verification
   const testPaymentId = `pay_live_test_${Date.now()}`;
   const validSignature = crypto

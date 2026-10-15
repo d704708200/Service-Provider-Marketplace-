@@ -38,44 +38,98 @@ const POPULAR_GRID_ITEMS = [
 export default function SearchScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(null);
   const [activeFilter, setActiveFilter] = useState('near_me');
   const [recentSearches, setRecentSearches] = useState(INITIAL_RECENT_SEARCHES);
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [pagination, setPagination] = useState({ page: 1, limit: 12, total: 0, totalPages: 1 });
 
-  const fetchProviders = useCallback(async (queryText = '') => {
+  const fetchProviders = useCallback(async (queryText = '', categoryNameOrId = null, pageNum = 1, append = false) => {
     try {
-      const params = {};
-      if (queryText.trim()) {
+      if (pageNum === 1 && !append) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
+
+      const params = {
+        page: pageNum,
+        limit: 12
+      };
+
+      if (queryText && queryText.trim()) {
         params.search = queryText.trim();
       }
+
+      if (categoryNameOrId && String(categoryNameOrId).trim()) {
+        params.category = String(categoryNameOrId).trim();
+      }
+
       const res = await providerApi.getAll(params);
-      const list = res?.data || [];
-      setProviders(list);
+      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+      const paginationInfo = res?.pagination || {
+        page: pageNum,
+        limit: 12,
+        total: list.length,
+        totalPages: 1
+      };
+
+      setPagination(paginationInfo);
+      setProviders((prev) => (append ? [...prev, ...list] : list));
     } catch (err) {
-      // Fallback empty
-      setProviders([]);
+      if (!append) {
+        setProviders([]);
+        setPagination({ page: 1, limit: 12, total: 0, totalPages: 1 });
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
       setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchProviders();
-  }, [fetchProviders]);
+    fetchProviders(searchQuery, selectedCategory, 1, false);
+  }, [selectedCategory]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchProviders(searchQuery);
+    fetchProviders(searchQuery, selectedCategory, 1, false);
   };
 
   const handleSearchSubmit = () => {
     if (searchQuery.trim() && !recentSearches.includes(searchQuery.trim())) {
       setRecentSearches([searchQuery.trim(), ...recentSearches.slice(0, 4)]);
     }
-    fetchProviders(searchQuery);
+    fetchProviders(searchQuery, selectedCategory, 1, false);
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    fetchProviders('', selectedCategory, 1, false);
+  };
+
+  const handleCategorySelect = (item) => {
+    // If the category is already selected, unselect it (toggle)
+    if (selectedCategory === item.label) {
+      setSelectedCategory(null);
+    } else {
+      setSelectedCategory(item.label);
+    }
+  };
+
+  const handleClearCategory = () => {
+    setSelectedCategory(null);
+  };
+
+  const handleLoadMore = () => {
+    if (loading || loadingMore) return;
+    if (pagination.page < pagination.totalPages) {
+      fetchProviders(searchQuery, selectedCategory, pagination.page + 1, true);
+    }
   };
 
   const handleRemoveRecent = (itemToRemove) => {
@@ -88,7 +142,7 @@ export default function SearchScreen({ navigation }) {
 
   const handleSelectRecent = (term) => {
     setSearchQuery(term);
-    fetchProviders(term);
+    fetchProviders(term, selectedCategory, 1, false);
   };
 
   const renderProviderCard = ({ item }) => {
@@ -166,11 +220,11 @@ export default function SearchScreen({ navigation }) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
         }
       >
-        {/* Title: Find a Service matching Figma hierarchy */}
+        {/* Title: Find a Service with inline accent and responsive wrapping */}
         <View style={styles.titleSection}>
-          <Text style={styles.mainTitle}>Find</Text>
-          <Text style={styles.mainTitlePurple}>a</Text>
-          <Text style={styles.mainTitle}>Service</Text>
+          <Text style={styles.mainTitle}>
+            Find <Text style={styles.mainTitlePurple}>a</Text> Service
+          </Text>
         </View>
 
         {/* Search Bar with filter toggle icon */}
@@ -186,7 +240,7 @@ export default function SearchScreen({ navigation }) {
             returnKeyType="search"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+            <TouchableOpacity onPress={handleClearSearch} style={{ padding: 4 }}>
               <Ionicons name="close-circle" size={16} color="#71717A" />
             </TouchableOpacity>
           )}
@@ -201,6 +255,19 @@ export default function SearchScreen({ navigation }) {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterPillsScroll}
         >
+          {selectedCategory && (
+            <TouchableOpacity
+              style={[styles.filterPill, styles.filterPillActive, { flexDirection: 'row', alignItems: 'center' }]}
+              onPress={handleClearCategory}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.filterPillText, styles.filterPillTextActive, { marginRight: 4 }]}>
+                {selectedCategory}
+              </Text>
+              <Ionicons name="close-circle" size={14} color="#DDD6FE" />
+            </TouchableOpacity>
+          )}
+
           {FILTER_PILLS.map((pill) => {
             const isSelected = activeFilter === pill.id;
             return (
@@ -248,50 +315,87 @@ export default function SearchScreen({ navigation }) {
 
         {/* Popular near you Grid (4 category cards) */}
         <View style={styles.popularSection}>
-          <Text style={styles.sectionTitle}>Popular near you</Text>
-          <View style={styles.popularGrid}>
-            {POPULAR_GRID_ITEMS.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.categoryCard}
-                onPress={() => {
-                  setSearchQuery(item.label);
-                  fetchProviders(item.label);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={styles.categoryIconCircle}>
-                  <Ionicons name={item.icon} size={20} color="#A78BFA" />
-                </View>
-                <Text style={styles.categoryLabel}>{item.label}</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Popular near you</Text>
+            {selectedCategory && (
+              <TouchableOpacity onPress={handleClearCategory} activeOpacity={0.7}>
+                <Text style={styles.clearText}>Show all</Text>
               </TouchableOpacity>
-            ))}
+            )}
+          </View>
+          <View style={styles.popularGrid}>
+            {POPULAR_GRID_ITEMS.map((item) => {
+              const isSelected = selectedCategory === item.label;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[styles.categoryCard, isSelected && styles.categoryCardActive]}
+                  onPress={() => handleCategorySelect(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.categoryIconCircle, isSelected && styles.categoryIconCircleActive]}>
+                    <Ionicons name={item.icon} size={20} color={isSelected ? '#FFFFFF' : '#A78BFA'} />
+                  </View>
+                  <Text style={[styles.categoryLabel, isSelected && styles.categoryLabelActive]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
         {/* Recommended Professionals Section */}
         <View style={styles.recommendedSection}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Recommended professionals</Text>
-            <Text style={styles.resultsCountText}>{providers.length || 16} results</Text>
+            <Text style={styles.sectionTitle}>
+              {selectedCategory ? `${selectedCategory} professionals` : 'Recommended professionals'}
+            </Text>
+            <Text style={styles.resultsCountText}>
+              {pagination.total} {pagination.total === 1 ? 'result' : 'results'}
+            </Text>
           </View>
 
           {loading ? (
             <ActivityIndicator size="small" color="#7C3AED" style={{ marginVertical: 24 }} />
           ) : (
-            <FlatList
-              data={providers}
-              keyExtractor={(item) => item._id}
-              renderItem={renderProviderCard}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="search-outline" size={40} color="#36314D" />
-                  <Text style={styles.emptyText}>No verified professionals found</Text>
-                </View>
-              }
-            />
+            <>
+              <FlatList
+                data={providers}
+                keyExtractor={(item) => item._id}
+                renderItem={renderProviderCard}
+                scrollEnabled={false}
+                ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="search-outline" size={40} color="#36314D" />
+                    <Text style={styles.emptyText}>
+                      No verified professionals found
+                      {selectedCategory ? ` for '${selectedCategory}'` : ''}
+                      {searchQuery ? ` matching '${searchQuery}'` : ''}
+                    </Text>
+                  </View>
+                }
+              />
+
+              {/* Load More Button for pagination */}
+              {pagination.page < pagination.totalPages && (
+                <TouchableOpacity
+                  style={styles.loadMoreButton}
+                  onPress={handleLoadMore}
+                  disabled={loadingMore}
+                  activeOpacity={0.8}
+                >
+                  {loadingMore ? (
+                    <ActivityIndicator size="small" color="#A78BFA" />
+                  ) : (
+                    <Text style={styles.loadMoreText}>
+                      Load more providers ({providers.length} of {pagination.total})
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </>
           )}
         </View>
       </ScrollView>
@@ -313,21 +417,24 @@ const styles = StyleSheet.create({
   },
   titleSection: {
     marginTop: 12,
-    marginBottom: 16
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'baseline'
   },
   mainTitle: {
     fontSize: 26,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: -0.5,
-    lineHeight: 30
+    lineHeight: 32,
+    flexShrink: 1
   },
   mainTitlePurple: {
     fontSize: 26,
     fontWeight: '800',
     color: '#8B5CF6',
     letterSpacing: -0.5,
-    lineHeight: 30
+    lineHeight: 32
   },
   searchBarContainer: {
     flexDirection: 'row',
@@ -553,6 +660,34 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 13,
     color: '#71717A',
-    marginTop: 8
+    marginTop: 8,
+    textAlign: 'center'
+  },
+  categoryCardActive: {
+    borderColor: '#7C3AED',
+    backgroundColor: '#201636'
+  },
+  categoryIconCircleActive: {
+    backgroundColor: '#7C3AED'
+  },
+  categoryLabelActive: {
+    color: '#DDD6FE',
+    fontWeight: '700'
+  },
+  loadMoreButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: '#161420',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2D2845',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  loadMoreText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#A78BFA'
   }
 });

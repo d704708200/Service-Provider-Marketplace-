@@ -116,6 +116,10 @@ export const bookingApi = {
   completeService: async (id) => {
     const response = await api.patch(`/bookings/provider/${id}/complete`);
     return response.data;
+  },
+  submitSpareParts: async (id, partsData) => {
+    const response = await api.post(`/bookings/provider/${id}/spare-parts`, partsData);
+    return response.data;
   }
 };
 
