@@ -1,4 +1,4 @@
-﻿const dotenv = require('dotenv');
+const dotenv = require('dotenv');
 dotenv.config();
 
 const app = require('./src/app');
@@ -12,7 +12,7 @@ const startServer = async () => {
   // Connect to MongoDB if MONGODB_URI is provided
   await connectDB();
 
-  server = app.listen(PORT, () => {
+  server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
     console.log(`Health check available at: http://localhost:${PORT}/api/health`);
   });

@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "description": "Service Provider Marketplace",
   "scripts": {
+    "start": "cd backend && npm start",
+    "build": "cd backend && npm install",
     "backend": "cd backend && npm start",
     "customer": "cd customer-app && npm start",
     "provider": "cd provider-app && npm start",
