@@ -25,7 +25,7 @@ app.use(corsMiddleware);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Health Check Endpoint (reporting system and DB status)
+// Health Check Endpoint (reporting system and DB status without exposing internal details)
 app.get('/api/health', (req, res) => {
   const dbStatus = getDBStatus();
 
@@ -36,9 +36,7 @@ app.get('/api/health', (req, res) => {
     uptime: Math.floor(process.uptime()),
     database: {
       status: dbStatus.state,
-      connected: dbStatus.isConnected,
-      host: dbStatus.host,
-      name: dbStatus.name
+      connected: dbStatus.isConnected
     },
     environment: process.env.NODE_ENV || 'development'
   });
