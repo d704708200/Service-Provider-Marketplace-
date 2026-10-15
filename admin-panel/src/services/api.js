@@ -57,10 +57,11 @@ api.interceptors.response.use(
 
       error.userMessage = message;
 
-      // Handle unauthenticated (401)
+      // Handle unauthenticated (401) on protected routes, not on login attempts
       if (status === 401) {
         localStorage.removeItem('admin_token');
-        if (typeof onUnauthorizedCallback === 'function') {
+        const isLoginRequest = error.config?.url?.includes('/auth/login');
+        if (!isLoginRequest && typeof onUnauthorizedCallback === 'function') {
           onUnauthorizedCallback(message);
         }
       }

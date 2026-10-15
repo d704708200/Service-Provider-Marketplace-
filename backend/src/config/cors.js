@@ -1,16 +1,44 @@
-﻿const cors = require('cors');
+const cors = require('cors');
 
 const getAllowedOrigins = () => {
   const origins = [];
 
-  if (process.env.CUSTOMER_APP_URL) origins.push(process.env.CUSTOMER_APP_URL);
-  if (process.env.PROVIDER_APP_URL) origins.push(process.env.PROVIDER_APP_URL);
-  if (process.env.ADMIN_PANEL_URL) origins.push(process.env.ADMIN_PANEL_URL);
+  const addOrigins = (val) => {
+    if (!val) return;
+    val.split(',').forEach((o) => {
+      const trimmed = o.trim();
+      if (trimmed && !origins.includes(trimmed)) {
+        origins.push(trimmed);
+      }
+    });
+  };
 
-  // In development, allow common localhost ports if none configured
-  if (origins.length === 0 && process.env.NODE_ENV !== 'production') {
-    return ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8081', 'http://127.0.0.1:5173'];
+  addOrigins(process.env.CUSTOMER_APP_URL);
+  addOrigins(process.env.PROVIDER_APP_URL);
+  addOrigins(process.env.ADMIN_PANEL_URL);
+
+  // Always ensure the production Admin Panel URL is allowed
+  const productionAdminPanel = 'https://serviceprovider3.netlify.app';
+  if (!origins.includes(productionAdminPanel)) {
+    origins.push(productionAdminPanel);
   }
+
+  // Always allow standard local development origins
+  const devOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:8081',
+    'http://localhost:8082',
+    'http://localhost:8083',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000'
+  ];
+
+  devOrigins.forEach((devOrigin) => {
+    if (!origins.includes(devOrigin)) {
+      origins.push(devOrigin);
+    }
+  });
 
   return origins;
 };

@@ -109,8 +109,18 @@ async function provisionAdmin() {
           department: department || 'Operations'
         });
         console.log(`Admin profile created successfully (Profile ID: ${adminProfile._id}).`);
+      }
+
+      const shouldReset = args['reset-password'] === 'true' || args['reset-password'] === '' || process.env.ADMIN_RESET_PASSWORD === 'true';
+      if (shouldReset) {
+        const hashedPassword = await hashPassword(password);
+        existingUser.password = hashedPassword;
+        existingUser.isActive = true;
+        existingUser.isVerified = true;
+        await existingUser.save();
+        console.log(`Administrator password has been securely updated for "${email}".`);
       } else {
-        console.log(`Admin profile record already exists (Profile ID: ${adminProfile._id}). Existing password preserved. No changes made.`);
+        console.log(`Admin record exists (User ID: ${existingUser._id}, Profile ID: ${adminProfile._id}). Existing password preserved. (To reset, pass --reset-password).`);
       }
 
       return;
