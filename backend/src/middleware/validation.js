@@ -761,7 +761,7 @@ const validateCreateBooking = (req, res, next) => {
   }
 
   // Optional payment method
-  const validPaymentMethods = ['cash', 'card', 'upi', 'wallet'];
+  const validPaymentMethods = ['cash', 'card', 'upi', 'wallet', 'online'];
   if (paymentMethod && !validPaymentMethods.includes(paymentMethod)) {
     errors.push(`Payment method must be one of: ${validPaymentMethods.join(', ')}`);
   }
@@ -845,7 +845,7 @@ const validateUpdateCustomerProfile = (req, res, next) => {
     errors.push('Avatar must be a string URL or null');
   }
 
-  const validPaymentMethods = ['cash', 'card', 'upi', 'wallet'];
+  const validPaymentMethods = ['cash', 'card', 'upi', 'wallet', 'online'];
   if (defaultPaymentMethod !== undefined && !validPaymentMethods.includes(defaultPaymentMethod)) {
     errors.push(`defaultPaymentMethod must be one of: ${validPaymentMethods.join(', ')}`);
   }

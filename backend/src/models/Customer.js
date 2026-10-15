@@ -1,4 +1,4 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 const addressSchema = new mongoose.Schema(
   {
@@ -55,7 +55,7 @@ const customerSchema = new mongoose.Schema(
     addresses: [addressSchema],
     defaultPaymentMethod: {
       type: String,
-      enum: ['cash', 'card', 'upi', 'wallet'],
+      enum: ['cash', 'card', 'upi', 'wallet', 'online'],
       default: 'cash'
     },
     emergencyContact: {

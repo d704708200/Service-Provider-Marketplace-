@@ -159,6 +159,23 @@ async function runE2ETests() {
   assert.strictEqual(missingSlotRes.status, 400, 'Scheduled booking without time slot must be rejected with 400');
   console.log('  ✓ Server correctly rejected missing scheduled time slot (HTTP 400)');
 
+  // 3.3 Unsupported payment method rejection
+  const invalidPaymentRes = await request('/bookings', {
+    method: 'POST',
+    token: customerToken,
+    body: {
+      serviceId: selectedService._id,
+      bookingMode: 'scheduled',
+      scheduledDate: '2028-11-20',
+      scheduledTimeSlot: { startTime: '10:00', endTime: '12:00' },
+      paymentMethod: 'crypto_currency',
+      address: { street: '42 Main St', city: 'Jaipur' },
+      problemDescription: 'Checking invalid payment method rejection'
+    }
+  });
+  assert.strictEqual(invalidPaymentRes.status, 400, 'Unsupported payment method must be rejected with 400');
+  console.log('  ✓ Server correctly rejected unsupported payment method (HTTP 400)');
+
   // -------------------------------------------------------------
   // STEP 4: CUSTOMER CREATES SCHEDULED BOOKING (WITH RAZORPAY PAYMENT)
   // -------------------------------------------------------------
@@ -172,7 +189,7 @@ async function runE2ETests() {
   const scheduledPayload = {
     serviceId: selectedService._id,
     bookingMode: 'scheduled',
-    paymentMethod: 'card', // online
+    paymentMethod: 'online', // Razorpay online payment
     scheduledDate: scheduledDateStr,
     scheduledTimeSlot: {
       startTime: '11:00',
