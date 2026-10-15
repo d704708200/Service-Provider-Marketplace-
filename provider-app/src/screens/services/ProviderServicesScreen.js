@@ -120,8 +120,8 @@ export default function ProviderServicesScreen({ navigation }) {
     <View style={styles.container}>
       <Header
         title="Offered Services"
-        subtitle="Manage rates and service catalog offerings"
-        showBack
+        subtitle="Custom rates & active service catalog"
+        showBack={navigation?.canGoBack?.() || false}
         onBack={() => navigation.goBack()}
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
@@ -130,7 +130,7 @@ export default function ProviderServicesScreen({ navigation }) {
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xxl }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7C3AED']} />
         }
       >
         <Card style={styles.infoCard}>
@@ -141,7 +141,7 @@ export default function ProviderServicesScreen({ navigation }) {
         </Card>
 
         {loading ? (
-          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color="#7C3AED" style={{ marginTop: 40 }} />
         ) : services && services.length > 0 ? (
           services.map((srv) => (
             <Card key={srv._id} style={styles.serviceCard}>
@@ -177,8 +177,8 @@ export default function ProviderServicesScreen({ navigation }) {
                   >
                     <Ionicons
                       name={srv.isActive ? 'pause-circle-outline' : 'play-circle-outline'}
-                      size={18}
-                      color={colors.slate600}
+                      size={16}
+                      color="#9CA3AF"
                     />
                     <Text style={styles.toggleBtnText}>
                       {srv.isActive ? 'Deactivate' : 'Activate'}
@@ -189,7 +189,7 @@ export default function ProviderServicesScreen({ navigation }) {
                     onPress={() => handleOpenEdit(srv)}
                     style={styles.editBtn}
                   >
-                    <Ionicons name="create-outline" size={16} color={colors.primary} />
+                    <Ionicons name="create-outline" size={15} color="#A78BFA" />
                     <Text style={styles.editBtnText}>Edit</Text>
                   </TouchableOpacity>
                 </View>
@@ -198,7 +198,7 @@ export default function ProviderServicesScreen({ navigation }) {
           ))
         ) : (
           <Card style={styles.emptyCard}>
-            <Ionicons name="cube-outline" size={40} color={colors.slate400} />
+            <Ionicons name="cube-outline" size={40} color="#71717A" />
             <Text style={styles.emptyTitle}>No Custom Services Yet</Text>
             <Text style={styles.emptySub}>
               You are currently eligible to receive platform service requests for your approved categories.
@@ -214,7 +214,7 @@ export default function ProviderServicesScreen({ navigation }) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Edit Service Offering</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={24} color={colors.slate600} />
+                <Ionicons name="close" size={24} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
 
@@ -265,27 +265,31 @@ export default function ProviderServicesScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: '#0B0B0E'
   },
   scroll: {
     padding: spacing.lg
   },
   infoCard: {
     marginBottom: spacing.md,
-    backgroundColor: colors.slate50
+    backgroundColor: '#161420',
+    borderColor: '#252136',
+    borderWidth: 1
   },
   infoTitle: {
     ...typography.titleSmall,
-    color: colors.slate800,
+    color: '#FFFFFF',
     marginBottom: 2
   },
   infoSubtitle: {
     ...typography.bodySmall,
-    color: colors.slate500,
+    color: '#9CA3AF',
     lineHeight: 18
   },
   serviceCard: {
-    marginBottom: spacing.md
+    marginBottom: spacing.md,
+    backgroundColor: '#161420',
+    borderColor: '#252136'
   },
   serviceHeader: {
     flexDirection: 'row',
@@ -294,17 +298,17 @@ const styles = StyleSheet.create({
   },
   serviceName: {
     ...typography.titleSmall,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   categoryName: {
-    ...typography.caption,
-    color: colors.primary,
+    fontSize: 11,
+    color: '#A78BFA',
     fontWeight: '600',
     marginTop: 2
   },
   serviceDesc: {
     ...typography.bodySmall,
-    color: colors.slate600,
+    color: '#CBD5E1',
     marginVertical: spacing.sm
   },
   priceRow: {
@@ -313,16 +317,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: spacing.xs,
     borderTopWidth: 1,
-    borderTopColor: colors.slate100
+    borderTopColor: '#252136'
   },
   priceVal: {
     ...typography.titleMedium,
-    color: colors.slate900,
+    color: '#FFFFFF',
     fontWeight: '700'
   },
   priceType: {
-    ...typography.caption,
-    color: colors.slate400
+    fontSize: 11,
+    color: '#9CA3AF'
   },
   actionBtns: {
     flexDirection: 'row',
@@ -334,13 +338,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: borderRadius.sm,
-    backgroundColor: colors.slate100
+    backgroundColor: '#1E1B2E',
+    borderWidth: 1,
+    borderColor: '#2D2845'
   },
   toggleBtnText: {
-    ...typography.caption,
-    color: colors.slate600,
+    fontSize: 11,
+    color: '#CBD5E1',
     fontWeight: '600'
   },
   editBtn: {
@@ -348,40 +354,46 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: borderRadius.sm,
-    backgroundColor: colors.primarySubtle
+    backgroundColor: '#241F36',
+    borderWidth: 1,
+    borderColor: '#36314D'
   },
   editBtnText: {
-    ...typography.caption,
-    color: colors.primaryDark,
+    fontSize: 11,
+    color: '#A78BFA',
     fontWeight: '700'
   },
   emptyCard: {
     alignItems: 'center',
     padding: spacing.xl,
-    gap: spacing.sm
+    gap: spacing.sm,
+    backgroundColor: '#161420',
+    borderColor: '#252136'
   },
   emptyTitle: {
     ...typography.titleMedium,
-    color: colors.slate800,
+    color: '#FFFFFF',
     marginTop: spacing.xs
   },
   emptySub: {
     ...typography.bodySmall,
-    color: colors.slate500,
+    color: '#9CA3AF',
     textAlign: 'center',
     maxWidth: 290
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'center',
     padding: spacing.lg
   },
   modalContent: {
-    backgroundColor: colors.white,
+    backgroundColor: '#161420',
     borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#252136',
     padding: spacing.lg
   },
   modalHeader: {
@@ -392,18 +404,18 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     ...typography.titleMedium,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   errorBox: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#4C0519',
     borderWidth: 1,
-    borderColor: '#FCA5A5',
+    borderColor: '#991B1B',
     padding: spacing.sm,
     borderRadius: borderRadius.md,
     marginBottom: spacing.md
   },
   errorText: {
     ...typography.bodySmall,
-    color: '#B91C1C'
+    color: '#F87171'
   }
 });

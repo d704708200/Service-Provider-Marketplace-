@@ -157,6 +157,49 @@ export default function ProviderDetailScreen({ route, navigation }) {
           </Card>
         )}
 
+        {/* Services Offered by Provider */}
+        {Array.isArray(provider.services) && provider.services.length > 0 && (
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Services Offered</Text>
+            <View style={{ gap: spacing.sm }}>
+              {provider.services.map((srv) => (
+                <View
+                  key={srv._id}
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingVertical: spacing.sm,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.slate100
+                  }}
+                >
+                  <View style={{ flex: 1, marginRight: spacing.sm }}>
+                    <Text style={{ ...typography.bodyMedium, fontWeight: '700', color: colors.slate900 }}>
+                      {srv.name}
+                    </Text>
+                    <Text style={{ ...typography.caption, color: colors.slate500 }}>
+                      ₹{Number(srv.basePrice || srv.price || 0).toLocaleString('en-IN')} • {srv.estimatedDurationMinutes || 60} mins
+                    </Text>
+                  </View>
+                  <Button
+                    title="Book"
+                    size="sm"
+                    onPress={() =>
+                      navigation.navigate('RequestService', {
+                        providerId: provider._id,
+                        provider,
+                        serviceId: srv._id,
+                        service: srv
+                      })
+                    }
+                  />
+                </View>
+              ))}
+            </View>
+          </Card>
+        )}
+
         {/* Verification & Trust Banner */}
         <Card style={styles.trustCard}>
           <View style={styles.trustRow}>
@@ -175,12 +218,15 @@ export default function ProviderDetailScreen({ route, navigation }) {
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}>
         <Button
           title="Request Service with this Provider"
-          onPress={() =>
+          onPress={() => {
+            const defaultService = Array.isArray(provider.services) && provider.services.length > 0 ? provider.services[0] : undefined;
             navigation.navigate('RequestService', {
               providerId: provider._id,
-              provider
-            })
-          }
+              provider,
+              serviceId: defaultService?._id,
+              service: defaultService
+            });
+          }}
           style={styles.actionBtn}
         />
       </View>

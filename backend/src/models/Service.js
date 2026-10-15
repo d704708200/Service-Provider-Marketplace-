@@ -1,4 +1,4 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 const serviceSchema = new mongoose.Schema(
   {
@@ -48,9 +48,20 @@ const serviceSchema = new mongoose.Schema(
     }
   },
   {
-    timestamps: true
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
   }
 );
+
+// Virtual aliases for frontend compatibility
+serviceSchema.virtual('basePrice').get(function () {
+  return this.price;
+});
+
+serviceSchema.virtual('pricingType').get(function () {
+  return this.priceType;
+});
 
 serviceSchema.index({ category: 1, isActive: 1 });
 serviceSchema.index({ provider: 1, isActive: 1 });

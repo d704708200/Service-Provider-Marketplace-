@@ -13,7 +13,7 @@ export default function ErrorView({
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
-        <Ionicons name="alert-circle-outline" size={40} color={colors.danger} />
+        <Ionicons name="alert-circle-outline" size={38} color="#F87171" />
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
@@ -31,23 +31,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.dangerSubtle,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#35111B',
+    borderWidth: 1,
+    borderColor: '#541525',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.lg
   },
   title: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: '#FFFFFF',
     textAlign: 'center',
     marginBottom: spacing.xs
   },
   message: {
     ...typography.bodyMedium,
-    color: colors.slate600,
+    color: '#9CA3AF',
     textAlign: 'center',
     maxWidth: 290,
     marginBottom: spacing.lg

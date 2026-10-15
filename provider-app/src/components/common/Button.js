@@ -1,123 +1,183 @@
 import React from 'react';
-import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import colors from '../../theme/colors';
-import { spacing, borderRadius, typography } from '../../theme';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, spacing, borderRadius } from '../../theme';
 
-export default function Button({
+export const Button = ({
   title,
   onPress,
-  variant = 'primary',
-  size = 'md',
-  disabled = false,
+  variant = 'primary', // 'primary', 'secondary', 'outline', 'danger', 'success'
+  size = 'md', // 'sm', 'md', 'lg'
+  isLoading = false,
   loading = false,
+  disabled = false,
+  leftIcon = null,
+  rightIcon = null,
   style,
   textStyle
-}) {
-  const getVariantStyles = () => {
+}) => {
+  const isSpinning = Boolean(isLoading || loading);
+
+  const getVariantStyle = () => {
     switch (variant) {
       case 'secondary':
-        return {
-          button: { backgroundColor: colors.secondary, borderColor: colors.secondary },
-          text: { color: colors.white }
-        };
+        return styles.btnSecondary;
       case 'outline':
-        return {
-          button: { backgroundColor: 'transparent', borderColor: colors.primary, borderWidth: 1.5 },
-          text: { color: colors.primary }
-        };
+        return styles.btnOutline;
       case 'danger':
-        return {
-          button: { backgroundColor: colors.danger, borderColor: colors.danger },
-          text: { color: colors.white }
-        };
+        return styles.btnDanger;
       case 'success':
-        return {
-          button: { backgroundColor: colors.success, borderColor: colors.success },
-          text: { color: colors.white }
-        };
-      case 'primary':
+        return styles.btnSuccess;
       default:
-        return {
-          button: { backgroundColor: colors.primary, borderColor: colors.primary },
-          text: { color: colors.white }
-        };
+        return styles.btnPrimary;
     }
   };
 
-  const getSizeStyles = () => {
+  const getTextStyle = () => {
+    switch (variant) {
+      case 'secondary':
+        return styles.textSecondary;
+      case 'outline':
+        return styles.textOutline;
+      case 'danger':
+        return styles.textDanger;
+      case 'success':
+        return styles.textSuccess;
+      default:
+        return styles.textPrimary;
+    }
+  };
+
+  const getSizeStyle = () => {
     switch (size) {
       case 'sm':
-        return {
-          button: { paddingVertical: 6, paddingHorizontal: spacing.md },
-          text: { fontSize: 13 }
-        };
+        return styles.sizeSm;
       case 'lg':
-        return {
-          button: { paddingVertical: 14, paddingHorizontal: spacing.xxl },
-          text: { fontSize: 16 }
-        };
-      case 'md':
+        return styles.sizeLg;
       default:
-        return {
-          button: { paddingVertical: 10, paddingHorizontal: spacing.lg },
-          text: { fontSize: 14 }
-        };
+        return styles.sizeMd;
     }
   };
 
-  const variantStyles = getVariantStyles();
-  const sizeStyles = getSizeStyles();
+  const renderIcon = (icon) => {
+    if (!icon) return null;
+    if (typeof icon === 'string') {
+      const iconColor =
+        variant === 'outline'
+          ? colors.primary
+          : variant === 'secondary'
+          ? colors.slate800
+          : colors.white;
+      const iconSize = size === 'sm' ? 16 : size === 'lg' ? 22 : 18;
+      return <Ionicons name={icon} size={iconSize} color={iconColor} />;
+    }
+    return icon;
+  };
 
   return (
     <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onPress}
+      disabled={disabled || isSpinning}
       style={[
-        styles.baseButton,
-        variantStyles.button,
-        sizeStyles.button,
-        disabled && styles.disabledButton,
+        styles.button,
+        getVariantStyle(),
+        getSizeStyle(),
+        (disabled || isSpinning) && styles.disabled,
         style
       ]}
-      onPress={onPress}
-      disabled={disabled || loading}
-      activeOpacity={0.8}
     >
-      {loading ? (
+      {isSpinning ? (
         <ActivityIndicator
           size="small"
           color={variant === 'outline' ? colors.primary : colors.white}
         />
       ) : (
-        <Text
-          style={[
-            styles.baseText,
-            variantStyles.text,
-            sizeStyles.text,
-            disabled && styles.disabledText,
-            textStyle
-          ]}
-        >
-          {title}
-        </Text>
+        <View style={styles.contentRow}>
+          {Boolean(leftIcon) && (
+            <View style={styles.iconLeft}>{renderIcon(leftIcon)}</View>
+          )}
+          <Text style={[styles.text, getTextStyle(), textStyle]}>{title}</Text>
+          {Boolean(rightIcon) && (
+            <View style={styles.iconRight}>{renderIcon(rightIcon)}</View>
+          )}
+        </View>
       )}
     </TouchableOpacity>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  baseButton: {
+  button: {
     borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row'
   },
-  baseText: {
-    ...typography.button,
-    fontWeight: '600'
+  contentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  disabledButton: {
+  btnPrimary: {
+    backgroundColor: colors.primary
+  },
+  btnSecondary: {
+    backgroundColor: colors.cardSecondary,
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  btnOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: colors.primary
+  },
+  btnDanger: {
+    backgroundColor: colors.danger
+  },
+  btnSuccess: {
+    backgroundColor: colors.success
+  },
+  sizeSm: {
+    paddingVertical: spacing.xs + 3,
+    paddingHorizontal: spacing.md
+  },
+  sizeMd: {
+    paddingVertical: spacing.sm + 4,
+    paddingHorizontal: spacing.lg
+  },
+  sizeLg: {
+    paddingVertical: spacing.md + 2,
+    paddingHorizontal: spacing.xl
+  },
+  disabled: {
     opacity: 0.5
   },
-  disabledText: {
-    color: colors.slate400
+  text: {
+    fontWeight: '600',
+    fontSize: 14
+  },
+  textPrimary: {
+    color: colors.white
+  },
+  textSecondary: {
+    color: colors.slate800
+  },
+  textOutline: {
+    color: colors.primaryLight
+  },
+  textDanger: {
+    color: colors.white
+  },
+  textSuccess: {
+    color: colors.white
+  },
+  iconLeft: {
+    marginRight: spacing.sm
+  },
+  iconRight: {
+    marginLeft: spacing.sm
   }
 });
+
+export default Button;

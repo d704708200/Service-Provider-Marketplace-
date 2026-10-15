@@ -1,120 +1,186 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import colors from '../../theme/colors';
-import { spacing, borderRadius, typography } from '../../theme';
+import { colors, spacing, borderRadius } from '../../theme';
 
-export default function Input({
+export const Input = ({
   label,
   value,
   onChangeText,
   placeholder,
   error,
   secureTextEntry = false,
-  leftIcon,
-  rightIcon,
-  onRightIconPress,
+  keyboardType = 'default',
+  autoCapitalize = 'none',
+  leftIcon = null,
+  rightIcon = null,
+  onRightIconPress = null,
   containerStyle,
+  multiline = false,
+  numberOfLines = 1,
+  editable = true,
+  style,
+  inputStyle,
   ...props
-}) {
+}) => {
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const [hidePassword, setHidePassword] = useState(secureTextEntry);
+
+  const isPassword = secureTextEntry;
+
+  const renderLeftIcon = () => {
+    if (!leftIcon) return null;
+    if (typeof leftIcon === 'string') {
+      return (
+        <Ionicons
+          name={leftIcon}
+          size={20}
+          color={isFocused ? colors.primaryLight : colors.slate400}
+        />
+      );
+    }
+    return leftIcon;
+  };
+
+  const renderRightIcon = () => {
+    if (isPassword) {
+      return (
+        <TouchableOpacity
+          style={styles.eyeIcon}
+          onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+            size={20}
+            color={colors.slate400}
+          />
+        </TouchableOpacity>
+      );
+    }
+
+    if (!rightIcon) return null;
+
+    const iconNode =
+      typeof rightIcon === 'string' ? (
+        <Ionicons name={rightIcon} size={20} color={colors.slate400} />
+      ) : (
+        rightIcon
+      );
+
+    if (onRightIconPress) {
+      return (
+        <TouchableOpacity
+          style={styles.eyeIcon}
+          onPress={onRightIconPress}
+          activeOpacity={0.7}
+        >
+          {iconNode}
+        </TouchableOpacity>
+      );
+    }
+
+    return <View style={styles.eyeIcon}>{iconNode}</View>;
+  };
 
   return (
-    <View style={[styles.container, containerStyle]}>
+    <View style={[styles.container, containerStyle, style]}>
       {label && <Text style={styles.label}>{label}</Text>}
+
       <View
         style={[
-          styles.inputWrapper,
-          isFocused && styles.inputWrapperFocused,
-          error && styles.inputWrapperError
+          styles.inputContainer,
+          isFocused && styles.focusedInput,
+          Boolean(error) && styles.errorInput,
+          !editable && styles.disabledInput
         ]}
       >
-        {leftIcon && (
-          <Ionicons
-            name={leftIcon}
-            size={20}
-            color={error ? colors.danger : isFocused ? colors.primary : colors.slate400}
-            style={styles.leftIcon}
-          />
+        {Boolean(leftIcon) && (
+          <View style={styles.leftIconContainer}>{renderLeftIcon()}</View>
         )}
+
         <TextInput
-          style={styles.input}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={colors.slate400}
-          secureTextEntry={hidePassword}
+          placeholderTextColor={colors.placeholder}
+          secureTextEntry={isPassword && !isPasswordVisible}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          multiline={multiline}
+          numberOfLines={numberOfLines}
+          editable={editable}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
+          style={[
+            styles.input,
+            multiline && styles.multilineInput,
+            inputStyle
+          ]}
           {...props}
         />
-        {secureTextEntry ? (
-          <TouchableOpacity
-            onPress={() => setHidePassword(!hidePassword)}
-            style={styles.rightIconBtn}
-          >
-            <Ionicons
-              name={hidePassword ? 'eye-off-outline' : 'eye-outline'}
-              size={20}
-              color={colors.slate400}
-            />
-          </TouchableOpacity>
-        ) : rightIcon ? (
-          <TouchableOpacity
-            onPress={onRightIconPress}
-            disabled={!onRightIconPress}
-            style={styles.rightIconBtn}
-          >
-            <Ionicons name={rightIcon} size={20} color={colors.slate400} />
-          </TouchableOpacity>
-        ) : null}
+
+        {renderRightIcon()}
       </View>
-      {error && <Text style={styles.errorText}>{error}</Text>}
+
+      {Boolean(error) && <Text style={styles.errorText}>{error}</Text>}
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     marginBottom: spacing.md
   },
   label: {
-    ...typography.bodySmall,
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.slate700,
-    marginBottom: spacing.xs
+    color: '#E2E8F0',
+    marginBottom: spacing.xs + 2
   },
-  inputWrapper: {
+  inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: '#161420',
+    borderWidth: 1.5,
+    borderColor: '#252136',
     borderRadius: borderRadius.md,
     paddingHorizontal: spacing.md
   },
-  inputWrapperFocused: {
-    borderColor: colors.primary
+  focusedInput: {
+    borderColor: '#7C3AED',
+    backgroundColor: '#1C1929'
   },
-  inputWrapperError: {
-    borderColor: colors.danger
+  errorInput: {
+    borderColor: colors.danger,
+    backgroundColor: '#4C0519'
+  },
+  disabledInput: {
+    opacity: 0.6,
+    backgroundColor: '#27272A'
   },
   input: {
     flex: 1,
-    paddingVertical: spacing.md,
-    color: colors.slate900,
-    fontSize: 14
+    paddingVertical: spacing.sm + 4,
+    fontSize: 15,
+    color: '#FFFFFF'
   },
-  leftIcon: {
+  multilineInput: {
+    minHeight: 80,
+    textAlignVertical: 'top'
+  },
+  leftIconContainer: {
     marginRight: spacing.sm
   },
-  rightIconBtn: {
+  eyeIcon: {
     padding: spacing.xs
   },
   errorText: {
-    ...typography.caption,
+    fontSize: 12,
     color: colors.danger,
-    marginTop: 4
+    marginTop: spacing.xs,
+    fontWeight: '500'
   }
 });
+
+export default Input;

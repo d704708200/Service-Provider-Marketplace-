@@ -126,17 +126,17 @@ export default function RequestsScreen({ navigation }) {
         </View>
 
         <View style={styles.row}>
-          <Ionicons name="person-outline" size={15} color={colors.slate400} />
+          <Ionicons name="person-outline" size={15} color="#9CA3AF" />
           <Text style={styles.text}>{item.customer?.user?.name || 'Customer'}</Text>
         </View>
 
         <View style={styles.row}>
-          <Ionicons name="calendar-outline" size={15} color={colors.slate400} />
+          <Ionicons name="calendar-outline" size={15} color="#9CA3AF" />
           <Text style={styles.text}>{scheduleText}</Text>
         </View>
 
         <View style={styles.row}>
-          <Ionicons name="location-outline" size={15} color={colors.slate400} />
+          <Ionicons name="location-outline" size={15} color="#9CA3AF" />
           <Text style={styles.text} numberOfLines={1}>
             {item.address?.street}, {item.address?.city}
           </Text>
@@ -184,7 +184,7 @@ export default function RequestsScreen({ navigation }) {
     <View style={styles.container}>
       <Header
         title="Incoming Requests"
-        subtitle="Pending & Instant Broadcasts"
+        subtitle="Broadcasts & Dispatch Pipeline"
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
 
@@ -203,14 +203,14 @@ export default function RequestsScreen({ navigation }) {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[colors.primary]}
+              colors={['#7C3AED']}
             />
           }
           ListEmptyComponent={
             <EmptyState
               icon="notifications-off-outline"
               title="No Pending Requests"
-              description="You have no pending booking requests right now. New customer bookings will appear here automatically."
+              description="You have no pending booking requests right now. New customer bookings in your active coverage zones will appear here automatically."
             />
           }
         />
@@ -222,13 +222,16 @@ export default function RequestsScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: '#0B0B0E'
   },
   listContent: {
     padding: spacing.lg,
     paddingBottom: spacing.xxxl
   },
   card: {
+    backgroundColor: '#161420',
+    borderColor: '#252136',
+    borderRadius: 16,
     marginBottom: spacing.md
   },
   cardHeader: {
@@ -242,14 +245,14 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm
   },
   reference: {
-    ...typography.caption,
-    color: colors.primary,
+    fontSize: 11,
+    color: '#A78BFA',
     fontWeight: '700',
     marginBottom: 2
   },
   serviceName: {
     ...typography.titleSmall,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   row: {
     flexDirection: 'row',
@@ -259,19 +262,21 @@ const styles = StyleSheet.create({
   },
   text: {
     ...typography.bodySmall,
-    color: colors.slate600,
+    color: '#CBD5E1',
     flex: 1
   },
   notesBox: {
-    backgroundColor: colors.slate50,
-    borderRadius: 6,
+    backgroundColor: '#1C1929',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2A253E',
     padding: spacing.sm,
     marginTop: spacing.xs,
     marginBottom: spacing.xs
   },
   notesText: {
     ...typography.caption,
-    color: colors.slate600,
+    color: '#9CA3AF',
     fontStyle: 'italic'
   },
   footer: {
@@ -279,13 +284,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: colors.slate100,
+    borderTopColor: '#252136',
     paddingTop: spacing.sm,
     marginTop: spacing.xs
   },
   price: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: '#FFFFFF',
     fontWeight: '700'
   },
   actionBtns: {
@@ -293,14 +298,15 @@ const styles = StyleSheet.create({
     gap: spacing.sm
   },
   rejectBtn: {
-    borderColor: colors.slate300,
+    borderColor: '#36314D',
     paddingHorizontal: spacing.md
   },
   rejectBtnText: {
-    color: colors.slate600,
+    color: '#9CA3AF',
     fontSize: 12
   },
   acceptBtn: {
+    backgroundColor: '#7C3AED',
     paddingHorizontal: spacing.md
   }
 });

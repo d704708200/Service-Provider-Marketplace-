@@ -27,7 +27,7 @@ const DAYS_OF_WEEK = [
   { day: 6, label: 'Saturday' }
 ];
 
-export default function AvailabilityScreen() {
+export default function AvailabilityScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [schedule, setSchedule] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +44,6 @@ export default function AvailabilityScreen() {
     try {
       const res = await availabilityApi.getAvailability();
       if (res?.success && Array.isArray(res.data)) {
-        // Initialize full 7 days
         const fullSchedule = DAYS_OF_WEEK.map((d) => {
           const found = res.data.find((item) => item.dayOfWeek === d.day);
           if (found) {
@@ -52,7 +51,7 @@ export default function AvailabilityScreen() {
           }
           return {
             dayOfWeek: d.day,
-            isAvailable: d.day !== 0, // Default Monday-Saturday enabled, Sunday off
+            isAvailable: d.day !== 0,
             slots: [{ startTime: '09:00', endTime: '18:00', maxBookings: 1 }]
           };
         });
@@ -138,6 +137,8 @@ export default function AvailabilityScreen() {
       <Header
         title="Weekly Availability"
         subtitle="Manage your working hours & shifts"
+        showBack={navigation?.canGoBack?.() || false}
+        onBack={() => navigation.goBack()}
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
 
@@ -145,12 +146,14 @@ export default function AvailabilityScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xxl }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7C3AED']} />
         }
       >
         <Card style={styles.infoCard}>
           <View style={styles.infoRow}>
-            <Ionicons name="time-outline" size={24} color={colors.primary} />
+            <View style={styles.infoIconBox}>
+              <Ionicons name="time" size={20} color="#A78BFA" />
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.infoTitle}>Configure Working Schedule</Text>
               <Text style={styles.infoSubtitle}>
@@ -161,7 +164,7 @@ export default function AvailabilityScreen() {
         </Card>
 
         {loading ? (
-          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color="#7C3AED" style={{ marginTop: 40 }} />
         ) : (
           <Card style={styles.scheduleCard}>
             <Text style={styles.sectionTitle}>Weekly Schedule</Text>
@@ -185,7 +188,7 @@ export default function AvailabilityScreen() {
                           onPress={() => handleOpenEditSlots(dayEntry)}
                           activeOpacity={0.7}
                         >
-                          <Ionicons name="create-outline" size={14} color={colors.primary} />
+                          <Ionicons name="create-outline" size={14} color="#A78BFA" />
                           <Text style={styles.timeText}>
                             {slot.startTime} – {slot.endTime}
                           </Text>
@@ -206,7 +209,7 @@ export default function AvailabilityScreen() {
                       <Ionicons
                         name={dayEntry.isAvailable ? 'checkmark' : 'close'}
                         size={16}
-                        color={dayEntry.isAvailable ? colors.white : colors.slate500}
+                        color={dayEntry.isAvailable ? colors.white : '#9CA3AF'}
                       />
                       <Text
                         style={[
@@ -243,7 +246,7 @@ export default function AvailabilityScreen() {
                 Set Hours for {DAYS_OF_WEEK.find((d) => d.day === currentDay)?.label}
               </Text>
               <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Ionicons name="close" size={24} color={colors.slate600} />
+                <Ionicons name="close" size={24} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
 
@@ -281,38 +284,50 @@ export default function AvailabilityScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: '#0B0B0E'
   },
   scroll: {
     padding: spacing.lg
   },
   infoCard: {
     marginBottom: spacing.md,
-    backgroundColor: colors.primarySubtle,
-    borderWidth: 1,
-    borderColor: colors.primarySubtle
+    backgroundColor: '#161420',
+    borderColor: '#252136',
+    borderWidth: 1
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md
   },
+  infoIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#1E1B2E',
+    borderWidth: 1,
+    borderColor: '#2F264A',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   infoTitle: {
     ...typography.titleSmall,
-    color: colors.primaryDark,
+    color: '#FFFFFF',
     fontWeight: '700'
   },
   infoSubtitle: {
     ...typography.bodySmall,
-    color: colors.slate600,
+    color: '#9CA3AF',
     marginTop: 2
   },
   scheduleCard: {
-    marginBottom: spacing.lg
+    marginBottom: spacing.lg,
+    backgroundColor: '#161420',
+    borderColor: '#252136'
   },
   sectionTitle: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: '#FFFFFF',
     marginBottom: spacing.md
   },
   dayRow: {
@@ -327,7 +342,7 @@ const styles = StyleSheet.create({
   dayName: {
     ...typography.bodyLarge,
     fontWeight: '700',
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   timeTag: {
     flexDirection: 'row',
@@ -337,12 +352,12 @@ const styles = StyleSheet.create({
   },
   timeText: {
     ...typography.bodySmall,
-    color: colors.primary,
+    color: '#A78BFA',
     fontWeight: '600'
   },
   offText: {
     ...typography.caption,
-    color: colors.slate400,
+    color: '#71717A',
     marginTop: 4
   },
   toggleBtn: {
@@ -352,33 +367,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.md,
-    backgroundColor: colors.slate100
+    backgroundColor: '#1E1B2E',
+    borderWidth: 1,
+    borderColor: '#2D2845'
   },
   toggleBtnActive: {
-    backgroundColor: colors.success || '#10B981'
+    backgroundColor: '#064E3B',
+    borderColor: '#065F46'
   },
   toggleText: {
     ...typography.caption,
-    color: colors.slate600,
+    color: '#9CA3AF',
     fontWeight: '700'
   },
   toggleTextActive: {
-    color: colors.white
+    color: '#34D399'
   },
   divider: {
     height: 1,
-    backgroundColor: colors.slate100,
+    backgroundColor: '#252136',
     marginVertical: 4
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'center',
     padding: spacing.lg
   },
   modalContent: {
-    backgroundColor: colors.white,
+    backgroundColor: '#161420',
     borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#252136',
     padding: spacing.lg
   },
   modalHeader: {
@@ -389,7 +409,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     ...typography.titleMedium,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   row: {
     flexDirection: 'row',

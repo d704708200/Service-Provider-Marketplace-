@@ -180,15 +180,19 @@ export default function BookingDetailScreen({ route, navigation }) {
           <Text style={styles.sectionTitle}>Customer & Service Location</Text>
 
           <View style={styles.infoRow}>
-            <Ionicons name="person-outline" size={18} color={colors.primary} />
+            <View style={styles.infoIconBox}>
+              <Ionicons name="person" size={16} color="#A78BFA" />
+            </View>
             <View style={styles.infoCol}>
               <Text style={styles.infoTitle}>{booking.customer?.user?.name || 'Customer'}</Text>
-              <Text style={styles.infoSub}>{booking.customer?.user?.phone || 'No phone'}</Text>
+              <Text style={styles.infoSub}>{booking.customer?.user?.phone || 'No phone provided'}</Text>
             </View>
           </View>
 
           <View style={styles.infoRow}>
-            <Ionicons name="location-outline" size={18} color={colors.primary} />
+            <View style={styles.infoIconBox}>
+              <Ionicons name="location" size={16} color="#A78BFA" />
+            </View>
             <View style={styles.infoCol}>
               <Text style={styles.infoTitle}>Service Address</Text>
               <Text style={styles.infoSub}>
@@ -287,12 +291,15 @@ export default function BookingDetailScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: '#0B0B0E'
   },
   scrollContent: {
     padding: spacing.lg
   },
   card: {
+    backgroundColor: '#161420',
+    borderColor: '#252136',
+    borderRadius: 16,
     marginBottom: spacing.md
   },
   statusHeaderRow: {
@@ -302,42 +309,42 @@ const styles = StyleSheet.create({
   },
   serviceName: {
     ...typography.titleSmall,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   reference: {
-    ...typography.caption,
-    color: colors.primary,
+    fontSize: 11,
+    color: '#A78BFA',
     fontWeight: '700',
     marginTop: 2
   },
   divider: {
     height: 1,
-    backgroundColor: colors.slate100,
+    backgroundColor: '#252136',
     marginVertical: spacing.md
   },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4
+    marginBottom: 6
   },
   metaLabel: {
     ...typography.bodySmall,
-    color: colors.slate500
+    color: '#9CA3AF'
   },
   metaVal: {
     ...typography.bodySmall,
     fontWeight: '600',
-    color: colors.slate800
+    color: '#FFFFFF'
   },
   price: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: '#FFFFFF',
     fontWeight: '700'
   },
   sectionTitle: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: '#FFFFFF',
     marginBottom: spacing.md
   },
   infoRow: {
@@ -346,47 +353,59 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.md
   },
+  infoIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#201A36',
+    borderWidth: 1,
+    borderColor: '#362E52',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   infoCol: {
     flex: 1
   },
   infoTitle: {
     ...typography.bodyMedium,
     fontWeight: '600',
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   infoSub: {
     ...typography.bodySmall,
-    color: colors.slate600,
+    color: '#9CA3AF',
     marginTop: 2
   },
   notesBox: {
-    backgroundColor: colors.slate50,
+    backgroundColor: '#1C1929',
     padding: spacing.md,
     borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: '#2A253E',
     marginTop: spacing.xs
   },
   notesHeading: {
-    ...typography.caption,
+    fontSize: 11,
     fontWeight: '700',
-    color: colors.slate700,
-    marginBottom: 2
+    color: '#A78BFA',
+    marginBottom: 4
   },
   notesBody: {
     ...typography.bodySmall,
-    color: colors.slate700
+    color: '#CBD5E1'
   },
   timelineRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 4
+    paddingVertical: 5
   },
   timelineLabel: {
     ...typography.bodySmall,
-    color: colors.slate500
+    color: '#9CA3AF'
   },
   timelineVal: {
     ...typography.bodySmall,
-    color: colors.slate800,
+    color: '#FFFFFF',
     fontWeight: '500'
   },
   bottomBar: {
@@ -394,12 +413,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: colors.white,
+    backgroundColor: '#0F0E16',
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: '#1F1C2B',
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    ...shadows.elevated
+    paddingTop: spacing.md
   },
   actionBtn: {
     width: '100%'

@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-import { bookingApi, customerApi } from '../../services/api';
+import { bookingApi, customerApi, serviceApi, providerApi } from '../../services/api';
 import { Header, Card, Input, Button, Badge } from '../../components/common';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -31,7 +31,14 @@ const TIME_SLOTS = [
 export default function RequestServiceScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { service, provider } = route.params || {};
+  const { service: initialService, serviceId, provider: initialProvider, providerId } = route.params || {};
+
+  // Resolved service & provider states
+  const [currentService, setCurrentService] = useState(initialService || null);
+  const [currentProvider, setCurrentProvider] = useState(initialProvider || null);
+  const [providerServices, setProviderServices] = useState([]);
+  const [loadingService, setLoadingService] = useState(false);
+  const [serviceLoadError, setServiceLoadError] = useState(null);
 
   // Booking mode: 'scheduled' | 'instant'
   const [bookingMode, setBookingMode] = useState('scheduled');
@@ -47,15 +54,16 @@ export default function RequestServiceScreen({ route, navigation }) {
   const [state, setState] = useState('');
   const [postalCode, setPostalCode] = useState('');
 
-  // Scheduled date selection
-  // Generate selectable dates for next 14 days
+  // Scheduled date selection - generate dates starting from today in local timezone
   const selectableDates = React.useMemo(() => {
     const list = [];
     const now = new Date();
     for (let i = 0; i < 14; i++) {
-      const d = new Date(now);
-      d.setDate(now.getDate() + i);
-      const iso = d.toISOString().slice(0, 10);
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const iso = `${year}-${month}-${day}`;
       const dayName = i === 0 ? 'Today' : i === 1 ? 'Tmrw' : d.toLocaleDateString('en-US', { weekday: 'short' });
       const dayNum = d.getDate();
       const monthName = d.toLocaleDateString('en-US', { month: 'short' });
@@ -68,6 +76,57 @@ export default function RequestServiceScreen({ route, navigation }) {
   const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
   const [startTime, setStartTime] = useState(TIME_SLOTS[0].startTime);
   const [endTime, setEndTime] = useState(TIME_SLOTS[0].endTime);
+
+  // Load service & provider data if missing
+  React.useEffect(() => {
+    let isMounted = true;
+
+    async function resolveServiceData() {
+      // Case 1: Service is missing but serviceId provided
+      if (!currentService && serviceId) {
+        setLoadingService(true);
+        try {
+          const res = await serviceApi.getById(serviceId);
+          if (isMounted && res?.data) {
+            setCurrentService(res.data);
+          }
+        } catch (err) {
+          if (isMounted) setServiceLoadError('Unable to load service information');
+        } finally {
+          if (isMounted) setLoadingService(false);
+        }
+      }
+
+      // Case 2: Provider passed or providerId passed
+      const targetProviderId = initialProvider?._id || providerId;
+      if (targetProviderId) {
+        try {
+          const pRes = await providerApi.getById(targetProviderId);
+          if (isMounted && pRes?.data) {
+            if (!currentProvider) setCurrentProvider(pRes.data);
+            if (Array.isArray(pRes.data.services) && pRes.data.services.length > 0) {
+              setProviderServices(pRes.data.services);
+              // Auto-select first service if none selected
+              if (!currentService) {
+                setCurrentService(pRes.data.services[0]);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Could not load provider services:', err.message);
+        }
+      }
+    }
+
+    resolveServiceData();
+    return () => {
+      isMounted = false;
+    };
+  }, [serviceId, providerId, initialProvider]);
+
+  // Pricing calculations
+  const effectiveBasePrice = Number(currentService?.basePrice || currentService?.price || 0);
+  const effectiveTotal = effectiveBasePrice;
 
   // Details
   const [problemDescription, setProblemDescription] = useState('');
@@ -216,7 +275,7 @@ export default function RequestServiceScreen({ route, navigation }) {
       amount: orderData.amount,
       currency: orderData.currency || 'INR',
       name: 'Service Marketplace',
-      description: `${service?.name || 'Service Booking'} (${orderData.bookingReference})`,
+      description: `${currentService?.name || 'Service Booking'} (${orderData.bookingReference})`,
       order_id: orderData.orderId,
       prefill: {
         name: orderData.customer?.name || user?.name || 'Customer',
@@ -274,8 +333,13 @@ export default function RequestServiceScreen({ route, navigation }) {
    * Main submission handler: Creates booking, then opens Razorpay if online
    */
   const handleBookingSubmit = async () => {
-    if (!service) {
-      Alert.alert('Missing Service', 'Please select a service from the catalog before booking.');
+    if (!currentService || !currentService._id) {
+      Alert.alert('Missing Service', 'Please select a valid service before booking.');
+      return;
+    }
+
+    if (effectiveBasePrice <= 0) {
+      Alert.alert('Invalid Service Price', 'This service has an invalid price configuration. Please choose another service.');
       return;
     }
 
@@ -289,8 +353,8 @@ export default function RequestServiceScreen({ route, navigation }) {
 
     try {
       const payload = {
-        serviceId: service._id,
-        providerId: provider?._id || undefined,
+        serviceId: currentService._id,
+        providerId: currentProvider?._id || undefined,
         bookingMode,
         paymentMethod,
         address: {
@@ -398,7 +462,7 @@ export default function RequestServiceScreen({ route, navigation }) {
 
             <View style={styles.confirmRow}>
               <Text style={styles.confirmKey}>Service</Text>
-              <Text style={styles.confirmVal}>{confirmedBooking.service?.name || service?.name}</Text>
+              <Text style={styles.confirmVal}>{confirmedBooking.service?.name || currentService?.name}</Text>
             </View>
 
             <View style={styles.confirmRow}>
@@ -457,7 +521,7 @@ export default function RequestServiceScreen({ route, navigation }) {
             <View style={styles.confirmRow}>
               <Text style={styles.confirmKey}>Order Total</Text>
               <Text style={styles.confirmValPrice}>
-                ₹{confirmedBooking.pricing?.totalAmount?.toLocaleString('en-IN') || service?.basePrice || service?.price}
+                ₹{(confirmedBooking.pricing?.totalAmount || effectiveTotal).toLocaleString('en-IN')}
               </Text>
             </View>
 
@@ -558,40 +622,77 @@ export default function RequestServiceScreen({ route, navigation }) {
           </View>
         </Card>
 
+        {/* Provider Services Selection (if provider has multiple services or no service chosen yet) */}
+        {providerServices.length > 0 && (
+          <Card style={styles.summaryCard}>
+            <Text style={styles.sectionTitle}>Select Service from Provider</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: 4 }}>
+              {providerServices.map((ps) => {
+                const isSelected = currentService?._id === ps._id;
+                const psPrice = Number(ps.basePrice || ps.price || 0);
+                return (
+                  <TouchableOpacity
+                    key={ps._id}
+                    style={[styles.savedAddressChip, isSelected && styles.savedAddressChipSelected]}
+                    onPress={() => setCurrentService(ps)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.savedAddressChipTitle, isSelected && styles.savedAddressChipTitleSelected]}>
+                      {ps.name}
+                    </Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: isSelected ? colors.primaryDark : colors.slate700, marginTop: 2 }}>
+                      ₹{psPrice.toLocaleString('en-IN')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </Card>
+        )}
+
         {/* Selected Service Card */}
-        {service && (
+        {currentService ? (
           <Card style={styles.summaryCard}>
             <Text style={styles.sectionTitle}>Selected Service</Text>
             <View style={styles.summaryRow}>
               <View style={styles.summaryInfo}>
-                <Text style={styles.summaryTitle}>{service.name}</Text>
-                <Text style={styles.summarySub}>{service.category?.name || 'General'}</Text>
+                <Text style={styles.summaryTitle}>{currentService.name}</Text>
+                <Text style={styles.summarySub}>{currentService.category?.name || 'General'}</Text>
               </View>
               <View style={styles.summaryPriceCol}>
                 <Text style={styles.summaryPrice}>
-                  ₹{(service.basePrice || service.price || 0).toLocaleString('en-IN')}
+                  ₹{effectiveBasePrice.toLocaleString('en-IN')}
                 </Text>
                 <Badge
-                  label={PRICING_LABELS[service.pricingType] || service.pricingType || 'Fixed'}
+                  label={PRICING_LABELS[currentService.pricingType] || currentService.pricingType || 'Fixed'}
                   variant="slate"
                   size="sm"
                 />
               </View>
             </View>
           </Card>
+        ) : (
+          <Card style={[styles.summaryCard, { borderColor: '#FECACA', backgroundColor: '#FEF2F2' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="alert-circle" size={20} color="#DC2626" />
+              <Text style={{ ...typography.bodyMedium, color: '#B91C1C', fontWeight: '600' }}>
+                {loadingService ? 'Loading service details...' : serviceLoadError || 'No service selected. Please pick a service to proceed.'}
+              </Text>
+            </View>
+          </Card>
         )}
 
         {/* Selected Provider Card (if specific provider selected) */}
-        {provider && (
+        {currentProvider && (
           <Card style={styles.summaryCard}>
             <Text style={styles.sectionTitle}>Assigned Provider</Text>
             <View style={styles.summaryRow}>
               <View style={styles.summaryInfo}>
                 <Text style={styles.summaryTitle}>
-                  {provider.businessName || provider.user?.name || 'Verified Provider'}
+                  {currentProvider.businessName || currentProvider.user?.name || 'Verified Provider'}
                 </Text>
                 <Text style={styles.summarySub}>
-                  {provider.experienceYears ? `${provider.experienceYears} yrs experience` : 'Verified Partner'}
+                  {currentProvider.experienceYears ? `${currentProvider.experienceYears} yrs experience` : 'Verified Partner'}
                 </Text>
               </View>
               <Badge label="Verified" variant="success" size="sm" />
@@ -888,7 +989,7 @@ export default function RequestServiceScreen({ route, navigation }) {
           <Text style={styles.sectionTitle}>Price Summary</Text>
           <View style={styles.confirmRow}>
             <Text style={styles.confirmKey}>Base Service Price</Text>
-            <Text style={styles.confirmVal}>₹{(service?.basePrice || service?.price || 0).toLocaleString('en-IN')}</Text>
+            <Text style={styles.confirmVal}>₹{effectiveBasePrice.toLocaleString('en-IN')}</Text>
           </View>
           <View style={styles.confirmRow}>
             <Text style={styles.confirmKey}>Platform Convenience Fee</Text>
@@ -898,7 +999,7 @@ export default function RequestServiceScreen({ route, navigation }) {
           <View style={styles.confirmRow}>
             <Text style={[styles.confirmKey, { fontWeight: '700', color: colors.slate900 }]}>Total Payable</Text>
             <Text style={styles.confirmValPrice}>
-              ₹{(service?.basePrice || service?.price || 0).toLocaleString('en-IN')}
+              ₹{effectiveTotal.toLocaleString('en-IN')}
             </Text>
           </View>
         </Card>
@@ -910,15 +1011,17 @@ export default function RequestServiceScreen({ route, navigation }) {
               ? paymentProcessing
                 ? 'Opening Razorpay Checkout...'
                 : 'Confirming Booking...'
+              : !currentService || effectiveBasePrice <= 0
+              ? 'Select a Valid Service'
               : paymentMethod === 'online'
-              ? `Pay ₹${(service?.basePrice || service?.price || 0).toLocaleString('en-IN')} & Book Service`
+              ? `Pay ₹${effectiveTotal.toLocaleString('en-IN')} & Book Service`
               : bookingMode === 'instant'
               ? 'Request Instant Booking (Pay on Service)'
               : 'Confirm Scheduled Booking'
           }
           onPress={handleBookingSubmit}
           loading={submitting || paymentProcessing}
-          disabled={submitting || paymentProcessing}
+          disabled={submitting || paymentProcessing || !currentService || effectiveBasePrice <= 0}
           style={styles.submitBtn}
         />
       </ScrollView>

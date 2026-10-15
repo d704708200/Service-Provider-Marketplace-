@@ -25,7 +25,7 @@ export default function LoginScreen() {
 
   const validate = () => {
     const errs = {};
-    if (!email.trim()) errs.email = 'Email is required';
+    if (!email.trim()) errs.email = 'Email address is required';
     if (!password) errs.password = 'Password is required';
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -39,7 +39,7 @@ export default function LoginScreen() {
     try {
       await login({ email: email.trim(), password });
     } catch {
-      // handled in context
+      // Handled in context
     } finally {
       setLoading(false);
     }
@@ -47,38 +47,41 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={styles.keyboardContainer}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
         contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: insets.top + spacing.xxl, paddingBottom: insets.bottom + spacing.xl }
+          styles.scrollContent,
+          { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.xl }
         ]}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
+        {/* Brand Header */}
         <View style={styles.header}>
-          <View style={styles.iconCircle}>
-            <Ionicons name="briefcase" size={36} color={colors.primary} />
+          <View style={styles.logoBadge}>
+            <Ionicons name="briefcase" size={32} color="#7C3AED" />
           </View>
           <Text style={styles.title}>Provider Portal</Text>
-          <Text style={styles.subtitle}>Sign in to manage service bookings and requests</Text>
+          <Text style={styles.subtitle}>Sign in to manage service bookings, incoming requests, and dispatching</Text>
         </View>
 
-        <Card style={styles.card}>
-          {authError && (
+        {/* Form Card */}
+        <Card style={styles.formCard}>
+          {authError ? (
             <View style={styles.errorBanner}>
-              <Ionicons name="alert-circle" size={18} color={colors.danger} />
-              <Text style={styles.errorText}>{authError}</Text>
+              <Ionicons name="alert-circle" size={20} color={colors.danger} />
+              <Text style={styles.errorBannerText}>{authError}</Text>
             </View>
-          )}
+          ) : null}
 
           <Input
-            label="Email Address"
-            placeholder="provider@example.com"
+            label="Provider Email Address"
+            placeholder="e.g. provider@example.com"
             value={email}
-            onChangeText={(t) => {
-              setEmail(t);
+            onChangeText={(text) => {
+              setEmail(text);
               if (errors.email) setErrors({ ...errors, email: null });
             }}
             keyboardType="email-address"
@@ -89,10 +92,10 @@ export default function LoginScreen() {
 
           <Input
             label="Password"
-            placeholder="Enter password"
+            placeholder="Enter your password"
             value={password}
-            onChangeText={(t) => {
-              setPassword(t);
+            onChangeText={(text) => {
+              setPassword(text);
               if (errors.password) setErrors({ ...errors, password: null });
             }}
             secureTextEntry
@@ -105,7 +108,7 @@ export default function LoginScreen() {
             onPress={handleLogin}
             loading={loading}
             disabled={loading}
-            style={styles.btn}
+            style={styles.submitBtn}
           />
         </Card>
       </ScrollView>
@@ -114,11 +117,11 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  keyboardContainer: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: '#0B0B0E'
   },
-  scroll: {
+  scrollContent: {
     paddingHorizontal: spacing.lg,
     flexGrow: 1,
     justifyContent: 'center'
@@ -127,45 +130,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.xxl
   },
-  iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.primarySubtle,
+  logoBadge: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#241F36',
+    borderWidth: 1,
+    borderColor: '#36314D',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md
   },
   title: {
     ...typography.titleLarge,
-    color: colors.slate900,
-    marginBottom: 4
+    color: '#FFFFFF',
+    marginBottom: spacing.xs
   },
   subtitle: {
     ...typography.bodyMedium,
-    color: colors.slate500,
+    color: '#9CA3AF',
     textAlign: 'center',
-    maxWidth: 280
+    maxWidth: 300
   },
-  card: {
+  formCard: {
+    backgroundColor: '#161420',
+    borderWidth: 1,
+    borderColor: '#252136',
+    borderRadius: 18,
     padding: spacing.xl
   },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.dangerSubtle,
+    backgroundColor: '#4C0519',
     borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: '#991B1B',
     padding: spacing.md,
-    marginBottom: spacing.lg,
-    gap: spacing.xs
+    marginBottom: spacing.lg
   },
-  errorText: {
+  errorBannerText: {
     ...typography.bodySmall,
-    color: colors.danger,
+    color: '#F87171',
+    marginLeft: spacing.sm,
     flex: 1,
     fontWeight: '500'
   },
-  btn: {
-    marginTop: spacing.sm
+  submitBtn: {
+    marginTop: spacing.sm,
+    backgroundColor: '#7C3AED'
   }
 });

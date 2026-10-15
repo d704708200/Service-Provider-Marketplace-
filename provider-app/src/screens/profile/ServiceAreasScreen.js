@@ -149,7 +149,7 @@ export default function ServiceAreasScreen({ navigation }) {
       <Header
         title="Service Areas"
         subtitle="Operational territories & covered zip codes"
-        showBack
+        showBack={navigation?.canGoBack?.() || false}
         onBack={() => navigation.goBack()}
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
@@ -158,7 +158,7 @@ export default function ServiceAreasScreen({ navigation }) {
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xxl }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7C3AED']} />
         }
       >
         <Card style={styles.cardHeader}>
@@ -170,29 +170,31 @@ export default function ServiceAreasScreen({ navigation }) {
               </Text>
             </View>
             <TouchableOpacity style={styles.addBtn} onPress={handleOpenAdd} activeOpacity={0.8}>
-              <Ionicons name="add-circle" size={20} color={colors.primary} />
+              <Ionicons name="add-circle" size={18} color="#A78BFA" />
               <Text style={styles.addBtnText}>Add Area</Text>
             </TouchableOpacity>
           </View>
         </Card>
 
         {loading ? (
-          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color="#7C3AED" style={{ marginTop: 40 }} />
         ) : areas && areas.length > 0 ? (
           areas.map((area) => (
             <Card key={area._id} style={styles.areaCard}>
               <View style={styles.areaHeader}>
                 <View style={styles.areaTitleRow}>
-                  <Ionicons name="map-outline" size={20} color={colors.primary} />
+                  <View style={styles.iconCircle}>
+                    <Ionicons name="map-outline" size={16} color="#A78BFA" />
+                  </View>
                   <Text style={styles.areaName}>{area.name}</Text>
                 </View>
 
                 <View style={styles.actionRow}>
                   <TouchableOpacity onPress={() => handleOpenEdit(area)} style={styles.actionBtn}>
-                    <Ionicons name="pencil-outline" size={18} color={colors.primary} />
+                    <Ionicons name="pencil-outline" size={18} color="#A78BFA" />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleDelete(area._id)} style={styles.actionBtn}>
-                    <Ionicons name="trash-outline" size={18} color={colors.error || '#EF4444'} />
+                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -216,7 +218,7 @@ export default function ServiceAreasScreen({ navigation }) {
           ))
         ) : (
           <Card style={styles.emptyCard}>
-            <Ionicons name="location-outline" size={40} color={colors.slate400} />
+            <Ionicons name="location-outline" size={40} color="#71717A" />
             <Text style={styles.emptyTitle}>No Service Areas Configured</Text>
             <Text style={styles.emptySubtitle}>
               Define service areas so customers in your coverage zones can find and book your services.
@@ -239,7 +241,7 @@ export default function ServiceAreasScreen({ navigation }) {
                 {selectedAreaId ? 'Edit Service Area' : 'New Service Area'}
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={24} color={colors.slate600} />
+                <Ionicons name="close" size={24} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
 
@@ -294,13 +296,15 @@ export default function ServiceAreasScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: '#0B0B0E'
   },
   scroll: {
     padding: spacing.lg
   },
   cardHeader: {
-    marginBottom: spacing.md
+    marginBottom: spacing.md,
+    backgroundColor: '#161420',
+    borderColor: '#252136'
   },
   headerRow: {
     flexDirection: 'row',
@@ -310,29 +314,33 @@ const styles = StyleSheet.create({
   },
   cardHeaderTitle: {
     ...typography.titleSmall,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   cardHeaderSub: {
-    ...typography.caption,
-    color: colors.slate500,
+    fontSize: 12,
+    color: '#9CA3AF',
     marginTop: 2
   },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.primarySubtle,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs + 2,
+    backgroundColor: '#201A36',
+    borderWidth: 1,
+    borderColor: '#362E52',
     borderRadius: borderRadius.md
   },
   addBtnText: {
-    ...typography.caption,
+    fontSize: 12,
     fontWeight: '700',
-    color: colors.primaryDark
+    color: '#A78BFA'
   },
   areaCard: {
-    marginBottom: spacing.md
+    marginBottom: spacing.md,
+    backgroundColor: '#161420',
+    borderColor: '#252136'
   },
   areaHeader: {
     flexDirection: 'row',
@@ -345,10 +353,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs
   },
+  iconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#201A36',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   areaName: {
     ...typography.bodyLarge,
     fontWeight: '700',
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   actionRow: {
     flexDirection: 'row',
@@ -359,7 +375,7 @@ const styles = StyleSheet.create({
   },
   areaCity: {
     ...typography.bodyMedium,
-    color: colors.slate600,
+    color: '#CBD5E1',
     marginBottom: spacing.sm
   },
   zipWrap: {
@@ -370,40 +386,44 @@ const styles = StyleSheet.create({
     marginTop: 4
   },
   zipLabel: {
-    ...typography.caption,
-    color: colors.slate500,
+    fontSize: 11,
+    color: '#9CA3AF',
     fontWeight: '600'
   },
   noZipText: {
-    ...typography.caption,
-    color: colors.slate400,
+    fontSize: 11,
+    color: '#71717A',
     fontStyle: 'italic'
   },
   emptyCard: {
     alignItems: 'center',
     padding: spacing.xl,
-    gap: spacing.sm
+    gap: spacing.sm,
+    backgroundColor: '#161420',
+    borderColor: '#252136'
   },
   emptyTitle: {
     ...typography.titleMedium,
-    color: colors.slate800,
+    color: '#FFFFFF',
     marginTop: spacing.xs
   },
   emptySubtitle: {
     ...typography.bodySmall,
-    color: colors.slate500,
+    color: '#9CA3AF',
     textAlign: 'center',
     maxWidth: 280
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'center',
     padding: spacing.lg
   },
   modalContent: {
-    backgroundColor: colors.white,
+    backgroundColor: '#161420',
     borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#252136',
     padding: spacing.lg
   },
   modalHeader: {
@@ -414,18 +434,18 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     ...typography.titleMedium,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   errorBox: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#4C0519',
     borderWidth: 1,
-    borderColor: '#FCA5A5',
+    borderColor: '#991B1B',
     padding: spacing.sm,
     borderRadius: borderRadius.md,
     marginBottom: spacing.md
   },
   errorText: {
     ...typography.bodySmall,
-    color: '#B91C1C'
+    color: '#F87171'
   }
 });

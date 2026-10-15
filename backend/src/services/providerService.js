@@ -640,9 +640,15 @@ const getPublicProviderById = async (providerId) => {
     throw err;
   }
 
-  const services = await Service.find({ provider: provider._id, isActive: true })
+  const rawServices = await Service.find({ provider: provider._id, isActive: true })
     .populate('category', 'name slug icon')
     .lean();
+
+  const services = rawServices.map((s) => ({
+    ...s,
+    basePrice: s.price,
+    pricingType: s.priceType || 'fixed'
+  }));
 
   return {
     _id: provider._id,

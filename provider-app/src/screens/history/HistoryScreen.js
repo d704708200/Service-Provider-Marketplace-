@@ -16,7 +16,7 @@ import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 const STATUS_FILTERS = [
-  { label: 'All', value: 'all' },
+  { label: 'All Jobs', value: 'all' },
   { label: 'Accepted', value: 'accepted' },
   { label: 'In Progress', value: 'in_progress' },
   { label: 'Completed', value: 'completed' },
@@ -96,17 +96,17 @@ export default function HistoryScreen({ navigation }) {
         </View>
 
         <View style={styles.row}>
-          <Ionicons name="person-outline" size={15} color={colors.slate400} />
+          <Ionicons name="person-outline" size={15} color="#9CA3AF" />
           <Text style={styles.text}>{item.customer?.user?.name || 'Customer'}</Text>
         </View>
 
         <View style={styles.row}>
-          <Ionicons name="calendar-outline" size={15} color={colors.slate400} />
+          <Ionicons name="calendar-outline" size={15} color="#9CA3AF" />
           <Text style={styles.text}>{scheduleText}</Text>
         </View>
 
         <View style={styles.row}>
-          <Ionicons name="location-outline" size={15} color={colors.slate400} />
+          <Ionicons name="location-outline" size={15} color="#9CA3AF" />
           <Text style={styles.text} numberOfLines={1}>
             {item.address?.street}, {item.address?.city}
           </Text>
@@ -118,7 +118,7 @@ export default function HistoryScreen({ navigation }) {
           </Text>
           <View style={styles.viewRow}>
             <Text style={styles.viewText}>View Details</Text>
-            <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+            <Ionicons name="chevron-forward" size={14} color="#A78BFA" />
           </View>
         </View>
       </Card>
@@ -129,7 +129,7 @@ export default function HistoryScreen({ navigation }) {
     <View style={styles.container}>
       <Header
         title="Job History"
-        subtitle="Accepted & Completed Services"
+        subtitle="Claimed & Completed Bookings"
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
 
@@ -177,7 +177,7 @@ export default function HistoryScreen({ navigation }) {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[colors.primary]}
+              colors={['#7C3AED']}
             />
           }
           ListEmptyComponent={
@@ -200,12 +200,12 @@ export default function HistoryScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: '#0B0B0E'
   },
   filterSection: {
-    backgroundColor: colors.white,
+    backgroundColor: '#0F0E16',
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: '#1F1C2B',
     paddingVertical: spacing.sm
   },
   filterScroll: {
@@ -216,25 +216,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
     borderRadius: borderRadius.full,
-    backgroundColor: colors.slate100,
+    backgroundColor: '#1E1B2E',
+    borderWidth: 1,
+    borderColor: '#2D2845',
     marginRight: spacing.xs
   },
   filterTabActive: {
-    backgroundColor: colors.primary
+    backgroundColor: '#7C3AED',
+    borderColor: '#7C3AED'
   },
   filterTabText: {
-    ...typography.caption,
-    color: colors.slate700,
+    fontSize: 12,
+    color: '#9CA3AF',
     fontWeight: '600'
   },
   filterTabTextActive: {
-    color: colors.white
+    color: '#FFFFFF'
   },
   listContent: {
     padding: spacing.lg,
     paddingBottom: spacing.xxxl
   },
   card: {
+    backgroundColor: '#161420',
+    borderColor: '#252136',
+    borderRadius: 16,
     marginBottom: spacing.md
   },
   cardHeader: {
@@ -248,14 +254,14 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm
   },
   reference: {
-    ...typography.caption,
-    color: colors.primary,
+    fontSize: 11,
+    color: '#A78BFA',
     fontWeight: '700',
     marginBottom: 2
   },
   serviceName: {
     ...typography.titleSmall,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   row: {
     flexDirection: 'row',
@@ -265,7 +271,7 @@ const styles = StyleSheet.create({
   },
   text: {
     ...typography.bodySmall,
-    color: colors.slate600,
+    color: '#CBD5E1',
     flex: 1
   },
   footer: {
@@ -273,13 +279,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: colors.slate100,
+    borderTopColor: '#252136',
     paddingTop: spacing.sm,
     marginTop: spacing.xs
   },
   price: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: '#FFFFFF',
     fontWeight: '700'
   },
   viewRow: {
@@ -288,8 +294,8 @@ const styles = StyleSheet.create({
     gap: 2
   },
   viewText: {
-    ...typography.caption,
-    color: colors.primary,
+    fontSize: 12,
+    color: '#A78BFA',
     fontWeight: '600'
   }
 });

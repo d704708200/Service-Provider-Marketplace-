@@ -60,7 +60,13 @@ const getPublicServices = async (query = {}) => {
     .lean();
 
   // Exclude services whose parent category is inactive or missing
-  return services.filter((srv) => srv.category && srv.category.isActive);
+  return services
+    .filter((srv) => srv.category && srv.category.isActive)
+    .map((srv) => ({
+      ...srv,
+      basePrice: srv.price,
+      pricingType: srv.priceType || 'fixed'
+    }));
 };
 
 /**
@@ -153,6 +159,8 @@ const getServiceById = async (serviceId) => {
   const bookingsCount = await Booking.countDocuments({ service: service._id });
   return {
     ...service,
+    basePrice: service.price,
+    pricingType: service.priceType || 'fixed',
     bookingsCount
   };
 };

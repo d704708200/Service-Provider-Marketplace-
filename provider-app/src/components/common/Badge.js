@@ -1,28 +1,52 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import colors from '../../theme/colors';
-import { spacing, borderRadius } from '../../theme';
+import { spacing, borderRadius, typography } from '../../theme';
 
-export default function Badge({ label, variant = 'primary', size = 'md', style }) {
-  const getColors = () => {
+export default function Badge({
+  label,
+  variant = 'primary', // primary, success, warning, danger, slate, secondary
+  size = 'md', // sm, md
+  style,
+  textStyle
+}) {
+  const getVariantStyles = () => {
     switch (variant) {
       case 'success':
-        return { bg: colors.successSubtle, text: colors.success };
+        return {
+          bg: '#064E3B',
+          text: '#34D399'
+        };
       case 'warning':
-        return { bg: colors.warningSubtle, text: colors.warning };
+        return {
+          bg: '#451A03',
+          text: '#FBBF24'
+        };
       case 'danger':
-        return { bg: colors.dangerSubtle, text: colors.danger };
+        return {
+          bg: '#4C0519',
+          text: '#F87171'
+        };
       case 'secondary':
-        return { bg: colors.secondarySubtle, text: colors.secondary };
+        return {
+          bg: '#2E1065',
+          text: '#C084FC'
+        };
       case 'slate':
-        return { bg: colors.slate100, text: colors.slate600 };
+        return {
+          bg: '#252136',
+          text: '#9CA3AF'
+        };
       case 'primary':
       default:
-        return { bg: colors.primarySubtle, text: colors.primary };
+        return {
+          bg: '#2E1065',
+          text: '#A78BFA'
+        };
     }
   };
 
-  const c = getColors();
+  const currentVariant = getVariantStyles();
   const isSm = size === 'sm';
 
   return (
@@ -30,11 +54,19 @@ export default function Badge({ label, variant = 'primary', size = 'md', style }
       style={[
         styles.badge,
         isSm ? styles.badgeSm : styles.badgeMd,
-        { backgroundColor: c.bg },
+        { backgroundColor: currentVariant.bg },
         style
       ]}
     >
-      <Text style={[styles.text, isSm ? styles.textSm : styles.textMd, { color: c.text }]}>
+      <Text
+        style={[
+          styles.text,
+          isSm ? styles.textSm : styles.textMd,
+          { color: currentVariant.text },
+          textStyle
+        ]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </View>
@@ -45,6 +77,7 @@ const styles = StyleSheet.create({
   badge: {
     alignSelf: 'flex-start',
     borderRadius: borderRadius.full,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -57,10 +90,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs
   },
   text: {
-    fontWeight: '700'
+    fontWeight: '600'
   },
   textSm: {
-    fontSize: 10
+    fontSize: 11
   },
   textMd: {
     fontSize: 12

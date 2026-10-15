@@ -23,7 +23,6 @@ export default function ProfileScreen({ navigation }) {
   const { user, profile: authProfile, logout, checkAuthSession } = useAuth();
   const [profile, setProfile] = useState(authProfile);
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   // Edit Profile Modal
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -104,7 +103,7 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+    Alert.alert('Sign Out', 'Are you sure you want to sign out of Provider Portal?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign Out', style: 'destructive', onPress: async () => await logout() }
     ]);
@@ -124,7 +123,7 @@ export default function ProfileScreen({ navigation }) {
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xxl }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7C3AED']} />
         }
       >
         {/* Verification Status Banner */}
@@ -141,13 +140,13 @@ export default function ProfileScreen({ navigation }) {
               <Ionicons
                 name={verificationStatus === 'pending' ? 'time-outline' : 'alert-circle'}
                 size={22}
-                color={verificationStatus === 'pending' ? '#D97706' : '#DC2626'}
+                color={verificationStatus === 'pending' ? '#F59E0B' : '#EF4444'}
               />
               <View style={{ flex: 1 }}>
                 <Text
                   style={[
                     styles.statusBannerTitle,
-                    { color: verificationStatus === 'pending' ? '#92400E' : '#991B1B' }
+                    { color: verificationStatus === 'pending' ? '#FBBF24' : '#F87171' }
                   ]}
                 >
                   {verificationStatus === 'pending'
@@ -157,7 +156,7 @@ export default function ProfileScreen({ navigation }) {
                 <Text
                   style={[
                     styles.statusBannerDesc,
-                    { color: verificationStatus === 'pending' ? '#B45309' : '#B91C1C' }
+                    { color: verificationStatus === 'pending' ? '#FCD34D' : '#FCA5A5' }
                   ]}
                 >
                   {verificationStatus === 'pending'
@@ -173,7 +172,7 @@ export default function ProfileScreen({ navigation }) {
         <Card style={styles.card}>
           <View style={styles.profileRow}>
             <View style={styles.avatar}>
-              <Ionicons name="business" size={32} color={colors.primary} />
+              <Ionicons name="business" size={28} color="#A78BFA" />
             </View>
             <View style={styles.infoCol}>
               <Text style={styles.name}>{profile?.businessName || user?.name || 'Service Partner'}</Text>
@@ -188,7 +187,7 @@ export default function ProfileScreen({ navigation }) {
                     : 'danger'
                 }
                 size="sm"
-                style={{ marginTop: 4 }}
+                style={{ marginTop: 6 }}
               />
             </View>
           </View>
@@ -198,7 +197,7 @@ export default function ProfileScreen({ navigation }) {
             onPress={handleOpenEdit}
             activeOpacity={0.8}
           >
-            <Ionicons name="create-outline" size={16} color={colors.primary} />
+            <Ionicons name="create-outline" size={16} color="#A78BFA" />
             <Text style={styles.editProfileBtnText}>Edit Business Profile</Text>
           </TouchableOpacity>
         </Card>
@@ -213,13 +212,15 @@ export default function ProfileScreen({ navigation }) {
             activeOpacity={0.7}
           >
             <View style={styles.navLeft}>
-              <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+              <View style={styles.iconCircle}>
+                <Ionicons name="calendar-outline" size={18} color="#A78BFA" />
+              </View>
               <View>
                 <Text style={styles.navLabel}>Weekly Availability Schedule</Text>
                 <Text style={styles.navSub}>Set working hours for each day</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.slate400} />
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
           </TouchableOpacity>
 
           <View style={styles.divider} />
@@ -230,13 +231,15 @@ export default function ProfileScreen({ navigation }) {
             activeOpacity={0.7}
           >
             <View style={styles.navLeft}>
-              <Ionicons name="map-outline" size={20} color={colors.primary} />
+              <View style={styles.iconCircle}>
+                <Ionicons name="map-outline" size={18} color="#A78BFA" />
+              </View>
               <View>
                 <Text style={styles.navLabel}>Service Areas & Zip Codes</Text>
                 <Text style={styles.navSub}>Manage coverage territories</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.slate400} />
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
           </TouchableOpacity>
 
           <View style={styles.divider} />
@@ -247,13 +250,15 @@ export default function ProfileScreen({ navigation }) {
             activeOpacity={0.7}
           >
             <View style={styles.navLeft}>
-              <Ionicons name="pricetag-outline" size={20} color={colors.primary} />
+              <View style={styles.iconCircle}>
+                <Ionicons name="pricetag-outline" size={18} color="#A78BFA" />
+              </View>
               <View>
                 <Text style={styles.navLabel}>Services & Pricing Catalog</Text>
                 <Text style={styles.navSub}>Configure service offerings & rates</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.slate400} />
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
           </TouchableOpacity>
         </Card>
 
@@ -268,9 +273,9 @@ export default function ProfileScreen({ navigation }) {
 
             <View style={styles.statBox}>
               <View style={styles.ratingRow}>
-                <Ionicons name="star" size={16} color="#F59E0B" />
+                <Ionicons name="star" size={15} color="#F59E0B" />
                 <Text style={styles.statVal}>
-                  {profile?.rating?.average ? profile.rating.average.toFixed(1) : '5.0'}
+                  {profile?.rating?.average ? Number(profile.rating.average).toFixed(1) : '5.0'}
                 </Text>
               </View>
               <Text style={styles.statLabel}>Rating</Text>
@@ -322,7 +327,7 @@ export default function ProfileScreen({ navigation }) {
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Edit Provider Profile</Text>
                 <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                  <Ionicons name="close" size={24} color={colors.slate600} />
+                  <Ionicons name="close" size={24} color="#9CA3AF" />
                 </TouchableOpacity>
               </View>
 
@@ -372,7 +377,7 @@ export default function ProfileScreen({ navigation }) {
                 <Ionicons
                   name={isAvailable ? 'checkbox' : 'square-outline'}
                   size={20}
-                  color={isAvailable ? colors.primary : colors.slate400}
+                  color={isAvailable ? '#7C3AED' : '#71717A'}
                 />
                 <Text style={styles.checkboxText}>Mark account as Available for jobs</Text>
               </TouchableOpacity>
@@ -395,22 +400,25 @@ export default function ProfileScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: '#0B0B0E'
   },
   scroll: {
     padding: spacing.lg
   },
   card: {
+    backgroundColor: '#161420',
+    borderColor: '#252136',
+    borderRadius: 16,
     marginBottom: spacing.lg
   },
   pendingCard: {
-    backgroundColor: '#FFFBEB',
-    borderColor: '#FDE68A',
+    backgroundColor: '#351F0B',
+    borderColor: '#78350F',
     borderWidth: 1
   },
   rejectedCard: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FECACA',
+    backgroundColor: '#3C0F17',
+    borderColor: '#7F1D1D',
     borderWidth: 1
   },
   statusBannerRow: {
@@ -433,10 +441,12 @@ const styles = StyleSheet.create({
     gap: spacing.md
   },
   avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.primarySubtle,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#1F1B2E',
+    borderWidth: 1,
+    borderColor: '#362E52',
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -445,11 +455,11 @@ const styles = StyleSheet.create({
   },
   name: {
     ...typography.titleSmall,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   email: {
     ...typography.bodySmall,
-    color: colors.slate500,
+    color: '#9CA3AF',
     marginBottom: 2
   },
   editProfileBtn: {
@@ -458,13 +468,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
     marginTop: spacing.md,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.primarySubtle,
+    paddingVertical: 8,
+    backgroundColor: '#1F1A2E',
+    borderWidth: 1,
+    borderColor: '#31284F',
     borderRadius: borderRadius.md
   },
   editProfileBtnText: {
     ...typography.bodySmall,
-    color: colors.primaryDark,
+    color: '#A78BFA',
     fontWeight: '700'
   },
   navRow: {
@@ -478,18 +490,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm
   },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#1F1A2E',
+    borderWidth: 1,
+    borderColor: '#2F264A',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   navLabel: {
     ...typography.bodyMedium,
-    color: colors.slate900,
+    color: '#FFFFFF',
     fontWeight: '600'
   },
   navSub: {
     ...typography.caption,
-    color: colors.slate500
+    color: '#9CA3AF'
   },
   sectionTitle: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: '#FFFFFF',
     marginBottom: spacing.md
   },
   statsGrid: {
@@ -500,13 +522,15 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     padding: spacing.sm,
-    backgroundColor: colors.slate50,
+    backgroundColor: '#1C1929',
     borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: '#252136',
     marginHorizontal: 4
   },
   statVal: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: '#FFFFFF',
     fontWeight: '700'
   },
   ratingRow: {
@@ -516,7 +540,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     ...typography.caption,
-    color: colors.slate500,
+    color: '#9CA3AF',
     marginTop: 2
   },
   row: {
@@ -527,16 +551,16 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.bodySmall,
-    color: colors.slate500
+    color: '#9CA3AF'
   },
   val: {
     ...typography.bodySmall,
-    color: colors.slate800,
+    color: '#FFFFFF',
     fontWeight: '500'
   },
   divider: {
     height: 1,
-    backgroundColor: colors.slate100,
+    backgroundColor: '#252136',
     marginVertical: spacing.xs
   },
   logoutBtn: {
@@ -544,7 +568,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'center',
     padding: spacing.lg
   },
@@ -553,8 +577,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   modalContent: {
-    backgroundColor: colors.white,
+    backgroundColor: '#161420',
     borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#252136',
     padding: spacing.lg
   },
   modalHeader: {
@@ -565,7 +591,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     ...typography.titleMedium,
-    color: colors.slate900
+    color: '#FFFFFF'
   },
   checkboxRow: {
     flexDirection: 'row',
@@ -575,18 +601,18 @@ const styles = StyleSheet.create({
   },
   checkboxText: {
     ...typography.bodySmall,
-    color: colors.slate700
+    color: '#E2E8F0'
   },
   errorBox: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#4C0519',
     borderWidth: 1,
-    borderColor: '#FCA5A5',
+    borderColor: '#991B1B',
     padding: spacing.sm,
     borderRadius: borderRadius.md,
     marginBottom: spacing.md
   },
   errorText: {
     ...typography.bodySmall,
-    color: '#B91C1C'
+    color: '#F87171'
   }
 });
