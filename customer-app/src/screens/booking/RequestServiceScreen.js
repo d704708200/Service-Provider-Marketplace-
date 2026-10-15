@@ -562,7 +562,7 @@ export default function RequestServiceScreen({ route, navigation }) {
     >
       <Header
         title="Request Service"
-        subtitle={service?.name || 'Create Booking'}
+        subtitle={currentService?.name || 'Create Booking'}
         showBack
         onBack={() => navigation.goBack()}
         containerStyle={{ paddingTop: insets.top + spacing.xs }}

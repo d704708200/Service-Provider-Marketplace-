@@ -920,6 +920,7 @@ const createPaymentOrder = async (userId, bookingId) => {
       }
     });
   } catch (err) {
+    console.error('Error creating payment order:', err);
     err.statusCode = err.statusCode || 500;
     throw err;
   }

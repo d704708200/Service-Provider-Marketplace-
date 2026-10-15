@@ -41,11 +41,32 @@ const bookingSchema = new mongoose.Schema(
     },
     scheduledDate: {
       type: Date,
-      required: [true, 'Scheduled date is required']
+      required: [
+        function () {
+          return this.bookingMode === 'scheduled';
+        },
+        'Scheduled date is required for scheduled bookings'
+      ]
     },
     scheduledTimeSlot: {
-      startTime: { type: String, required: true },
-      endTime: { type: String, required: true }
+      startTime: {
+        type: String,
+        required: [
+          function () {
+            return this.bookingMode === 'scheduled';
+          },
+          'Start time is required for scheduled bookings'
+        ]
+      },
+      endTime: {
+        type: String,
+        required: [
+          function () {
+            return this.bookingMode === 'scheduled';
+          },
+          'End time is required for scheduled bookings'
+        ]
+      }
     },
     address: {
       street: { type: String, required: true, trim: true },

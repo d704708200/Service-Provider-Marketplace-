@@ -810,26 +810,6 @@ const validateRejectBooking = (req, res, next) => {
   next();
 };
 
-module.exports = {
-  validateRegisterCustomer,
-  validateRegisterProvider,
-  validateLogin,
-  validateObjectId,
-  validateCreateCategory,
-  validateUpdateCategory,
-  validateUpdateCategoryStatus,
-  validateCreateService,
-  validateUpdateService,
-  validateUpdateServiceStatus,
-  validateUpdateProviderProfile,
-  validateSubmitDocument,
-  validateDocumentReview,
-  validateProviderVerification,
-  validateAccountStatus,
-  validateCreateBooking,
-  validateCancelBooking,
-  validateRejectBooking
-};
 
 const validateUpdateCustomerProfile = (req, res, next) => {
   const { name, phone, avatar, defaultPaymentMethod, emergencyContact, role, isActive, isVerified } = req.body;
