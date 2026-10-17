@@ -1,19 +1,17 @@
 import axios from 'axios';
 import { authStorage } from '../storage/authStorage';
+import { getApiBaseUrl, API_CONFIG } from '../config/env';
 
-import { Platform } from 'react-native';
+const BASE_URL = getApiBaseUrl();
 
-let rawUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api';
-
-if (Platform.OS === 'android') {
-  rawUrl = 'http://192.168.1.3:5000/api';
+// Safe diagnostic log on development startup (without secrets)
+if (__DEV__) {
+  console.log(`[API Config] Active Base URL: ${BASE_URL}`);
 }
-
-const BASE_URL = rawUrl;
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 15000,
+  timeout: API_CONFIG.TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json'
