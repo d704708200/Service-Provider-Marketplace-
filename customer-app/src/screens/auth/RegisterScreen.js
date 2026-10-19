@@ -6,7 +6,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  TouchableOpacity
+  TouchableOpacity,
+  Image
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -104,16 +105,23 @@ export default function RegisterScreen({ navigation }) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => {
-              clearError();
-              navigation.goBack();
-            }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.slate900} />
-          </TouchableOpacity>
+          <View style={styles.headerTopRow}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => {
+                clearError();
+                navigation.goBack();
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="arrow-back" size={24} color={colors.slate100 || '#FFFFFF'} />
+            </TouchableOpacity>
+            <Image
+              source={require('../../../assets/mendroo-logo.png')}
+              style={styles.headerLogo}
+              resizeMode="contain"
+            />
+          </View>
           <Text style={styles.title}>Create Account</Text>
           <Text style={styles.subtitle}>Join as a customer to discover and book verified services</Text>
         </View>
@@ -233,10 +241,19 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     paddingTop: spacing.xs
   },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md
+  },
   backButton: {
-    alignSelf: 'flex-start',
-    marginBottom: spacing.md,
     padding: spacing.xs
+  },
+  headerLogo: {
+    width: 44,
+    height: 44,
+    borderRadius: 10
   },
   title: {
     ...typography.titleLarge,

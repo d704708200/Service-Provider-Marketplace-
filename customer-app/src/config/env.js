@@ -29,18 +29,17 @@ export const LOCALHOST_API_URL = 'http://localhost:5000/api';
 export function getApiBaseUrl() {
   const envUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 
-  // If explicitly configured, respect the explicit configuration unless it's a localhost URL on Android
+  // If explicitly configured, use it directly (converting localhost to LAN IP on Android)
   if (envUrl && envUrl.length > 0) {
     if (Platform.OS === 'android') {
       if (envUrl.includes('localhost') || envUrl.includes('127.0.0.1')) {
-        // Physical phone or emulator cannot resolve host localhost directly
         return DEV_LAN_API_URL;
       }
     }
     return envUrl;
   }
 
-  // Release builds / production fallback:
+  // Release builds fallback when no env variable is provided:
   if (!__DEV__) {
     return DEFAULT_PRODUCTION_API_URL;
   }

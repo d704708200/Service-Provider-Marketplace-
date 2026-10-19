@@ -6,7 +6,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  TouchableOpacity
+  TouchableOpacity,
+  Image
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -74,9 +75,11 @@ export default function LoginScreen({ navigation }) {
       >
         {/* Brand Header */}
         <View style={styles.header}>
-          <View style={styles.logoBadge}>
-            <Ionicons name="sparkles" size={32} color={colors.primary} />
-          </View>
+          <Image
+            source={require('../../../assets/mendroo-logo.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.subtitle}>Sign in to your customer account to book local services</Text>
         </View>
@@ -157,15 +160,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.xxl
   },
-  logoBadge: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: '#241F36',
-    borderWidth: 1,
-    borderColor: '#36314D',
-    alignItems: 'center',
-    justifyContent: 'center',
+  logoImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 20,
     marginBottom: spacing.md
   },
   title: {
