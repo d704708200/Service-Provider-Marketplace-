@@ -7,6 +7,7 @@ const Category = require('../models/Category');
 const Availability = require('../models/Availability');
 const ServiceArea = require('../models/ServiceArea');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 const paymentService = require('./paymentService');
 
 /**
@@ -245,7 +246,7 @@ const createBooking = async (userId, bookingData) => {
     notes: effectiveNotes
   });
 
-  return await Booking.findById(newBooking._id)
+  const createdDoc = await Booking.findById(newBooking._id)
     .populate('service', 'name price priceType estimatedDurationMinutes description')
     .populate({
       path: 'provider',
@@ -256,6 +257,59 @@ const createBooking = async (userId, bookingData) => {
       path: 'customer',
       populate: { path: 'user', select: 'name email phone' }
     });
+
+  // Safe notification dispatching
+  try {
+    const serviceName = createdDoc.service?.name || 'Service';
+    const customerName = createdDoc.customer?.user?.name || 'Customer';
+    const scheduledInfo = createdDoc.bookingMode === 'instant'
+      ? 'Immediate (ASAP)'
+      : createdDoc.scheduledDate
+      ? `${new Date(createdDoc.scheduledDate).toLocaleDateString()} (${createdDoc.scheduledTimeSlot?.startTime || ''})`
+      : 'Scheduled';
+
+    const providerUserIds = [];
+
+    if (assignedProvider && createdDoc.provider?.user?._id) {
+      providerUserIds.push(createdDoc.provider.user._id);
+    } else if (candidateProviders && candidateProviders.length > 0) {
+      const candidateDocs = await Provider.find({ _id: { $in: candidateProviders } }).select('user');
+      candidateDocs.forEach((p) => {
+        if (p.user) providerUserIds.push(p.user);
+      });
+    }
+
+    if (providerUserIds.length > 0) {
+      const notifDocs = providerUserIds.map((pUserId) => ({
+        recipient: pUserId,
+        title: `New Booking Request: ${createdDoc.bookingReference}`,
+        message: `New request for ${serviceName} from ${customerName}. Scheduled: ${scheduledInfo}. Total: ₹${createdDoc.pricing?.totalAmount || 0}.`,
+        type: 'booking',
+        data: {
+          bookingId: createdDoc._id.toString(),
+          bookingReference: createdDoc.bookingReference,
+          mode: createdDoc.bookingMode
+        }
+      }));
+
+      await Notification.insertMany(notifDocs);
+      console.log(
+        `[BOOKING_NOTIFICATION] Created ${notifDocs.length} notification(s) for booking ${createdDoc.bookingReference}`
+      );
+    }
+  } catch (notifErr) {
+    // Notification delivery failure must not abort booking creation
+    console.error(
+      `[BOOKING_NOTIFICATION_ERROR] Failed to dispatch notifications for booking ${createdDoc.bookingReference}:`,
+      notifErr.message
+    );
+  }
+
+  console.log(
+    `[BOOKING_CREATED] Reference: ${createdDoc.bookingReference} | Mode: ${createdDoc.bookingMode} | Customer: ${createdDoc.customer?._id} | AssignedProvider: ${createdDoc.provider?._id || 'none'} | Candidates: ${candidateProviders.length}`
+  );
+
+  return createdDoc;
 };
 
 /**
@@ -590,6 +644,30 @@ const acceptBookingByProvider = async (userId, bookingId) => {
     err.statusCode = 409;
     throw err;
   }
+
+  // Safe notification to customer that provider accepted
+  try {
+    const custUserId = updatedBooking.customer?.user?._id;
+    if (custUserId) {
+      await Notification.create({
+        recipient: custUserId,
+        title: `Booking Accepted: ${updatedBooking.bookingReference}`,
+        message: `${provider.businessName || 'Service Provider'} has accepted your booking request.`,
+        type: 'booking',
+        data: {
+          bookingId: updatedBooking._id.toString(),
+          bookingReference: updatedBooking.bookingReference,
+          status: 'accepted'
+        }
+      });
+    }
+  } catch (notifErr) {
+    console.error('[BOOKING_ACCEPT_NOTIFICATION_ERROR]', notifErr.message);
+  }
+
+  console.log(
+    `[BOOKING_ACCEPTED] Reference: ${updatedBooking.bookingReference} | Provider: ${provider._id} (${provider.businessName})`
+  );
 
   return updatedBooking;
 };
@@ -1720,6 +1798,59 @@ const reportCashPaymentDispute = async (userId, bookingId, disputeReason) => {
     });
 };
 
+/**
+ * Get notifications for authenticated user
+ */
+const getUserNotifications = async (userId, query = {}) => {
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(query.limit, 10) || 20));
+  const skip = (page - 1) * limit;
+
+  const filter = { recipient: userId };
+  if (query.unreadOnly === 'true') {
+    filter.isRead = false;
+  }
+
+  const [notifications, total, unreadCount] = await Promise.all([
+    Notification.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    Notification.countDocuments(filter),
+    Notification.countDocuments({ recipient: userId, isRead: false })
+  ]);
+
+  return {
+    notifications,
+    unreadCount,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    }
+  };
+};
+
+/**
+ * Mark notification as read
+ */
+const markNotificationRead = async (userId, notificationId) => {
+  const notification = await Notification.findOneAndUpdate(
+    { _id: notificationId, recipient: userId },
+    { $set: { isRead: true, readAt: new Date() } },
+    { new: true }
+  );
+
+  if (!notification) {
+    const err = new Error('Notification not found or access denied');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  return notification;
+};
+
 module.exports = {
   createBooking,
   getCustomerBookings,
@@ -1746,5 +1877,7 @@ module.exports = {
   recordSparePartsPaymentFailure,
   confirmCashPaymentByProvider,
   confirmCashPaymentByCustomer,
-  reportCashPaymentDispute
+  reportCashPaymentDispute,
+  getUserNotifications,
+  markNotificationRead
 };

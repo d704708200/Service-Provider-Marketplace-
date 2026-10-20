@@ -9,6 +9,7 @@ import {
   Alert
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { bookingApi } from '../../services/api';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView, EmptyState } from '../../components/common';
@@ -40,6 +41,12 @@ export default function RequestsScreen({ navigation }) {
   useEffect(() => {
     fetchRequests();
   }, [fetchRequests]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchRequests();
+    }, [fetchRequests])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);

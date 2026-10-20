@@ -124,6 +124,14 @@ export const bookingApi = {
   confirmCashPayment: async (id) => {
     const response = await api.patch(`/bookings/provider/${id}/cash/confirm`);
     return response.data;
+  },
+  getNotifications: async (params = {}) => {
+    const response = await api.get('/bookings/user/notifications', { params });
+    return response.data;
+  },
+  markNotificationAsRead: async (id) => {
+    const response = await api.patch(`/bookings/user/notifications/${id}/read`);
+    return response.data;
   }
 };
 

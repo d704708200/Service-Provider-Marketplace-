@@ -26,6 +26,7 @@ export default function DashboardScreen({ navigation }) {
   const [pendingRequests, setPendingRequests] = useState([]);
   const [activeBookings, setActiveBookings] = useState([]);
   const [completedBookings, setCompletedBookings] = useState([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [isAvailable, setIsAvailable] = useState(true);
   const [toggleLoading, setToggleLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -33,12 +34,13 @@ export default function DashboardScreen({ navigation }) {
 
   const fetchDashboardData = useCallback(async () => {
     try {
-      const [profileRes, pendingRes, acceptedRes, inProgressRes, completedRes] = await Promise.all([
+      const [profileRes, pendingRes, acceptedRes, inProgressRes, completedRes, notifsRes] = await Promise.all([
         providerApi.getProfile().catch(() => ({ data: null })),
         bookingApi.getPendingRequests().catch(() => ({ data: [] })),
         bookingApi.getHistory({ status: 'accepted' }).catch(() => ({ data: [] })),
         bookingApi.getHistory({ status: 'in_progress' }).catch(() => ({ data: [] })),
-        bookingApi.getHistory({ status: 'completed' }).catch(() => ({ data: [] }))
+        bookingApi.getHistory({ status: 'completed' }).catch(() => ({ data: [] })),
+        bookingApi.getNotifications({ unreadOnly: 'true' }).catch(() => ({ data: [], unreadCount: 0 }))
       ]);
 
       if (profileRes?.data) {
@@ -46,7 +48,10 @@ export default function DashboardScreen({ navigation }) {
         setIsAvailable(Boolean(profileRes.data.isAvailable));
       }
 
-      setPendingRequests(pendingRes?.data || []);
+      const pendingList = pendingRes?.data || [];
+      const unreadNotifCount = typeof notifsRes?.unreadCount === 'number' ? notifsRes.unreadCount : 0;
+      setPendingRequests(pendingList);
+      setUnreadNotificationsCount(Math.max(pendingList.length, unreadNotifCount));
       const active = [...(acceptedRes?.data || []), ...(inProgressRes?.data || [])];
       setActiveBookings(active);
       setCompletedBookings(completedRes?.data || []);
@@ -125,10 +130,10 @@ export default function DashboardScreen({ navigation }) {
             activeOpacity={0.7}
           >
             <Ionicons name="notifications-outline" size={18} color="#FFFFFF" />
-            {pendingRequests.length > 0 && (
+            {unreadNotificationsCount > 0 && (
               <View style={styles.headerBadge}>
                 <Text style={styles.headerBadgeText}>
-                  {pendingRequests.length > 9 ? '9+' : pendingRequests.length}
+                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
                 </Text>
               </View>
             )}

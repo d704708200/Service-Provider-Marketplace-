@@ -151,6 +151,8 @@ export default function BookingDetailScreen({ route, navigation }) {
       return;
     }
 
+    if (actionLoading) return;
+
     Alert.alert(
       'Complete Service',
       'Are you sure you want to mark this job as completed?',
@@ -159,15 +161,49 @@ export default function BookingDetailScreen({ route, navigation }) {
         {
           text: 'Mark Completed',
           onPress: async () => {
+            if (actionLoading) return;
             setActionLoading(true);
             try {
               const res = await bookingApi.completeService(booking._id);
-              if (res?.success) {
-                Alert.alert('Service Completed', 'Job completed successfully! Order recorded.');
+              if (res?.success && res.data) {
                 setBooking(res.data);
+                Alert.alert(
+                  'Service Completed',
+                  'Job completed successfully! Order recorded.',
+                  [
+                    {
+                      text: 'View Details',
+                      onPress: () => fetchDetail()
+                    },
+                    {
+                      text: 'Go to Bookings',
+                      onPress: () => navigation.navigate('HistoryTab')
+                    }
+                  ]
+                );
               }
             } catch (err) {
-              Alert.alert('Error', err.userMessage || 'Could not complete service');
+              const isConflict =
+                err.response?.status === 409 ||
+                /concurrent|already completed|state conflict|not found/i.test(err.message || '');
+              const errorMsg =
+                err.response?.data?.error?.message ||
+                err.response?.data?.message ||
+                err.userMessage ||
+                err.message ||
+                'Could not complete service';
+
+              Alert.alert(
+                isConflict ? 'Status Updated' : 'Cannot Complete Service',
+                errorMsg,
+                [
+                  {
+                    text: 'Refresh',
+                    onPress: () => fetchDetail()
+                  }
+                ]
+              );
+              fetchDetail();
             } finally {
               setActionLoading(false);
             }
@@ -497,6 +533,26 @@ export default function BookingDetailScreen({ route, navigation }) {
                   </View>
                 </View>
               ) : null}
+
+              {(booking.spareParts.status === 'pending_approval' ||
+                booking.spareParts.status === 'pending_customer_approval') && (
+                <View
+                  style={[
+                    styles.rejectionBox,
+                    { backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.3)' }
+                  ]}
+                >
+                  <Ionicons name="time-outline" size={18} color="#F59E0B" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.rejectionText, { color: '#F59E0B', fontWeight: '700', marginBottom: 2 }]}>
+                      Awaiting Customer Approval
+                    </Text>
+                    <Text style={[styles.rejectionText, { color: '#E2E8F0' }]}>
+                      Your extra materials proposal (+₹{booking.spareParts.totalAdditionalAmount || 0}) is pending customer review. The customer must approve or reject this proposal before this job can be completed.
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               {booking.spareParts.status === 'approved' && (
                 <View style={styles.approvedBox}>

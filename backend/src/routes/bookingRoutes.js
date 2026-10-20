@@ -263,4 +263,20 @@ router.patch(
   bookingController.cancelAdminBooking
 );
 
+// ==========================================
+// 4. Notification Routes (Any authenticated user)
+// ==========================================
+router.get(
+  '/user/notifications',
+  authenticate,
+  bookingController.getNotifications
+);
+
+router.patch(
+  '/user/notifications/:id/read',
+  authenticate,
+  validateObjectId('id'),
+  bookingController.markNotificationAsRead
+);
+
 module.exports = router;

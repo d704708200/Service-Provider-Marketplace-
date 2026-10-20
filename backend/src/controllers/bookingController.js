@@ -367,6 +367,33 @@ const reportCashPaymentDispute = async (req, res, next) => {
   }
 };
 
+const getNotifications = async (req, res, next) => {
+  try {
+    const result = await bookingService.getUserNotifications(req.user._id, req.query);
+    res.status(200).json({
+      success: true,
+      data: result.notifications,
+      unreadCount: result.unreadCount,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const markNotificationAsRead = async (req, res, next) => {
+  try {
+    const notification = await bookingService.markNotificationRead(req.user._id, req.params.id);
+    res.status(200).json({
+      success: true,
+      message: 'Notification marked as read',
+      data: notification
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createBooking,
   getCustomerBookings,
@@ -393,5 +420,7 @@ module.exports = {
   recordSparePartsPaymentFailure,
   confirmCashPaymentByProvider,
   confirmCashPaymentByCustomer,
-  reportCashPaymentDispute
+  reportCashPaymentDispute,
+  getNotifications,
+  markNotificationAsRead
 };

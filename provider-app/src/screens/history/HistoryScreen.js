@@ -9,6 +9,7 @@ import {
   ScrollView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { bookingApi } from '../../services/api';
 import { Header, Card, Badge, LoadingScreen, ErrorView, EmptyState } from '../../components/common';
@@ -52,6 +53,12 @@ export default function HistoryScreen({ navigation }) {
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchHistory();
+    }, [fetchHistory])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);

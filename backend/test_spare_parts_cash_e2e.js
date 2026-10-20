@@ -32,6 +32,7 @@ async function runTests() {
 
   let passed = 0;
   let failed = 0;
+  const createdBookings = [];
 
   function assert(condition, message) {
     if (condition) {
@@ -45,6 +46,7 @@ async function runTests() {
 
   try {
     const timestamp = Date.now();
+    const createdBookings = [];
 
     // Setup: Customer & Provider login
     const custLogin = await axios.post(`${BASE_URL}/auth/login/customer`, {
@@ -600,7 +602,24 @@ async function runTests() {
     console.log('======================================================\n');
   } catch (error) {
     console.error('Test suite failed with unexpected error:', error.response?.data || error.message);
+  } finally {
+    // Teardown: Clean up bookings created during this test run to prevent DB pollution
+    if (createdBookings.length > 0) {
+      console.log(`\n🧹 Cleaning up ${createdBookings.length} test bookings created during this test run...`);
+      try {
+        const mongoose = require('mongoose');
+        if (mongoose.connection.readyState === 0) {
+          await mongoose.connect(process.env.MONGODB_URI);
+        }
+        const objIds = createdBookings.map(id => new mongoose.Types.ObjectId(id));
+        const delRes = await mongoose.connection.collection('bookings').deleteMany({ _id: { $in: objIds } });
+        console.log(`   ✓ Cleaned up ${delRes.deletedCount} test bookings from test run.`);
+      } catch (cleanupErr) {
+        console.error('   ⚠️ Teardown cleanup error:', cleanupErr.message);
+      }
+    }
   }
 }
 
 runTests();
+

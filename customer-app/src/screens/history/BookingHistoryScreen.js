@@ -13,6 +13,7 @@ import {
   ScrollView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { bookingApi } from '../../services/api';
 import { openRazorpayCheckout } from '../../services/razorpayService';
@@ -51,6 +52,12 @@ export default function BookingHistoryScreen({ navigation }) {
   useEffect(() => {
     fetchBookings();
   }, [fetchBookings]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchBookings();
+    }, [fetchBookings])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
