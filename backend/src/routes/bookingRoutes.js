@@ -81,6 +81,15 @@ router.post(
   bookingController.verifySparePartsPayment
 );
 
+// Customer reports spare parts payment cancelled or failed
+router.post(
+  '/customer/:id/spare-parts/payment/failure',
+  authenticate,
+  requireRole('customer'),
+  validateObjectId('id'),
+  bookingController.recordSparePartsPaymentFailure
+);
+
 // Initiate Razorpay payment order for customer booking
 router.post(
   '/customer/:id/payment/order',
@@ -176,6 +185,15 @@ router.post(
   bookingController.submitSpareParts
 );
 
+// Provider confirms cash received on service
+router.patch(
+  '/provider/:id/cash/confirm',
+  authenticate,
+  requireRole('provider'),
+  validateObjectId('id'),
+  bookingController.confirmCashPaymentByProvider
+);
+
 // Complete service (in_progress -> completed)
 router.patch(
   '/provider/:id/complete',
@@ -183,6 +201,24 @@ router.patch(
   requireRole('provider'),
   validateObjectId('id'),
   bookingController.completeProviderService
+);
+
+// Customer confirms cash payment
+router.patch(
+  '/customer/:id/cash/confirm',
+  authenticate,
+  requireRole('customer'),
+  validateObjectId('id'),
+  bookingController.confirmCashPaymentByCustomer
+);
+
+// Customer reports cash payment dispute
+router.post(
+  '/customer/:id/cash/dispute',
+  authenticate,
+  requireRole('customer'),
+  validateObjectId('id'),
+  bookingController.reportCashPaymentDispute
 );
 
 // ==========================================

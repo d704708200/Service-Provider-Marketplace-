@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { bookingApi, customerApi, serviceApi, providerApi } from '../../services/api';
+import { openRazorpayCheckout } from '../../services/razorpayService';
 import { Header, Card, Input, Button, Badge } from '../../components/common';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -237,114 +238,8 @@ export default function RequestServiceScreen({ route, navigation }) {
   /**
    * Loads Razorpay checkout script dynamically on Expo Web
    */
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      if (typeof window === 'undefined') {
-        resolve(false);
-        return;
-      }
-      if (window.Razorpay) {
-        resolve(true);
-        return;
-      }
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.async = true;
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-  };
-
   /**
-   * Launches Razorpay web checkout modal
-   */
-  const launchRazorpayWebCheckout = async (orderData, bookingId) => {
-    const scriptLoaded = await loadRazorpayScript();
-    if (!scriptLoaded || typeof window.Razorpay === 'undefined') {
-      Alert.alert(
-        'Checkout Notice',
-        'Could not initialize Razorpay checkout script. You can complete cash on delivery or retry online payment.'
-      );
-      setPaymentProcessing(false);
-      return;
-    }
-
-    const options = {
-      key: orderData.keyId,
-      amount: orderData.amount,
-      currency: orderData.currency || 'INR',
-      name: 'Service Marketplace',
-      description: `${currentService?.name || 'Service Booking'} (${orderData.bookingReference})`,
-      order_id: orderData.orderId,
-      prefill: {
-        name: orderData.customer?.name || user?.name || 'Customer',
-        contact: orderData.customer?.phone || user?.phone || contactPhone || ''
-      },
-      theme: {
-        color: '#7C3AED'
-      },
-      handler: async function (response) {
-        try {
-          setPaymentProcessing(true);
-          const verifyRes = await bookingApi.verifyPayment(bookingId, {
-            razorpayOrderId: response.razorpay_order_id,
-            razorpayPaymentId: response.razorpay_payment_id,
-            razorpaySignature: response.razorpay_signature
-          });
-          if (verifyRes?.success && verifyRes.data) {
-            setConfirmedBooking(verifyRes.data);
-          } else {
-            Alert.alert('Verification Issue', 'Payment was processed but verification failed. Please contact support.');
-          }
-        } catch (err) {
-          Alert.alert('Payment Verification Failed', err.userMessage || 'Payment signature could not be verified.');
-        } finally {
-          setPaymentProcessing(false);
-        }
-      },
-      modal: {
-        ondismiss: async function () {
-          setPaymentProcessing(false);
-          setPaymentFailedNotice('Payment was cancelled or closed. You can retry payment anytime.');
-          try {
-            await bookingApi.recordPaymentFailure(bookingId, 'Customer closed payment window');
-          } catch (e) {
-            // ignore
-          }
-        }
-      }
-    };
-
-    let rzp;
-    try {
-      rzp = new window.Razorpay(options);
-    } catch (e) {
-      setPaymentProcessing(false);
-      const errMsg = 'Razorpay checkout initialization failed. Please check gateway test credentials or use cash on delivery.';
-      setPaymentFailedNotice(errMsg);
-      Alert.alert('Payment System Notice', errMsg);
-      return;
-    }
-
-    rzp.on('payment.failed', async function (response) {
-      setPaymentProcessing(false);
-      const failReason = response.error?.description || response.error?.reason || 'Payment failed at gateway';
-      setPaymentFailedNotice(
-        `${failReason}. (Note: Razorpay test keys in backend/.env may be inactive/expired on the live gateway)`
-      );
-      Alert.alert('Payment Notice', `Payment failed: ${failReason}. You can retry or choose Pay on Service.`);
-      try {
-        await bookingApi.recordPaymentFailure(bookingId, failReason);
-      } catch (e) {
-        // ignore
-      }
-    });
-    rzp.open();
-  };
-
-  /**
-   * Main submission handler: Creates booking, then opens Razorpay if online
+   * Main submission handler: Creates booking, then opens native/web Razorpay checkout if online
    */
   const handleBookingSubmit = async () => {
     if (!currentService || !currentService._id) {
@@ -409,14 +304,73 @@ export default function RequestServiceScreen({ route, navigation }) {
       setPaymentProcessing(true);
       try {
         const orderRes = await bookingApi.createPaymentOrder(createdBooking._id);
-        if (orderRes?.success && orderRes.data) {
-          if (Platform.OS === 'web') {
-            await launchRazorpayWebCheckout(orderRes.data, createdBooking._id);
-          } else {
-            // Android / Native note: If custom native module not linked, inform customer
+        if (!orderRes?.success || !orderRes.data) {
+          Alert.alert('Payment Order Error', 'Could not create payment order. Booking saved as pending.');
+          setConfirmedBooking(createdBooking);
+          return;
+        }
+
+        const checkoutResult = await openRazorpayCheckout({
+          orderData: orderRes.data,
+          description: `${currentService?.name || 'Service Booking'} (${orderRes.data.bookingReference || ''})`,
+          customerName: user?.name || orderRes.data.customer?.name || 'Customer',
+          customerPhone: contactPhone || user?.phone || orderRes.data.customer?.phone || '',
+          customerEmail: user?.email || '',
+          themeColor: '#7C3AED'
+        });
+
+        if (checkoutResult.success && checkoutResult.data) {
+          // Verify signature on backend before confirming booking as paid
+          try {
+            const verifyRes = await bookingApi.verifyPayment(createdBooking._id, {
+              razorpayOrderId: checkoutResult.data.razorpayOrderId,
+              razorpayPaymentId: checkoutResult.data.razorpayPaymentId,
+              razorpaySignature: checkoutResult.data.razorpaySignature
+            });
+
+            if (verifyRes?.success && verifyRes.data) {
+              setConfirmedBooking(verifyRes.data);
+            } else {
+              Alert.alert(
+                'Verification Issue',
+                'Payment was completed but verification failed. Your booking is saved as pending.'
+              );
+              setConfirmedBooking(createdBooking);
+            }
+          } catch (verifyErr) {
             Alert.alert(
-              'Online Checkout',
-              `Razorpay order ${orderRes.data.orderId} created for ₹${(orderRes.data.amount / 100).toFixed(0)}. Please complete via mobile web or pay on arrival.`,
+              'Payment Verification Failed',
+              verifyErr.userMessage || verifyErr.message || 'Payment signature could not be verified.'
+            );
+            setConfirmedBooking(createdBooking);
+          }
+        } else {
+          // User cancelled or payment failed
+          const isCancelled = checkoutResult.error?.isCancelled;
+          const failureMsg = checkoutResult.error?.description || (isCancelled ? 'Payment cancelled' : 'Payment failed');
+          setPaymentFailedNotice(failureMsg);
+
+          try {
+            await bookingApi.recordPaymentFailure(createdBooking._id, failureMsg);
+          } catch (e) {
+            // ignore failure recording error
+          }
+
+          if (isCancelled) {
+            Alert.alert(
+              'Payment Cancelled',
+              'You cancelled the online payment. Your booking has been saved. You can pay on arrival or retry payment later.',
+              [
+                {
+                  text: 'View Booking',
+                  onPress: () => setConfirmedBooking(createdBooking)
+                }
+              ]
+            );
+          } else {
+            Alert.alert(
+              'Payment Failed',
+              `${failureMsg}. Your booking is saved as pending.`,
               [
                 {
                   text: 'View Booking',
@@ -425,12 +379,12 @@ export default function RequestServiceScreen({ route, navigation }) {
               ]
             );
           }
-        } else {
-          Alert.alert('Payment Order Error', 'Could not create payment order. Booking saved as pending.');
-          setConfirmedBooking(createdBooking);
         }
       } catch (err) {
-        Alert.alert('Payment Initiation Notice', err.userMessage || 'Could not initiate online payment. Booking saved as pending.');
+        Alert.alert(
+          'Payment Initiation Notice',
+          err.userMessage || err.message || 'Could not initiate online payment. Booking saved as pending.'
+        );
         setConfirmedBooking(createdBooking);
       } finally {
         setPaymentProcessing(false);

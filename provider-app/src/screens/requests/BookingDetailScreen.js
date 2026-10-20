@@ -23,6 +23,9 @@ export default function BookingDetailScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [showPartsModal, setShowPartsModal] = useState(false);
+  const [partsList, setPartsList] = useState([]);
+  const [partsSubmitting, setPartsSubmitting] = useState(false);
 
   const fetchDetail = useCallback(async () => {
     if (!bookingId) return;
@@ -56,7 +59,75 @@ export default function BookingDetailScreen({ route, navigation }) {
     }
   };
 
+  const handleMarkCashReceived = async () => {
+    // Check if extra materials proposal is pending customer approval
+    if (
+      booking.spareParts &&
+      ['pending_approval', 'pending_customer_approval'].includes(booking.spareParts.status)
+    ) {
+      Alert.alert(
+        'Action Required',
+        'Cannot collect cash while extra materials proposal is awaiting customer approval. The customer must approve or reject the proposal first.'
+      );
+      return;
+    }
+
+    const payableAmount = booking.pricing?.totalAmount || 0;
+    Alert.alert(
+      'Confirm Cash Payment',
+      `Have you collected the full amount of ₹${payableAmount} in cash from the customer?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm Cash Received',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              const res = await bookingApi.confirmCashPayment(booking._id);
+              if (res?.success) {
+                Alert.alert('Payment Recorded', `Cash payment of ₹${payableAmount} recorded successfully.`);
+                setBooking(res.data);
+              }
+            } catch (err) {
+              Alert.alert('Error', err.userMessage || 'Could not record cash payment');
+            } finally {
+              setActionLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleCompleteService = async () => {
+    // Check if extra materials proposal is pending customer approval
+    if (
+      booking.spareParts &&
+      ['pending_approval', 'pending_customer_approval'].includes(booking.spareParts.status)
+    ) {
+      Alert.alert(
+        'Action Required',
+        'Your extra materials proposal is awaiting customer approval. The customer must approve or reject the proposal before this job can be completed.'
+      );
+      return;
+    }
+
+    // Check if extra materials were approved and online payment is still pending
+    if (
+      booking.spareParts &&
+      booking.spareParts.status === 'approved' &&
+      booking.paymentMethod === 'online' &&
+      booking.paymentStatus === 'paid' &&
+      booking.spareParts.paymentStatus !== 'paid' &&
+      booking.spareParts.totalAdditionalAmount > 0
+    ) {
+      Alert.alert(
+        'Payment Pending',
+        `The customer has approved extra materials (+₹${booking.spareParts.totalAdditionalAmount}) but has not completed the online payment yet. Please ask the customer to pay via their Customer App before completing.`
+      );
+      return;
+    }
+
     Alert.alert(
       'Complete Service',
       'Are you sure you want to mark this job as completed?',
@@ -84,6 +155,8 @@ export default function BookingDetailScreen({ route, navigation }) {
   };
 
   const handleAcceptRequest = async () => {
+    if (!booking?._id || actionLoading) return;
+
     setActionLoading(true);
     try {
       const res = await bookingApi.acceptBooking(booking._id);
@@ -92,7 +165,14 @@ export default function BookingDetailScreen({ route, navigation }) {
         setBooking(res.data);
       }
     } catch (err) {
-      Alert.alert('Error', err.userMessage || 'Could not accept booking');
+      const isConflict = err.response?.status === 409 || /no longer pending|already claimed|conflict/i.test(err.message || '');
+      Alert.alert(
+        'Request Unavailable',
+        isConflict
+          ? 'This request has already been accepted or is no longer available.'
+          : (err.userMessage || err.message || 'Could not accept booking')
+      );
+      fetchDetail();
     } finally {
       setActionLoading(false);
     }
@@ -117,10 +197,6 @@ export default function BookingDetailScreen({ route, navigation }) {
     : booking.scheduledDate
     ? `${new Date(booking.scheduledDate).toLocaleDateString()} (${booking.scheduledTimeSlot?.startTime || ''} - ${booking.scheduledTimeSlot?.endTime || ''})`
     : 'N/A';
-
-  const [showPartsModal, setShowPartsModal] = useState(false);
-  const [partsList, setPartsList] = useState([]);
-  const [partsSubmitting, setPartsSubmitting] = useState(false);
 
   // Initialize partsList from existing booking spareParts
   const openPartsModal = () => {
@@ -384,10 +460,18 @@ export default function BookingDetailScreen({ route, navigation }) {
 
               {booking.spareParts.status === 'rejected' && booking.spareParts.rejectionReason ? (
                 <View style={styles.rejectionBox}>
-                  <Ionicons name="alert-circle" size={16} color="#F43F5E" />
-                  <Text style={styles.rejectionText}>
-                    Customer rejected: {booking.spareParts.rejectionReason}
-                  </Text>
+                  <Ionicons name="alert-circle" size={18} color="#F43F5E" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.rejectionText, { fontWeight: '700', marginBottom: 2 }]}>
+                      Proposal Declined by Customer:
+                    </Text>
+                    <Text style={styles.rejectionText}>
+                      "{booking.spareParts.rejectionReason}"
+                    </Text>
+                    <Text style={[styles.rejectionText, { color: '#CBD5E1', marginTop: 4, fontSize: 11 }]}>
+                      You can revise the items or prices below and resubmit for customer approval.
+                    </Text>
+                  </View>
                 </View>
               ) : null}
 
@@ -407,13 +491,32 @@ export default function BookingDetailScreen({ route, navigation }) {
 
           {canAddParts && (
             <TouchableOpacity
-              style={styles.addPartsBtn}
+              style={[
+                styles.addPartsBtn,
+                booking.spareParts?.status === 'rejected' && {
+                  backgroundColor: '#7C3AED',
+                  borderColor: '#A78BFA'
+                }
+              ]}
               onPress={openPartsModal}
               activeOpacity={0.8}
             >
-              <Ionicons name="construct-outline" size={16} color="#A78BFA" />
-              <Text style={styles.addPartsBtnText}>
-                {booking.spareParts?.items?.length ? 'Edit Spare Parts Bill' : '+ Add Spare Parts & Labour'}
+              <Ionicons
+                name="construct-outline"
+                size={16}
+                color={booking.spareParts?.status === 'rejected' ? '#FFFFFF' : '#A78BFA'}
+              />
+              <Text
+                style={[
+                  styles.addPartsBtnText,
+                  booking.spareParts?.status === 'rejected' && { color: '#FFFFFF', fontWeight: '700' }
+                ]}
+              >
+                {booking.spareParts?.status === 'rejected'
+                  ? 'Revise & Resubmit Proposal'
+                  : booking.spareParts?.items?.length
+                  ? 'Edit Spare Parts Bill'
+                  : '+ Add Spare Parts & Labour'}
               </Text>
             </TouchableOpacity>
           )}
@@ -517,14 +620,26 @@ export default function BookingDetailScreen({ route, navigation }) {
           )}
 
           {booking.status === 'in_progress' && (
-            <Button
-              title={actionLoading ? 'Completing...' : 'Mark Job Completed'}
-              variant="success"
-              loading={actionLoading}
-              disabled={actionLoading}
-              onPress={handleCompleteService}
-              style={styles.actionBtn}
-            />
+            <View style={{ flex: 1, flexDirection: 'row', gap: 10 }}>
+              {booking.paymentMethod === 'cash' && booking.paymentStatus !== 'paid' && (
+                <Button
+                  title={actionLoading ? 'Recording...' : 'Mark Cash Received'}
+                  variant="primary"
+                  loading={actionLoading}
+                  disabled={actionLoading}
+                  onPress={handleMarkCashReceived}
+                  style={[styles.actionBtn, { flex: 1, backgroundColor: '#059669' }]}
+                />
+              )}
+              <Button
+                title={actionLoading ? 'Completing...' : 'Mark Job Completed'}
+                variant="success"
+                loading={actionLoading}
+                disabled={actionLoading}
+                onPress={handleCompleteService}
+                style={[styles.actionBtn, { flex: 1 }]}
+              />
+            </View>
           )}
         </View>
       )}
@@ -650,22 +765,46 @@ export default function BookingDetailScreen({ route, navigation }) {
               {/* Estimate Summary Box */}
               <View style={styles.estimateBox}>
                 <View style={styles.estimateRow}>
-                  <Text style={styles.estimateLabel}>Original Service Amount:</Text>
+                  <Text style={styles.estimateLabel}>Base Service Price:</Text>
                   <Text style={styles.estimateVal}>
-                    ₹{booking?.spareParts?.originalServiceAmount || booking?.pricing?.totalAmount || 0}
+                    ₹{booking?.pricing?.basePrice || booking?.service?.price || booking?.spareParts?.originalServiceAmount || 0}
                   </Text>
                 </View>
+                {(booking?.pricing?.discount > 0) && (
+                  <View style={styles.estimateRow}>
+                    <Text style={styles.estimateLabel}>Applicable Discount:</Text>
+                    <Text style={[styles.estimateVal, { color: '#10B981' }]}>
+                      -₹{booking.pricing.discount}
+                    </Text>
+                  </View>
+                )}
+                {(booking?.pricing?.tax > 0) && (
+                  <View style={styles.estimateRow}>
+                    <Text style={styles.estimateLabel}>Applicable Taxes / Fees:</Text>
+                    <Text style={styles.estimateVal}>
+                      +₹{booking.pricing.tax}
+                    </Text>
+                  </View>
+                )}
                 <View style={styles.estimateRow}>
-                  <Text style={styles.estimateLabel}>Parts Subtotal:</Text>
+                  <Text style={styles.estimateLabel}>Extra Materials Subtotal:</Text>
                   <Text style={styles.estimateVal}>₹{modalTotals.partsSubtotal}</Text>
                 </View>
+                {modalTotals.labourSubtotal > 0 && (
+                  <View style={styles.estimateRow}>
+                    <Text style={styles.estimateLabel}>Extra Labour Subtotal:</Text>
+                    <Text style={styles.estimateVal}>₹{modalTotals.labourSubtotal}</Text>
+                  </View>
+                )}
                 <View style={styles.estimateRow}>
-                  <Text style={styles.estimateLabel}>Labour Subtotal:</Text>
-                  <Text style={styles.estimateVal}>₹{modalTotals.labourSubtotal}</Text>
+                  <Text style={styles.estimateLabel}>Total Extra Proposed:</Text>
+                  <Text style={[styles.estimateVal, { color: '#F59E0B' }]}>
+                    +₹{modalTotals.totalAdditional}
+                  </Text>
                 </View>
                 <View style={styles.estimateDivider} />
                 <View style={styles.estimateRow}>
-                  <Text style={styles.estimateTotalLabel}>New Revised Total:</Text>
+                  <Text style={styles.estimateTotalLabel}>New Revised Final Total:</Text>
                   <Text style={styles.estimateTotalVal}>₹{modalTotals.newEstimatedTotal}</Text>
                 </View>
               </View>
@@ -679,7 +818,13 @@ export default function BookingDetailScreen({ route, navigation }) {
                 <Text style={styles.cancelModalText}>Cancel</Text>
               </TouchableOpacity>
               <Button
-                title={partsSubmitting ? 'Submitting...' : 'Submit for Approval'}
+                title={
+                  partsSubmitting
+                    ? 'Submitting...'
+                    : booking.spareParts?.status === 'rejected'
+                    ? 'Resubmit Revised Proposal'
+                    : 'Submit for Approval'
+                }
                 variant="primary"
                 loading={partsSubmitting}
                 disabled={partsSubmitting}

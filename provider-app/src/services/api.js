@@ -120,6 +120,10 @@ export const bookingApi = {
   submitSpareParts: async (id, partsData) => {
     const response = await api.post(`/bookings/provider/${id}/spare-parts`, partsData);
     return response.data;
+  },
+  confirmCashPayment: async (id) => {
+    const response = await api.patch(`/bookings/provider/${id}/cash/confirm`);
+    return response.data;
   }
 };
 

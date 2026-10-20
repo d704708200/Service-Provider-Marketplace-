@@ -142,4 +142,84 @@ let passed = 0;
   passed++;
 }
 
+// Test 8: Razorpay Key Sanitization - Trailing Newline & Whitespace Trimming
+{
+  const originalKeyId = process.env.RAZORPAY_KEY_ID;
+  const originalKeySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  process.env.RAZORPAY_KEY_ID = '  rzp_test_TpJT4MxwX8OrZT\n  ';
+  process.env.RAZORPAY_KEY_SECRET = '  82ajH7t4Sy74OU4c1gAgYDup\r\n  ';
+
+  const config = paymentService.getSanitizedRazorpayConfig();
+  assert.strictEqual(config.keyId, 'rzp_test_TpJT4MxwX8OrZT', 'Key ID must be cleanly trimmed with no newlines');
+  assert.strictEqual(config.keySecret, '82ajH7t4Sy74OU4c1gAgYDup', 'Key Secret must be cleanly trimmed with no newlines');
+  assert.strictEqual(config.keyId.includes('\n'), false, 'Key ID must not contain newline');
+  assert.strictEqual(config.keyId.includes('\r'), false, 'Key ID must not contain carriage return');
+  console.log('✓ Razorpay Key & Secret trailing newlines and whitespace safely sanitized');
+  passed++;
+
+  // Restore
+  process.env.RAZORPAY_KEY_ID = originalKeyId;
+  process.env.RAZORPAY_KEY_SECRET = originalKeySecret;
+}
+
+// Test 9: Razorpay Key Sanitization - Rejection of Empty or Missing Keys
+{
+  const originalKeyId = process.env.RAZORPAY_KEY_ID;
+  process.env.RAZORPAY_KEY_ID = '   \n  ';
+
+  assert.throws(
+    () => paymentService.getSanitizedRazorpayConfig(),
+    /missing or empty/i,
+    'Should throw error when Key ID is empty or whitespace only'
+  );
+  console.log('✓ Empty or whitespace-only Key ID correctly rejected with 500 configuration error');
+  passed++;
+
+  process.env.RAZORPAY_KEY_ID = originalKeyId;
+}
+
+// Test 10: Razorpay Key Sanitization - Rejection of Malformed Keys
+{
+  const originalKeyId = process.env.RAZORPAY_KEY_ID;
+  process.env.RAZORPAY_KEY_ID = 'invalid_key_prefix_12345';
+
+  assert.throws(
+    () => paymentService.getSanitizedRazorpayConfig(),
+    /Malformed Razorpay Key ID/i,
+    'Should throw error when Key ID does not match rzp_test_ or rzp_live_'
+  );
+  console.log('✓ Malformed Razorpay Key ID without rzp_test_/rzp_live_ prefix correctly rejected');
+  passed++;
+
+  process.env.RAZORPAY_KEY_ID = originalKeyId;
+}
+
+// Test 11: Signature Verification with Whitespace/Newline in Inputs
+{
+  const secret = 'test_secret_12345\n';
+  const orderId = 'order_test_98765\n';
+  const paymentId = 'pay_test_54321  ';
+
+  const cleanSecret = secret.trim();
+  const cleanOrder = orderId.trim();
+  const cleanPayment = paymentId.trim();
+
+  const validSignature = crypto
+    .createHmac('sha256', cleanSecret)
+    .update(`${cleanOrder}|${cleanPayment}`)
+    .digest('hex');
+
+  const isValid = paymentService.verifyPaymentSignature({
+    orderId,
+    paymentId,
+    signature: `  ${validSignature}\n`,
+    secret
+  });
+
+  assert.strictEqual(isValid, true, 'verifyPaymentSignature must handle inputs safely even if trailing newlines exist');
+  console.log('✓ Signature verification handles whitespace/newlines in parameters safely');
+  passed++;
+}
+
 console.log(`\n--- ALL ${passed} RAZORPAY PAYMENT TESTS PASSED! ---\n`);

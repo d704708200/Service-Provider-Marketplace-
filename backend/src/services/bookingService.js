@@ -577,6 +577,7 @@ const acceptBookingByProvider = async (userId, bookingId) => {
     if (existing.status !== 'pending') {
       const err = new Error(`Booking is no longer pending (current status: '${existing.status}'). Already claimed or cancelled.`);
       err.statusCode = 409;
+      err.data = { currentStatus: existing.status };
       throw err;
     }
     if (existing.provider && existing.provider.toString() !== provider._id.toString()) {
@@ -702,6 +703,51 @@ const completeServiceByProvider = async (userId, bookingId) => {
     throw err;
   }
 
+  const existing = await Booking.findById(bookingId);
+  if (!existing) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+  if (existing.provider?.toString() !== provider._id.toString()) {
+    const err = new Error('Access denied: You are not the assigned provider for this booking');
+    err.statusCode = 403;
+    throw err;
+  }
+  if (existing.status !== 'in_progress') {
+    const err = new Error(`Cannot complete service from '${existing.status}' status. Must be in 'in_progress' status.`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Ensure any proposed extra materials have customer resolution before completion
+  if (
+    existing.spareParts &&
+    ['pending_approval', 'pending_customer_approval'].includes(existing.spareParts.status)
+  ) {
+    const err = new Error(
+      'Cannot complete service: Extra materials proposal is awaiting customer approval. Customer must approve or reject before completion.'
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // If spare parts were approved and booking is online payment with payment pending, require additional payment completion
+  if (
+    existing.spareParts &&
+    existing.spareParts.status === 'approved' &&
+    existing.paymentMethod === 'online' &&
+    existing.paymentStatus === 'paid' &&
+    existing.spareParts.paymentStatus !== 'paid' &&
+    existing.spareParts.totalAdditionalAmount > 0
+  ) {
+    const err = new Error(
+      'Cannot complete service: Approved additional materials amount has not been paid yet by the customer.'
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
   const now = new Date();
   const updatedBooking = await Booking.findOneAndUpdate(
     {
@@ -724,19 +770,8 @@ const completeServiceByProvider = async (userId, bookingId) => {
     });
 
   if (!updatedBooking) {
-    const existing = await Booking.findById(bookingId);
-    if (!existing) {
-      const err = new Error(`Booking with ID '${bookingId}' not found`);
-      err.statusCode = 404;
-      throw err;
-    }
-    if (existing.provider?.toString() !== provider._id.toString()) {
-      const err = new Error('Access denied: You are not the assigned provider for this booking');
-      err.statusCode = 403;
-      throw err;
-    }
-    const err = new Error(`Cannot complete service from '${existing.status}' status. Must be in 'in_progress' status.`);
-    err.statusCode = 400;
+    const err = new Error('Service completion failed due to concurrent modification');
+    err.statusCode = 409;
     throw err;
   }
 
@@ -906,7 +941,7 @@ const createPaymentOrder = async (userId, bookingId) => {
 
   // Idempotency: if already has order and still pending, return current order info
   const existingOrderId = booking.paymentDetails?.razorpayOrderId;
-  const keyId = process.env.RAZORPAY_KEY_ID;
+  const { keyId } = paymentService.getSanitizedRazorpayConfig();
 
   let order;
   try {
@@ -1166,7 +1201,7 @@ const reviewSpareParts = async (userId, bookingId, { action, rejectionReason }) 
     throw err;
   }
 
-  if (!booking.spareParts || booking.spareParts.status !== 'pending_approval') {
+  if (!booking.spareParts || !['pending_approval', 'pending_customer_approval'].includes(booking.spareParts.status)) {
     const err = new Error(`No pending spare parts proposal to review (current status: ${booking.spareParts?.status || 'none'})`);
     err.statusCode = 400;
     throw err;
@@ -1242,7 +1277,7 @@ const createSparePartsPaymentOrder = async (userId, bookingId) => {
     throw err;
   }
 
-  const keyId = process.env.RAZORPAY_KEY_ID;
+  const { keyId } = paymentService.getSanitizedRazorpayConfig();
   const order = await paymentService.createOrder({
     amountInRupees: additionalAmount,
     receipt: `${booking.bookingReference}-PARTS`,
@@ -1316,6 +1351,11 @@ const verifySparePartsPayment = async (userId, bookingId, paymentPayload) => {
   });
 
   if (!isValid) {
+    if (!booking.spareParts.paymentDetails) booking.spareParts.paymentDetails = {};
+    booking.spareParts.paymentDetails.failureReason = 'Invalid Razorpay payment signature';
+    booking.spareParts.paymentStatus = 'failed';
+    await booking.save();
+
     const err = new Error('Payment verification failed: Invalid payment signature');
     err.statusCode = 400;
     throw err;
@@ -1327,6 +1367,196 @@ const verifySparePartsPayment = async (userId, bookingId, paymentPayload) => {
   booking.spareParts.paymentDetails.razorpayPaymentId = razorpayPaymentId;
   booking.spareParts.paymentDetails.razorpaySignature = razorpaySignature;
   booking.spareParts.paymentDetails.paidAt = new Date();
+  booking.spareParts.paymentDetails.failureReason = null;
+
+  await booking.save();
+
+  return await Booking.findById(booking._id)
+    .populate('service', 'name price priceType')
+    .populate({
+      path: 'provider',
+      populate: { path: 'user', select: 'name phone' }
+    });
+};
+
+/**
+ * Customer reports spare parts payment cancelled or failed (retains balance for retry)
+ */
+const recordSparePartsPaymentFailure = async (userId, bookingId, reason) => {
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) return null;
+
+  const booking = await Booking.findOne({ _id: bookingId, customer: customer._id });
+  if (!booking) return null;
+
+  if (booking.spareParts && booking.spareParts.paymentStatus !== 'paid') {
+    if (!booking.spareParts.paymentDetails) booking.spareParts.paymentDetails = {};
+    booking.spareParts.paymentDetails.failureReason = reason || 'Payment cancelled by customer';
+    booking.spareParts.paymentStatus = 'failed';
+    await booking.save();
+  }
+  return booking;
+};
+
+/**
+ * Provider confirms cash received on service
+ */
+const confirmCashPaymentByProvider = async (userId, bookingId) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const booking = await Booking.findById(bookingId);
+  if (!booking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Authorization: must be the assigned provider
+  if (!booking.provider || booking.provider.toString() !== provider._id.toString()) {
+    const err = new Error('Access denied: You are not the assigned provider for this booking');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // Payment method check: Must be cash
+  if (booking.paymentMethod !== 'cash') {
+    const err = new Error(`Cannot record cash collection for '${booking.paymentMethod}' booking`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Status check: must be in_progress or completed
+  if (!['in_progress', 'completed'].includes(booking.status)) {
+    const err = new Error(`Cannot collect cash for booking in '${booking.status}' status. Must be 'in_progress' or 'completed'.`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Pending proposal check: extra materials must not be awaiting customer decision
+  if (
+    booking.spareParts &&
+    ['pending_approval', 'pending_customer_approval'].includes(booking.spareParts.status)
+  ) {
+    const err = new Error('Cannot collect cash while extra materials proposal is awaiting customer approval');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Idempotency: if already confirmed paid
+  if (booking.paymentStatus === 'paid' && booking.paymentDetails?.cashConfirmedByProvider) {
+    return await Booking.findById(booking._id)
+      .populate('service', 'name price priceType')
+      .populate({
+        path: 'provider',
+        populate: { path: 'user', select: 'name phone' }
+      })
+      .populate({
+        path: 'customer',
+        populate: { path: 'user', select: 'name phone' }
+      });
+  }
+
+  const finalPayable = booking.pricing?.totalAmount || 0;
+  if (!booking.paymentDetails) booking.paymentDetails = {};
+  booking.paymentStatus = 'paid';
+  booking.paymentDetails.cashCollectedAmount = finalPayable;
+  booking.paymentDetails.cashConfirmedByProvider = true;
+  booking.paymentDetails.cashConfirmedByProviderAt = new Date();
+  booking.paymentDetails.paidAt = new Date();
+  booking.paymentDetails.failureReason = null;
+  // If spare parts exist, mark them not_applicable or paid for cash
+  if (booking.spareParts && booking.spareParts.status === 'approved') {
+    booking.spareParts.paymentStatus = 'paid';
+  }
+
+  await booking.save();
+
+  return await Booking.findById(booking._id)
+    .populate('service', 'name price priceType')
+    .populate({
+      path: 'provider',
+      populate: { path: 'user', select: 'name phone' }
+    })
+    .populate({
+      path: 'customer',
+      populate: { path: 'user', select: 'name phone' }
+    });
+};
+
+/**
+ * Customer confirms cash paid or dispute
+ */
+const confirmCashPaymentByCustomer = async (userId, bookingId) => {
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) {
+    const err = new Error('Customer profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const booking = await Booking.findOne({ _id: bookingId, customer: customer._id });
+  if (!booking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (booking.paymentMethod !== 'cash') {
+    const err = new Error(`Cannot confirm cash payment for '${booking.paymentMethod}' booking`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!booking.paymentDetails) booking.paymentDetails = {};
+  booking.paymentDetails.cashConfirmedByCustomer = true;
+  booking.paymentDetails.cashConfirmedByCustomerAt = new Date();
+  booking.paymentDetails.cashDisputedByCustomer = false;
+  booking.paymentDetails.cashDisputeReason = null;
+  booking.paymentDetails.cashDisputedAt = null;
+
+  await booking.save();
+
+  return await Booking.findById(booking._id)
+    .populate('service', 'name price priceType')
+    .populate({
+      path: 'provider',
+      populate: { path: 'user', select: 'name phone' }
+    });
+};
+
+/**
+ * Customer reports cash payment issue / dispute
+ */
+const reportCashPaymentDispute = async (userId, bookingId, disputeReason) => {
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) {
+    const err = new Error('Customer profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const booking = await Booking.findOne({ _id: bookingId, customer: customer._id });
+  if (!booking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (booking.paymentMethod !== 'cash') {
+    const err = new Error(`Cannot report cash dispute for '${booking.paymentMethod}' booking`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!booking.paymentDetails) booking.paymentDetails = {};
+  booking.paymentDetails.cashDisputedByCustomer = true;
+  booking.paymentDetails.cashDisputeReason = (disputeReason || 'Cash payment dispute reported by customer').trim();
+  booking.paymentDetails.cashDisputedAt = new Date();
 
   await booking.save();
 
@@ -1359,5 +1589,9 @@ module.exports = {
   submitSpareParts,
   reviewSpareParts,
   createSparePartsPaymentOrder,
-  verifySparePartsPayment
+  verifySparePartsPayment,
+  recordSparePartsPaymentFailure,
+  confirmCashPaymentByProvider,
+  confirmCashPaymentByCustomer,
+  reportCashPaymentDispute
 };

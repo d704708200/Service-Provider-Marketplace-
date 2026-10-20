@@ -3,16 +3,37 @@ const crypto = require('crypto');
 
 let razorpayInstance = null;
 
+/**
+ * Retrieves and sanitizes Razorpay credentials from environment.
+ * Trims extraneous whitespace/newlines and rejects empty or invalid keys.
+ * Never logs or exposes secret keys.
+ */
+const getSanitizedRazorpayConfig = () => {
+  const rawKeyId = process.env.RAZORPAY_KEY_ID;
+  const rawKeySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  const keyId = typeof rawKeyId === 'string' ? rawKeyId.trim() : '';
+  const keySecret = typeof rawKeySecret === 'string' ? rawKeySecret.trim() : '';
+
+  if (!keyId || !keySecret) {
+    const err = new Error('Razorpay API keys (RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET) are missing or empty in environment configuration.');
+    err.statusCode = 500;
+    throw err;
+  }
+
+  // Razorpay key IDs always start with 'rzp_test_' or 'rzp_live_'
+  if (!/^rzp_(test|live)_[A-Za-z0-9]+$/.test(keyId)) {
+    const err = new Error('Malformed Razorpay Key ID in environment configuration. Expected format rzp_test_... or rzp_live_...');
+    err.statusCode = 500;
+    throw err;
+  }
+
+  return { keyId, keySecret };
+};
+
 const getRazorpayInstance = () => {
   if (!razorpayInstance) {
-    const keyId = process.env.RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
-
-    if (!keyId || !keySecret) {
-      const err = new Error('Razorpay API keys (RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET) are missing in environment configuration.');
-      err.statusCode = 500;
-      throw err;
-    }
+    const { keyId, keySecret } = getSanitizedRazorpayConfig();
 
     razorpayInstance = new Razorpay({
       key_id: keyId,
@@ -88,17 +109,17 @@ const verifyPaymentSignature = ({ orderId, paymentId, signature, secret }) => {
     return false;
   }
 
-  const keySecret = secret || process.env.RAZORPAY_KEY_SECRET;
+  const keySecret = (secret || process.env.RAZORPAY_KEY_SECRET || '').trim();
   if (!keySecret) {
     return false;
   }
 
   const generatedSignature = crypto
     .createHmac('sha256', keySecret)
-    .update(`${orderId}|${paymentId}`)
+    .update(`${String(orderId).trim()}|${String(paymentId).trim()}`)
     .digest('hex');
 
-  return generatedSignature === signature;
+  return generatedSignature === String(signature).trim();
 };
 
 /**
@@ -108,7 +129,7 @@ const verifyPaymentSignature = ({ orderId, paymentId, signature, secret }) => {
  * @returns {boolean}
  */
 const verifyWebhookSignature = (bodyString, webhookSignature, secret) => {
-  const webhookSecret = secret || process.env.RAZORPAY_WEBHOOK_SECRET;
+  const webhookSecret = (secret || process.env.RAZORPAY_WEBHOOK_SECRET || '').trim();
   if (!webhookSecret || !webhookSignature) return false;
 
   const expectedSignature = crypto
@@ -116,11 +137,12 @@ const verifyWebhookSignature = (bodyString, webhookSignature, secret) => {
     .update(bodyString)
     .digest('hex');
 
-  return expectedSignature === webhookSignature;
+  return expectedSignature === String(webhookSignature).trim();
 };
 
 module.exports = {
   getRazorpayInstance,
+  getSanitizedRazorpayConfig,
   createOrder,
   verifyPaymentSignature,
   verifyWebhookSignature

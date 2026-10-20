@@ -95,7 +95,7 @@ const bookingSchema = new mongoose.Schema(
       totalAdditionalAmount: { type: Number, default: 0, min: 0 },
       status: {
         type: String,
-        enum: ['none', 'pending_approval', 'approved', 'rejected'],
+        enum: ['none', 'pending_approval', 'pending_customer_approval', 'approved', 'rejected'],
         default: 'none'
       },
       submittedBy: {
@@ -109,14 +109,15 @@ const bookingSchema = new mongoose.Schema(
       originalServiceAmount: { type: Number, default: 0, min: 0 },
       paymentStatus: {
         type: String,
-        enum: ['pending', 'paid', 'not_applicable'],
+        enum: ['pending', 'paid', 'failed', 'not_applicable'],
         default: 'pending'
       },
       paymentDetails: {
         razorpayOrderId: { type: String, trim: true, default: null },
         razorpayPaymentId: { type: String, trim: true, default: null },
         razorpaySignature: { type: String, trim: true, default: null },
-        paidAt: { type: Date, default: null }
+        paidAt: { type: Date, default: null },
+        failureReason: { type: String, trim: true, default: null }
       }
     },
     pricing: {
@@ -140,7 +141,15 @@ const bookingSchema = new mongoose.Schema(
       razorpayPaymentId: { type: String, trim: true, default: null },
       razorpaySignature: { type: String, trim: true, default: null },
       paidAt: { type: Date, default: null },
-      failureReason: { type: String, trim: true, default: null }
+      failureReason: { type: String, trim: true, default: null },
+      cashCollectedAmount: { type: Number, default: 0, min: 0 },
+      cashConfirmedByProvider: { type: Boolean, default: false },
+      cashConfirmedByProviderAt: { type: Date, default: null },
+      cashConfirmedByCustomer: { type: Boolean, default: false },
+      cashConfirmedByCustomerAt: { type: Date, default: null },
+      cashDisputedByCustomer: { type: Boolean, default: false },
+      cashDisputeReason: { type: String, trim: true, default: null },
+      cashDisputedAt: { type: Date, default: null }
     },
     statusTimestamps: {
       acceptedAt: { type: Date, default: null },

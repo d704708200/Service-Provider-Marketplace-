@@ -17,6 +17,8 @@
 
 const axios = require('axios');
 const crypto = require('crypto');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 const BASE_URL = 'http://localhost:5000/api';
 
@@ -315,6 +317,156 @@ async function runSparePartsBillingTests() {
     );
     assert(verifyRes.data.success, 'Spare parts payment verified successfully');
     assert(verifyRes.data.data.spareParts.paymentStatus === 'paid', 'spareParts.paymentStatus marked as paid');
+
+    // TEST: Duplicate payment rejection (cannot pay already paid spare parts)
+    try {
+      await axios.post(
+        `${BASE_URL}/bookings/customer/${booking._id}/spare-parts/payment/order`,
+        {},
+        { headers: { Authorization: `Bearer ${cust1Token}` } }
+      );
+      assert(false, 'Duplicate spare parts payment order should be rejected');
+    } catch (dupPayErr) {
+      assert(
+        dupPayErr.response?.status === 400 && dupPayErr.response?.data?.error?.message?.includes('already been paid'),
+        'Duplicate spare parts payment order correctly rejected with HTTP 400'
+      );
+    }
+
+    // TEST: Duplicate customer approval rejection
+    try {
+      await axios.patch(
+        `${BASE_URL}/bookings/customer/${booking._id}/spare-parts/review`,
+        { action: 'approve' },
+        { headers: { Authorization: `Bearer ${cust1Token}` } }
+      );
+      assert(false, 'Duplicate approval on already approved spare parts should be rejected');
+    } catch (dupApproveErr) {
+      assert(
+        dupApproveErr.response?.status === 400 && dupApproveErr.response?.data?.error?.message?.includes('No pending'),
+        'Duplicate approval on already approved spare parts correctly rejected with HTTP 400'
+      );
+    }
+
+    // TEST: Service Completion workflow after approved work and payment
+    const completeRes = await axios.patch(
+      `${BASE_URL}/bookings/provider/${booking._id}/complete`,
+      {},
+      { headers: { Authorization: `Bearer ${prov1Token}` } }
+    );
+    assert(completeRes.data.success, 'Booking successfully completed after approved extra work');
+    assert(completeRes.data.data.status === 'completed', 'Booking final status is completed');
+
+    // TEST: Duplicate completion guard
+    try {
+      await axios.patch(
+        `${BASE_URL}/bookings/provider/${booking._id}/complete`,
+        {},
+        { headers: { Authorization: `Bearer ${prov1Token}` } }
+      );
+      assert(false, 'Duplicate completion should be rejected');
+    } catch (dupCompErr) {
+      assert(
+        dupCompErr.response?.status === 400,
+        'Duplicate completion correctly blocked with HTTP 400'
+      );
+    }
+
+    // TEST: Service completion BLOCKED if extra parts proposal is still pending approval
+    const pendingPartsBookingRes = await axios.post(
+      `${BASE_URL}/bookings`,
+      {
+        serviceId: service._id,
+        bookingMode: 'instant',
+        address: { street: '55 Pending Lane', city: 'Prayagraj', zipCode: '211001' },
+        paymentMethod: 'cash',
+        notes: 'Testing completion block on pending parts'
+      },
+      { headers: { Authorization: `Bearer ${cust1Token}` } }
+    );
+    const pendingPartsBooking = pendingPartsBookingRes.data.data;
+    await axios.patch(
+      `${BASE_URL}/bookings/provider/${pendingPartsBooking._id}/accept`,
+      {},
+      { headers: { Authorization: `Bearer ${prov1Token}` } }
+    );
+    await axios.patch(
+      `${BASE_URL}/bookings/provider/${pendingPartsBooking._id}/start`,
+      {},
+      { headers: { Authorization: `Bearer ${prov1Token}` } }
+    );
+    await axios.post(
+      `${BASE_URL}/bookings/provider/${pendingPartsBooking._id}/spare-parts`,
+      {
+        items: [{ name: 'Pending Extra Item', quantity: 1, unitPrice: 150 }]
+      },
+      { headers: { Authorization: `Bearer ${prov1Token}` } }
+    );
+
+    try {
+      await axios.patch(
+        `${BASE_URL}/bookings/provider/${pendingPartsBooking._id}/complete`,
+        {},
+        { headers: { Authorization: `Bearer ${prov1Token}` } }
+      );
+      assert(false, 'Provider should not complete service while extra parts are awaiting customer approval');
+    } catch (pendingCompErr) {
+      assert(
+        pendingCompErr.response?.status === 400 && pendingCompErr.response?.data?.error?.message?.includes('awaiting customer approval'),
+        'Completion blocked when extra materials proposal is pending customer approval (HTTP 400)'
+      );
+    }
+
+    // TEST: Failed payment reporting & retry balance retention
+    const failedBookingRes = await axios.post(
+      `${BASE_URL}/bookings`,
+      {
+        serviceId: service._id,
+        bookingMode: 'instant',
+        address: { street: '99 Retry Ave', city: 'Prayagraj', zipCode: '211001' },
+        paymentMethod: 'online',
+        notes: 'Testing payment failure and retry'
+      },
+      { headers: { Authorization: `Bearer ${cust1Token}` } }
+    );
+    const failedBooking = failedBookingRes.data.data;
+    await axios.patch(
+      `${BASE_URL}/bookings/provider/${failedBooking._id}/accept`,
+      {},
+      { headers: { Authorization: `Bearer ${prov1Token}` } }
+    );
+    await axios.patch(
+      `${BASE_URL}/bookings/provider/${failedBooking._id}/start`,
+      {},
+      { headers: { Authorization: `Bearer ${prov1Token}` } }
+    );
+    await axios.post(
+      `${BASE_URL}/bookings/provider/${failedBooking._id}/spare-parts`,
+      {
+        items: [{ name: 'Capacitor 45uF', quantity: 1, unitPrice: 200, labourCharge: 50 }]
+      },
+      { headers: { Authorization: `Bearer ${prov1Token}` } }
+    );
+    await axios.patch(
+      `${BASE_URL}/bookings/customer/${failedBooking._id}/spare-parts/review`,
+      { action: 'approve' },
+      { headers: { Authorization: `Bearer ${cust1Token}` } }
+    );
+
+    // Customer reports payment failure
+    const failReportRes = await axios.post(
+      `${BASE_URL}/bookings/customer/${failedBooking._id}/spare-parts/payment/failure`,
+      { reason: 'Customer card declined by bank' },
+      { headers: { Authorization: `Bearer ${cust1Token}` } }
+    );
+    assert(
+      failReportRes.data.data.spareParts.paymentStatus === 'failed',
+      'Spare parts payment status marked as failed upon report'
+    );
+    assert(
+      failReportRes.data.data.spareParts.totalAdditionalAmount === 250,
+      'Outstanding additional amount balance retained at ₹250 for retry'
+    );
 
     // TEST: Cash Booking flow regression check
     const cashBookingRes = await axios.post(

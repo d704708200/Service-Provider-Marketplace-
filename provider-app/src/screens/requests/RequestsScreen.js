@@ -47,10 +47,15 @@ export default function RequestsScreen({ navigation }) {
   };
 
   const handleAccept = async (booking) => {
+    if (!booking?._id || processingId) return;
+
     setProcessingId(booking._id);
     try {
       const res = await bookingApi.acceptBooking(booking._id);
       if (res?.success) {
+        // Optimistically remove from pending requests list
+        setRequests((prev) => prev.filter((r) => r._id !== booking._id));
+
         Alert.alert(
           'Request Accepted!',
           `You have successfully claimed booking ${booking.bookingReference}.`,
@@ -65,9 +70,17 @@ export default function RequestsScreen({ navigation }) {
         );
       }
     } catch (err) {
+      // If booking was already claimed by someone else or is no longer pending (HTTP 409)
+      const isConflict = err.response?.status === 409 || /no longer pending|already claimed|conflict/i.test(err.message || '');
+      
+      // Remove stale booking immediately from list
+      setRequests((prev) => prev.filter((r) => r._id !== booking._id));
+
       Alert.alert(
-        'Could Not Accept Request',
-        err.userMessage || 'This booking may have already been accepted by another provider.'
+        'Request Unavailable',
+        isConflict
+          ? 'This request has already been accepted or is no longer available.'
+          : (err.userMessage || err.message || 'Could not accept booking request.')
       );
       fetchRequests();
     } finally {

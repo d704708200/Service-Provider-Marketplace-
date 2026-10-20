@@ -290,6 +290,66 @@ const verifySparePartsPayment = async (req, res, next) => {
   }
 };
 
+const recordSparePartsPaymentFailure = async (req, res, next) => {
+  try {
+    const updatedBooking = await bookingService.recordSparePartsPaymentFailure(
+      req.user._id,
+      req.params.id,
+      req.body.reason
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Spare parts payment failure recorded',
+      data: updatedBooking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const confirmCashPaymentByProvider = async (req, res, next) => {
+  try {
+    const updatedBooking = await bookingService.confirmCashPaymentByProvider(req.user._id, req.params.id);
+    res.status(200).json({
+      success: true,
+      message: 'Cash payment confirmed and recorded successfully',
+      data: updatedBooking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const confirmCashPaymentByCustomer = async (req, res, next) => {
+  try {
+    const updatedBooking = await bookingService.confirmCashPaymentByCustomer(req.user._id, req.params.id);
+    res.status(200).json({
+      success: true,
+      message: 'Customer confirmed cash payment successfully',
+      data: updatedBooking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const reportCashPaymentDispute = async (req, res, next) => {
+  try {
+    const updatedBooking = await bookingService.reportCashPaymentDispute(
+      req.user._id,
+      req.params.id,
+      req.body.disputeReason
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Cash payment dispute reported successfully',
+      data: updatedBooking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createBooking,
   getCustomerBookings,
@@ -311,5 +371,9 @@ module.exports = {
   submitSpareParts,
   reviewSpareParts,
   createSparePartsPaymentOrder,
-  verifySparePartsPayment
+  verifySparePartsPayment,
+  recordSparePartsPaymentFailure,
+  confirmCashPaymentByProvider,
+  confirmCashPaymentByCustomer,
+  reportCashPaymentDispute
 };

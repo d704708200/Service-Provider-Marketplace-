@@ -204,6 +204,18 @@ export const bookingApi = {
   verifySparePartsPayment: async (id, paymentData) => {
     const response = await api.post(`/bookings/customer/${id}/spare-parts/payment/verify`, paymentData);
     return response.data;
+  },
+  recordSparePartsPaymentFailure: async (id, reason) => {
+    const response = await api.post(`/bookings/customer/${id}/spare-parts/payment/failure`, { reason });
+    return response.data;
+  },
+  confirmCashPayment: async (id) => {
+    const response = await api.patch(`/bookings/customer/${id}/cash/confirm`);
+    return response.data;
+  },
+  reportCashPaymentDispute: async (id, disputeReason) => {
+    const response = await api.post(`/bookings/customer/${id}/cash/dispute`, { disputeReason });
+    return response.data;
   }
 };
 

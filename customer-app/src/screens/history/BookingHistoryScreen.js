@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { bookingApi } from '../../services/api';
+import { openRazorpayCheckout } from '../../services/razorpayService';
 
 const TABS = [
   { id: 'pending', label: 'Pending' },
@@ -29,14 +30,16 @@ export default function BookingHistoryScreen({ navigation }) {
   const [selectedTab, setSelectedTab] = useState('pending');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
 
   const fetchBookings = useCallback(async () => {
     try {
+      setFetchError(null);
       const res = await bookingApi.getMyBookings();
       setBookings(res.data || []);
     } catch (err) {
-      // Fallback empty
+      setFetchError(err.userMessage || err.message || 'Failed to load bookings');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -51,6 +54,16 @@ export default function BookingHistoryScreen({ navigation }) {
     setRefreshing(true);
     fetchBookings();
   };
+
+  const isProposalPending = (b) => {
+    return (
+      b.spareParts &&
+      b.spareParts.items?.length > 0 &&
+      ['pending_approval', 'pending_customer_approval'].includes(b.spareParts.status)
+    );
+  };
+
+  const pendingApprovalCount = bookings.filter(isProposalPending).length;
 
   const getFilteredBookings = () => {
     if (selectedTab === 'pending') {
@@ -110,27 +123,6 @@ export default function BookingHistoryScreen({ navigation }) {
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [payingParts, setPayingParts] = useState(false);
 
-  /**
-   * Helper to load Razorpay script on web
-   */
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      if (typeof window === 'undefined') {
-        resolve(false);
-        return;
-      }
-      if (window.Razorpay) {
-        resolve(true);
-        return;
-      }
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.async = true;
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-  };
 
   const handleApproveCharges = async (booking) => {
     setReviewSubmitting(true);
@@ -176,64 +168,58 @@ export default function BookingHistoryScreen({ navigation }) {
   const handlePaySparePartsOnline = async (booking) => {
     setPayingParts(true);
     try {
-      const scriptLoaded = await loadRazorpayScript();
-      if (!scriptLoaded || typeof window.Razorpay === 'undefined') {
-        Alert.alert('Payment Notice', 'Payment script not available. Please retry in a modern browser.');
-        setPayingParts(false);
-        return;
-      }
-
       const orderRes = await bookingApi.createSparePartsPaymentOrder(booking._id);
       if (!orderRes?.success || !orderRes.data) {
         throw new Error(orderRes?.message || 'Failed to create spare parts payment order');
       }
 
-      const orderData = orderRes.data;
-      const options = {
-        key: orderData.keyId,
-        amount: orderData.amount,
-        currency: orderData.currency || 'INR',
-        name: 'Service Marketplace',
-        description: `Spare Parts & Materials (${orderData.bookingReference})`,
-        order_id: orderData.orderId,
-        prefill: {
-          name: orderData.customer?.name || 'Customer'
-        },
-        theme: {
-          color: '#7C3AED'
-        },
-        handler: async function (response) {
-          try {
-            setPayingParts(true);
-            const verifyRes = await bookingApi.verifySparePartsPayment(booking._id, {
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature
-            });
-            if (verifyRes?.success && verifyRes.data) {
-              Alert.alert('Payment Successful', 'Spare parts payment has been completed and verified.');
-              setReviewBooking(verifyRes.data);
-              fetchBookings();
-            } else {
-              Alert.alert('Verification Issue', 'Payment was processed but verification failed. Please contact support.');
-            }
-          } catch (verErr) {
-            Alert.alert('Verification Error', verErr.userMessage || verErr.message || 'Payment verification failed');
-          } finally {
-            setPayingParts(false);
-          }
-        },
-        modal: {
-          ondismiss: function () {
-            setPayingParts(false);
-          }
-        }
-      };
+      const checkoutResult = await openRazorpayCheckout({
+        orderData: orderRes.data,
+        description: `Spare Parts & Materials (${orderRes.data.bookingReference || ''})`,
+        customerName: orderRes.data.customer?.name || 'Customer',
+        customerPhone: orderRes.data.customer?.phone || '',
+        themeColor: '#7C3AED'
+      });
 
-      const razorpayInstance = new window.Razorpay(options);
-      razorpayInstance.open();
+      if (checkoutResult.success && checkoutResult.data) {
+        try {
+          const verifyRes = await bookingApi.verifySparePartsPayment(booking._id, {
+            razorpayOrderId: checkoutResult.data.razorpayOrderId,
+            razorpayPaymentId: checkoutResult.data.razorpayPaymentId,
+            razorpaySignature: checkoutResult.data.razorpaySignature
+          });
+
+          if (verifyRes?.success && verifyRes.data) {
+            Alert.alert('Payment Successful', 'Spare parts payment has been completed and verified.');
+            setReviewBooking(verifyRes.data);
+            fetchBookings();
+          } else {
+            Alert.alert('Verification Issue', 'Payment was processed but verification failed. Please contact support.');
+          }
+        } catch (verErr) {
+          try {
+            await bookingApi.recordSparePartsPaymentFailure(
+              booking._id,
+              verErr.userMessage || verErr.message || 'Signature verification failed'
+            );
+          } catch (_) {}
+          Alert.alert('Verification Error', verErr.userMessage || verErr.message || 'Payment verification failed. Outstanding balance retained. You can retry payment.');
+          fetchBookings();
+        }
+      } else {
+        const isCancelled = checkoutResult.error?.isCancelled;
+        const msg = checkoutResult.error?.description || (isCancelled ? 'Payment cancelled' : 'Payment failed');
+        try {
+          await bookingApi.recordSparePartsPaymentFailure(booking._id, msg);
+        } catch (_) {}
+        if (!isCancelled) {
+          Alert.alert('Payment Notice', `${msg}. Outstanding balance is retained. You can retry payment anytime.`);
+        }
+        fetchBookings();
+      }
     } catch (err) {
       Alert.alert('Payment Initiation Failed', err.userMessage || err.message || 'Could not launch payment');
+    } finally {
       setPayingParts(false);
     }
   };
@@ -255,7 +241,7 @@ export default function BookingHistoryScreen({ navigation }) {
     const reference = item.bookingReference || 'BK-2024-0018';
 
     const hasSpareParts = item.spareParts && item.spareParts.status !== 'none' && item.spareParts.items?.length > 0;
-    const partsPending = item.spareParts?.status === 'pending_approval';
+    const partsPending = item.spareParts?.status === 'pending_approval' || item.spareParts?.status === 'pending_customer_approval';
     const partsApproved = item.spareParts?.status === 'approved';
     const partsRejected = item.spareParts?.status === 'rejected';
 
@@ -455,11 +441,44 @@ export default function BookingHistoryScreen({ navigation }) {
         <Text style={styles.mainTitle}>Bookings</Text>
       </View>
 
+      {/* Alert Banner if any booking requires spare parts approval */}
+      {pendingApprovalCount > 0 && (
+        <TouchableOpacity
+          style={styles.pendingApprovalTopBanner}
+          onPress={() => {
+            setSelectedTab('accepted');
+            const pendingBooking = bookings.find(isProposalPending);
+            if (pendingBooking) {
+              setReviewBooking(pendingBooking);
+            }
+          }}
+          activeOpacity={0.85}
+        >
+          <View style={styles.pendingApprovalIconBox}>
+            <Ionicons name="alert-circle" size={18} color="#F59E0B" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pendingApprovalTitle}>
+              {pendingApprovalCount === 1
+                ? 'Action Required: Extra Items Proposed'
+                : `${pendingApprovalCount} Bookings Require Extra Items Approval`}
+            </Text>
+            <Text style={styles.pendingApprovalSub}>
+              Review the itemized bill and approve or reject before service completion.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#F59E0B" />
+        </TouchableOpacity>
+      )}
+
       {/* Tabs Row: Pending (1), Accepted (0), Completed (0) */}
       <View style={styles.tabsRow}>
         {TABS.map((tab) => {
           const isSelected = selectedTab === tab.id;
           const count = getTabCount(tab.id);
+          const hasPendingExtraInTab =
+            tab.id === 'accepted' && pendingApprovalCount > 0;
+
           return (
             <TouchableOpacity
               key={tab.id}
@@ -470,8 +489,20 @@ export default function BookingHistoryScreen({ navigation }) {
               <Text style={[styles.tabLabel, isSelected && styles.tabLabelActive]}>
                 {tab.label}
               </Text>
-              <View style={[styles.countBadge, isSelected && styles.countBadgeActive]}>
-                <Text style={[styles.countBadgeText, isSelected && styles.countBadgeTextActive]}>
+              <View
+                style={[
+                  styles.countBadge,
+                  isSelected && styles.countBadgeActive,
+                  hasPendingExtraInTab && styles.countBadgeHighlight
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.countBadgeText,
+                    isSelected && styles.countBadgeTextActive,
+                    hasPendingExtraInTab && styles.countBadgeTextHighlight
+                  ]}
+                >
                   {count}
                 </Text>
               </View>
@@ -480,30 +511,47 @@ export default function BookingHistoryScreen({ navigation }) {
         })}
       </View>
 
+      {/* Error state */}
+      {fetchError && !loading && (
+        <View style={styles.errorContainer}>
+          <Ionicons name="cloud-offline-outline" size={32} color="#F43F5E" />
+          <Text style={styles.errorTitle}>Could Not Load Bookings</Text>
+          <Text style={styles.errorDesc}>{fetchError}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={fetchBookings}>
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Bookings List */}
       {loading ? (
         <ActivityIndicator size="small" color="#7C3AED" style={{ marginTop: 40 }} />
-      ) : (
+      ) : !fetchError && (
         <FlatList
-          data={
-            filteredData.length > 0
-              ? filteredData
-              : [
-                  {
-                    _id: 'sample_1',
-                    bookingReference: 'BK-2024-0018',
-                    status: 'pending',
-                    service: { name: 'Electrical Inspection' },
-                    provider: { businessName: 'Raj Kumar' },
-                    scheduledDate: new Date(),
-                    address: { street: 'Civil Lines', city: 'Prayagraj' }
-                  }
-                ]
-          }
+          data={filteredData}
           keyExtractor={(item) => item._id}
           renderItem={renderBookingCard}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="calendar-outline" size={40} color="#4B5563" />
+              <Text style={styles.emptyTitle}>
+                {selectedTab === 'pending'
+                  ? 'No Pending Requests'
+                  : selectedTab === 'accepted'
+                  ? 'No Active Bookings'
+                  : 'No Completed Bookings'}
+              </Text>
+              <Text style={styles.emptyDesc}>
+                {selectedTab === 'pending'
+                  ? 'You do not have any booking requests waiting for provider acceptance.'
+                  : selectedTab === 'accepted'
+                  ? 'Bookings accepted or in progress will appear here.'
+                  : 'Your service history will be saved here once jobs are completed.'}
+              </Text>
+            </View>
+          }
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7C3AED']} />
           }
@@ -639,7 +687,8 @@ export default function BookingHistoryScreen({ navigation }) {
               </View>
 
               {/* Rejection Form Input */}
-              {showRejectInput && reviewBooking.spareParts.status === 'pending_approval' && (
+              {showRejectInput &&
+                ['pending_approval', 'pending_customer_approval'].includes(reviewBooking.spareParts.status) && (
                 <View style={styles.rejectionInputCard}>
                   <Text style={styles.rejectionInputLabel}>Reason for Rejection *</Text>
                   <TextInput
@@ -692,10 +741,23 @@ export default function BookingHistoryScreen({ navigation }) {
                     </TouchableOpacity>
                   </View>
                 )}
+
+              {/* Cash Payment Information for Approved Parts */}
+              {reviewBooking.spareParts.status === 'approved' && reviewBooking.paymentMethod === 'cash' && (
+                <View style={[styles.onlinePayBox, { backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)' }]}>
+                  <Text style={[styles.onlinePayTitle, { color: '#10B981' }]}>Cash on Service Payment</Text>
+                  <Text style={styles.onlinePaySub}>
+                    Total Cash Payable on Completion: ₹{reviewBooking.pricing?.totalAmount || 0}
+                    {reviewBooking.paymentDetails?.cashConfirmedByProvider
+                      ? ' (Provider marked cash received)'
+                      : ' (Pay directly to provider)'}
+                  </Text>
+                </View>
+              )}
             </ScrollView>
 
             {/* Modal Bottom Actions */}
-            {reviewBooking.spareParts.status === 'pending_approval' && !showRejectInput && (
+            {['pending_approval', 'pending_customer_approval'].includes(reviewBooking.spareParts.status) && !showRejectInput && (
               <View style={styles.modalActionFooter}>
                 <TouchableOpacity
                   style={styles.rejectBtn}
@@ -1324,5 +1386,93 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF'
+  },
+  pendingApprovalTopBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#291807',
+    borderWidth: 1,
+    borderColor: '#B45309',
+    marginHorizontal: 16,
+    marginBottom: 14,
+    padding: 12,
+    borderRadius: 12,
+    gap: 10
+  },
+  pendingApprovalIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  pendingApprovalTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FBBF24'
+  },
+  pendingApprovalSub: {
+    fontSize: 11,
+    color: '#D1D5DB',
+    marginTop: 2
+  },
+  countBadgeHighlight: {
+    backgroundColor: '#D97706'
+  },
+  countBadgeTextHighlight: {
+    color: '#FFFFFF',
+    fontWeight: '800'
+  },
+  errorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    marginTop: 20
+  },
+  errorTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginTop: 12
+  },
+  errorDesc: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 16,
+    paddingHorizontal: 20
+  },
+  retryBtn: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8
+  },
+  retryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600'
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+    marginTop: 20
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#9CA3AF',
+    marginTop: 12
+  },
+  emptyDesc: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 6,
+    paddingHorizontal: 24,
+    lineHeight: 18
   }
 });
