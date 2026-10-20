@@ -9,7 +9,8 @@ import {
   FlatList,
   Image,
   RefreshControl,
-  ActivityIndicator
+  ActivityIndicator,
+  Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -454,7 +455,16 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#FFFFFF',
     fontSize: 14,
-    paddingVertical: 8
+    paddingVertical: 8,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    ...(Platform.OS === 'web'
+      ? {
+          outlineStyle: 'none',
+          outlineWidth: 0,
+          boxShadow: 'none'
+        }
+      : {})
   },
   filterIconButton: {
     padding: 6,

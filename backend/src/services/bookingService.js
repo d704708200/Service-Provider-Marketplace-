@@ -732,20 +732,50 @@ const completeServiceByProvider = async (userId, bookingId) => {
     throw err;
   }
 
-  // If spare parts were approved and booking is online payment with payment pending, require additional payment completion
-  if (
-    existing.spareParts &&
-    existing.spareParts.status === 'approved' &&
-    existing.paymentMethod === 'online' &&
-    existing.paymentStatus === 'paid' &&
-    existing.spareParts.paymentStatus !== 'paid' &&
-    existing.spareParts.totalAdditionalAmount > 0
-  ) {
+  // Payment completion checks:
+  // 1. If booking paymentMethod is cash, paymentStatus must be paid (marked by provider)
+  if (existing.paymentMethod === 'cash') {
+    if (existing.paymentStatus !== 'paid') {
+      const totalPayable = existing.pricing?.totalAmount || 0;
+      const err = new Error(
+        `Cannot complete service: Provider must collect cash and mark cash received (Total: ₹${totalPayable}) before completion.`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  // 2. If booking paymentMethod is online, base service must be paid
+  if (existing.paymentMethod === 'online' && existing.paymentStatus !== 'paid') {
     const err = new Error(
-      'Cannot complete service: Approved additional materials amount has not been paid yet by the customer.'
+      'Cannot complete service: Online payment for base service is pending. Customer must pay before completion.'
     );
     err.statusCode = 400;
     throw err;
+  }
+
+  // 3. If spare parts were approved with additional amount > 0, verify spare parts payment
+  if (
+    existing.spareParts &&
+    existing.spareParts.status === 'approved' &&
+    existing.spareParts.totalAdditionalAmount > 0
+  ) {
+    if (existing.spareParts.paymentStatus !== 'paid') {
+      const method = existing.spareParts.paymentMethod || 'online';
+      if (method === 'cash') {
+        const err = new Error(
+          `Cannot complete service: Provider must mark cash collected for the approved extra materials (₹${existing.spareParts.totalAdditionalAmount}) before completion.`
+        );
+        err.statusCode = 400;
+        throw err;
+      } else {
+        const err = new Error(
+          'Cannot complete service: Approved additional materials amount has not been paid yet by the customer.'
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+    }
   }
 
   const now = new Date();
@@ -1241,6 +1271,65 @@ const reviewSpareParts = async (userId, bookingId, { action, rejectionReason }) 
 };
 
 /**
+ * Customer chooses payment method for approved extra materials (online vs cash)
+ */
+const selectSparePartsPaymentMethod = async (userId, bookingId, { paymentMethod }) => {
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) {
+    const err = new Error('Customer profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const booking = await Booking.findOne({ _id: bookingId, customer: customer._id });
+  if (!booking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (!booking.spareParts || booking.spareParts.status !== 'approved') {
+    const err = new Error('Spare parts must be approved before selecting a payment method');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (booking.spareParts.paymentStatus === 'paid') {
+    const err = new Error('Spare parts charges have already been paid');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!['online', 'cash'].includes(paymentMethod)) {
+    const err = new Error("Payment method must be either 'online' or 'cash'");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // If customer switches to cash, clear any pending razorpayOrderId so duplicate online payments are prevented
+  if (paymentMethod === 'cash') {
+    if (booking.spareParts.paymentDetails?.razorpayOrderId) {
+      booking.spareParts.paymentDetails.razorpayOrderId = null;
+    }
+  }
+
+  booking.spareParts.paymentMethod = paymentMethod;
+  booking.spareParts.paymentStatus = 'pending';
+  await booking.save();
+
+  return await Booking.findById(booking._id)
+    .populate('service', 'name price priceType')
+    .populate({
+      path: 'provider',
+      populate: { path: 'user', select: 'name phone' }
+    })
+    .populate({
+      path: 'customer',
+      populate: { path: 'user', select: 'name phone' }
+    });
+};
+
+/**
  * Customer initiates Razorpay payment specifically for approved additional spare parts
  */
 const createSparePartsPaymentOrder = async (userId, bookingId) => {
@@ -1270,22 +1359,28 @@ const createSparePartsPaymentOrder = async (userId, bookingId) => {
     throw err;
   }
 
-  const additionalAmount = booking.spareParts.totalAdditionalAmount;
-  if (!additionalAmount || additionalAmount <= 0) {
+  // The spare parts order charges specifically for the approved additional items (₹399)
+  const payableAmount = booking.spareParts.totalAdditionalAmount || 0;
+
+  if (!payableAmount || payableAmount <= 0) {
     const err = new Error('No payable amount for spare parts');
     err.statusCode = 400;
     throw err;
   }
 
+  // Set spareParts paymentMethod to online
+  booking.spareParts.paymentMethod = 'online';
+
   const { keyId } = paymentService.getSanitizedRazorpayConfig();
   const order = await paymentService.createOrder({
-    amountInRupees: additionalAmount,
+    amountInRupees: payableAmount,
     receipt: `${booking.bookingReference}-PARTS`,
     notes: {
       bookingId: booking._id.toString(),
       bookingReference: booking.bookingReference,
       paymentType: 'spare_parts',
-      customerId: customer._id.toString()
+      customerId: customer._id.toString(),
+      payableAmount: payableAmount.toString()
     }
   });
 
@@ -1362,12 +1457,20 @@ const verifySparePartsPayment = async (userId, bookingId, paymentPayload) => {
   }
 
   booking.spareParts.paymentStatus = 'paid';
+  booking.spareParts.paymentMethod = 'online';
   if (!booking.spareParts.paymentDetails) booking.spareParts.paymentDetails = {};
   booking.spareParts.paymentDetails.razorpayOrderId = razorpayOrderId;
   booking.spareParts.paymentDetails.razorpayPaymentId = razorpayPaymentId;
   booking.spareParts.paymentDetails.razorpaySignature = razorpaySignature;
   booking.spareParts.paymentDetails.paidAt = new Date();
   booking.spareParts.paymentDetails.failureReason = null;
+
+  // If base service was also unpaid and this order covered the full total, mark base paid too
+  if (booking.paymentStatus !== 'paid' && booking.paymentMethod === 'online') {
+    booking.paymentStatus = 'paid';
+    if (!booking.paymentDetails) booking.paymentDetails = {};
+    booking.paymentDetails.paidAt = new Date();
+  }
 
   await booking.save();
 
@@ -1423,12 +1526,14 @@ const confirmCashPaymentByProvider = async (userId, bookingId) => {
     throw err;
   }
 
-  // Payment method check: Must be cash
-  if (booking.paymentMethod !== 'cash') {
-    const err = new Error(`Cannot record cash collection for '${booking.paymentMethod}' booking`);
-    err.statusCode = 400;
-    throw err;
-  }
+  // Check if booking is eligible for cash collection:
+  // Case 1: booking.paymentMethod === 'cash'
+  // Case 2: booking.paymentMethod === 'online' AND booking.spareParts?.paymentMethod === 'cash'
+  const isBaseCash = booking.paymentMethod === 'cash';
+  const isSparePartsCash =
+    booking.spareParts &&
+    booking.spareParts.status === 'approved' &&
+    booking.spareParts.paymentMethod === 'cash';
 
   // Status check: must be in_progress or completed
   if (!['in_progress', 'completed'].includes(booking.status)) {
@@ -1447,8 +1552,28 @@ const confirmCashPaymentByProvider = async (userId, bookingId) => {
     throw err;
   }
 
-  // Idempotency: if already confirmed paid
-  if (booking.paymentStatus === 'paid' && booking.paymentDetails?.cashConfirmedByProvider) {
+  // Idempotency: check if everything payable in cash is already paid
+  if (isBaseCash) {
+    if (booking.paymentStatus === 'paid' && booking.paymentDetails?.cashConfirmedByProvider) {
+      if (!isSparePartsCash || booking.spareParts.paymentStatus === 'paid') {
+        return await Booking.findById(booking._id)
+          .populate('service', 'name price priceType')
+          .populate({
+            path: 'provider',
+            populate: { path: 'user', select: 'name phone' }
+          })
+          .populate({
+            path: 'customer',
+            populate: { path: 'user', select: 'name phone' }
+          });
+      }
+    }
+  } else if (
+    booking.paymentMethod === 'online' &&
+    isSparePartsCash &&
+    booking.spareParts.paymentStatus === 'paid'
+  ) {
+    // Idempotent return for online booking with already confirmed cash spare parts
     return await Booking.findById(booking._id)
       .populate('service', 'name price priceType')
       .populate({
@@ -1461,17 +1586,36 @@ const confirmCashPaymentByProvider = async (userId, bookingId) => {
       });
   }
 
-  const finalPayable = booking.pricing?.totalAmount || 0;
+  if (!isBaseCash && !isSparePartsCash) {
+    const err = new Error(`Cannot record cash collection for '${booking.paymentMethod}' booking without cash payment option selected`);
+    err.statusCode = 400;
+    throw err;
+  }
+
   if (!booking.paymentDetails) booking.paymentDetails = {};
-  booking.paymentStatus = 'paid';
-  booking.paymentDetails.cashCollectedAmount = finalPayable;
-  booking.paymentDetails.cashConfirmedByProvider = true;
-  booking.paymentDetails.cashConfirmedByProviderAt = new Date();
-  booking.paymentDetails.paidAt = new Date();
-  booking.paymentDetails.failureReason = null;
-  // If spare parts exist, mark them not_applicable or paid for cash
-  if (booking.spareParts && booking.spareParts.status === 'approved') {
+
+  if (isBaseCash) {
+    const finalPayable = booking.pricing?.totalAmount || 0;
+    booking.paymentStatus = 'paid';
+    booking.paymentDetails.cashCollectedAmount = finalPayable;
+    booking.paymentDetails.cashConfirmedByProvider = true;
+    booking.paymentDetails.cashConfirmedByProviderAt = new Date();
+    booking.paymentDetails.paidAt = new Date();
+    booking.paymentDetails.failureReason = null;
+    if (booking.spareParts && booking.spareParts.status === 'approved') {
+      booking.spareParts.paymentStatus = 'paid';
+      if (!booking.spareParts.paymentMethod) {
+        booking.spareParts.paymentMethod = 'cash';
+      }
+    }
+  } else if (isSparePartsCash) {
+    // Base was already paid online (or non-cash), provider collects extra cash portion
+    const extraCash = booking.spareParts.totalAdditionalAmount || 0;
     booking.spareParts.paymentStatus = 'paid';
+    booking.spareParts.paymentMethod = 'cash';
+    booking.paymentDetails.cashCollectedAmount = (booking.paymentDetails.cashCollectedAmount || 0) + extraCash;
+    booking.paymentDetails.cashConfirmedByProvider = true;
+    booking.paymentDetails.cashConfirmedByProviderAt = new Date();
   }
 
   await booking.save();
@@ -1506,8 +1650,12 @@ const confirmCashPaymentByCustomer = async (userId, bookingId) => {
     throw err;
   }
 
-  if (booking.paymentMethod !== 'cash') {
-    const err = new Error(`Cannot confirm cash payment for '${booking.paymentMethod}' booking`);
+  const isCashApplicable =
+    booking.paymentMethod === 'cash' ||
+    (booking.spareParts && booking.spareParts.status === 'approved' && booking.spareParts.paymentMethod === 'cash');
+
+  if (!isCashApplicable) {
+    const err = new Error(`Cannot confirm cash payment for booking without cash payment option selected`);
     err.statusCode = 400;
     throw err;
   }
@@ -1547,8 +1695,12 @@ const reportCashPaymentDispute = async (userId, bookingId, disputeReason) => {
     throw err;
   }
 
-  if (booking.paymentMethod !== 'cash') {
-    const err = new Error(`Cannot report cash dispute for '${booking.paymentMethod}' booking`);
+  const isCashApplicable =
+    booking.paymentMethod === 'cash' ||
+    (booking.spareParts && booking.spareParts.status === 'approved' && booking.spareParts.paymentMethod === 'cash');
+
+  if (!isCashApplicable) {
+    const err = new Error(`Cannot report cash dispute for booking without cash payment option selected`);
     err.statusCode = 400;
     throw err;
   }
@@ -1588,6 +1740,7 @@ module.exports = {
   recordPaymentFailure,
   submitSpareParts,
   reviewSpareParts,
+  selectSparePartsPaymentMethod,
   createSparePartsPaymentOrder,
   verifySparePartsPayment,
   recordSparePartsPaymentFailure,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, borderRadius } from '../../theme';
 
@@ -163,11 +163,22 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: spacing.sm + 4,
     fontSize: 15,
-    color: '#FFFFFF'
+    color: '#FFFFFF',
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    ...(Platform.OS === 'web'
+      ? {
+          outlineStyle: 'none',
+          outlineWidth: 0,
+          boxShadow: 'none'
+        }
+      : {})
   },
   multilineInput: {
     minHeight: 80,
-    textAlignVertical: 'top'
+    textAlignVertical: 'top',
+    paddingTop: spacing.sm + 4,
+    paddingBottom: spacing.sm + 4
   },
   leftIconContainer: {
     marginRight: spacing.sm

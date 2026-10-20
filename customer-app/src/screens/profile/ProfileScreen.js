@@ -9,7 +9,8 @@ import {
   RefreshControl,
   Modal,
   TextInput,
-  ActivityIndicator
+  ActivityIndicator,
+  Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,7 @@ export default function ProfileScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { user, logout, checkAuthSession } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   // Profile data from /api/customers/me
   const [customerData, setCustomerData] = useState(null);
@@ -210,15 +212,36 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  const performLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+    } catch (err) {
+      Alert.alert('Sign Out Failed', err.message || 'Could not complete sign out. Please try again.');
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
   const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out of your account?', [
+    if (loggingOut) return;
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm
+        ? window.confirm('Are you sure you want to log out of your account?')
+        : true;
+      if (confirmed) {
+        performLogout();
+      }
+      return;
+    }
+
+    Alert.alert('Sign Out', 'Are you sure you want to log out of your account?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',
         style: 'destructive',
-        onPress: async () => {
-          await logout();
-        }
+        onPress: performLogout
       }
     ]);
   };
@@ -425,9 +448,11 @@ export default function ProfileScreen({ navigation }) {
 
         {/* Sign Out Button */}
         <Button
-          title="Sign Out"
+          title={loggingOut ? 'Signing Out...' : 'Sign Out'}
           onPress={handleLogout}
           variant="danger"
+          loading={loggingOut}
+          disabled={loggingOut}
           style={styles.logoutBtn}
         />
       </ScrollView>

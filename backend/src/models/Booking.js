@@ -112,6 +112,11 @@ const bookingSchema = new mongoose.Schema(
         enum: ['pending', 'paid', 'failed', 'not_applicable'],
         default: 'pending'
       },
+      paymentMethod: {
+        type: String,
+        enum: ['online', 'cash', null],
+        default: null
+      },
       paymentDetails: {
         razorpayOrderId: { type: String, trim: true, default: null },
         razorpayPaymentId: { type: String, trim: true, default: null },

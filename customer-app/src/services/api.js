@@ -197,6 +197,10 @@ export const bookingApi = {
     const response = await api.patch(`/bookings/customer/${id}/spare-parts/review`, reviewData);
     return response.data;
   },
+  setSparePartsPaymentMethod: async (id, paymentMethod) => {
+    const response = await api.patch(`/bookings/customer/${id}/spare-parts/payment-method`, { paymentMethod });
+    return response.data;
+  },
   createSparePartsPaymentOrder: async (id) => {
     const response = await api.post(`/bookings/customer/${id}/spare-parts/payment/order`);
     return response.data;

@@ -124,14 +124,38 @@ export default function BookingHistoryScreen({ navigation }) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [payingParts, setPayingParts] = useState(false);
+  const [selectedPartsPaymentMethod, setSelectedPartsPaymentMethod] = useState('online');
+  const [updatingPaymentMethod, setUpdatingPaymentMethod] = useState(false);
 
+  const handleSelectPartsPaymentMethod = async (booking, method) => {
+    setSelectedPartsPaymentMethod(method);
+    if (!booking) return;
+    setUpdatingPaymentMethod(true);
+    try {
+      const res = await bookingApi.setSparePartsPaymentMethod(booking._id, method);
+      if (res?.success && res.data) {
+        setReviewBooking(res.data);
+        fetchBookings();
+        if (method === 'cash') {
+          Alert.alert(
+            'Cash Payment Selected',
+            `You selected Cash / Pay on Service for the approved additional charges (₹${res.data.spareParts?.totalAdditionalAmount || 0}). Please pay this directly to the service provider upon service completion.`
+          );
+        }
+      }
+    } catch (err) {
+      Alert.alert('Payment Selection Error', err.userMessage || err.message || 'Could not update payment method');
+    } finally {
+      setUpdatingPaymentMethod(false);
+    }
+  };
 
   const handleApproveCharges = async (booking) => {
     setReviewSubmitting(true);
     try {
       const res = await bookingApi.reviewSpareParts(booking._id, { action: 'approve' });
       if (res?.success) {
-        Alert.alert('Charges Approved', 'Spare parts and labour charges approved.');
+        Alert.alert('Charges Approved', 'Spare parts and labour charges approved. Please select your payment method below.');
         setReviewBooking(res.data);
         fetchBookings();
       }
@@ -721,38 +745,135 @@ export default function BookingHistoryScreen({ navigation }) {
                 </View>
               )}
 
-              {/* Online Payment for Approved Parts */}
-              {reviewBooking.spareParts.status === 'approved' &&
-                reviewBooking.spareParts.paymentStatus !== 'paid' &&
-                reviewBooking.paymentMethod === 'online' && (
-                  <View style={styles.onlinePayBox}>
-                    <Text style={styles.onlinePayTitle}>Pay Additional Charges Online</Text>
-                    <Text style={styles.onlinePaySub}>
-                      Pay ₹{reviewBooking.spareParts.totalAdditionalAmount} securely via Razorpay
-                    </Text>
+              {/* Payment Method Selection for Approved Parts */}
+              {reviewBooking.spareParts.status === 'approved' && reviewBooking.spareParts.paymentStatus !== 'paid' && (
+                <View style={styles.paymentMethodSelectionBox}>
+                  <Text style={styles.paymentOptionsHeading}>Choose Payment Method for Extra Charges</Text>
+                  <Text style={styles.paymentOptionsSub}>
+                    Select how you want to pay for the approved additional charges:
+                  </Text>
+
+                  {/* Option A: Pay Online */}
+                  <TouchableOpacity
+                    style={[
+                      styles.paymentOptionCard,
+                      (reviewBooking.spareParts?.paymentMethod === 'online' ||
+                        (!reviewBooking.spareParts?.paymentMethod && reviewBooking.paymentMethod === 'online')) &&
+                        styles.paymentOptionCardActive
+                    ]}
+                    onPress={() => handleSelectPartsPaymentMethod(reviewBooking, 'online')}
+                    disabled={updatingPaymentMethod || payingParts}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.paymentOptionRadio}>
+                      {(reviewBooking.spareParts?.paymentMethod === 'online' ||
+                        (!reviewBooking.spareParts?.paymentMethod && reviewBooking.paymentMethod === 'online')) && (
+                        <View style={styles.paymentOptionRadioInner} />
+                      )}
+                    </View>
+                    <View style={styles.paymentOptionIconBox}>
+                      <Ionicons name="card-outline" size={20} color="#7C3AED" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.paymentOptionTitle}>Option A — Pay Online</Text>
+                      <Text style={styles.paymentOptionDesc}>
+                        Pay ₹{reviewBooking.paymentMethod === 'online' && reviewBooking.paymentStatus === 'paid'
+                          ? reviewBooking.spareParts.totalAdditionalAmount
+                          : (reviewBooking.pricing?.totalAmount || reviewBooking.spareParts.totalAdditionalAmount)} securely via Razorpay (UPI, Card, NetBanking).
+                      </Text>
+                      {reviewBooking.paymentMethod === 'online' && reviewBooking.paymentStatus === 'paid' && (
+                        <Text style={styles.paymentOptionNote}>
+                          ✓ Original base service (₹{reviewBooking.spareParts.originalServiceAmount || reviewBooking.pricing?.basePrice}) already paid online.
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Option B: Cash / Pay on Service */}
+                  <TouchableOpacity
+                    style={[
+                      styles.paymentOptionCard,
+                      (reviewBooking.spareParts?.paymentMethod === 'cash' ||
+                        (!reviewBooking.spareParts?.paymentMethod && reviewBooking.paymentMethod === 'cash')) &&
+                        styles.paymentOptionCardActiveCash
+                    ]}
+                    onPress={() => handleSelectPartsPaymentMethod(reviewBooking, 'cash')}
+                    disabled={updatingPaymentMethod || payingParts}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.paymentOptionRadio}>
+                      {(reviewBooking.spareParts?.paymentMethod === 'cash' ||
+                        (!reviewBooking.spareParts?.paymentMethod && reviewBooking.paymentMethod === 'cash')) && (
+                        <View style={[styles.paymentOptionRadioInner, { backgroundColor: '#10B981' }]} />
+                      )}
+                    </View>
+                    <View style={[styles.paymentOptionIconBox, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                      <Ionicons name="cash-outline" size={20} color="#10B981" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.paymentOptionTitle, { color: '#10B981' }]}>Option B — Cash / Pay on Service</Text>
+                      <Text style={styles.paymentOptionDesc}>
+                        Pay {reviewBooking.paymentMethod === 'online' && reviewBooking.paymentStatus === 'paid'
+                          ? `₹${reviewBooking.spareParts.totalAdditionalAmount} additional amount in cash`
+                          : `total ₹${reviewBooking.pricing?.totalAmount || 0} in cash`} directly to the service provider after job completion.
+                      </Text>
+                      <Text style={[styles.paymentOptionNote, { color: '#6EE7B7' }]}>
+                        ✓ Provider will confirm receipt upon collecting cash.
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Action based on active choice */}
+                  {(reviewBooking.spareParts?.paymentMethod === 'online' ||
+                    (!reviewBooking.spareParts?.paymentMethod && reviewBooking.paymentMethod === 'online')) && (
                     <TouchableOpacity
                       style={styles.payPartsOnlineBtn}
                       onPress={() => handlePaySparePartsOnline(reviewBooking)}
-                      disabled={payingParts}
+                      disabled={payingParts || updatingPaymentMethod}
                       activeOpacity={0.8}
                     >
                       <Ionicons name="card-outline" size={18} color="#FFFFFF" />
                       <Text style={styles.payPartsOnlineBtnText}>
-                        {payingParts ? 'Processing...' : `Pay ₹${reviewBooking.spareParts.totalAdditionalAmount} with Razorpay`}
+                        {payingParts
+                          ? 'Opening Checkout...'
+                          : `Pay ₹${
+                              reviewBooking.paymentMethod === 'online' && reviewBooking.paymentStatus === 'paid'
+                                ? reviewBooking.spareParts.totalAdditionalAmount
+                                : (reviewBooking.pricing?.totalAmount || reviewBooking.spareParts.totalAdditionalAmount)
+                            } Online Now`}
                       </Text>
                     </TouchableOpacity>
-                  </View>
-                )}
+                  )}
 
-              {/* Cash Payment Information for Approved Parts */}
-              {reviewBooking.spareParts.status === 'approved' && reviewBooking.paymentMethod === 'cash' && (
-                <View style={[styles.onlinePayBox, { backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)' }]}>
-                  <Text style={[styles.onlinePayTitle, { color: '#10B981' }]}>Cash on Service Payment</Text>
-                  <Text style={styles.onlinePaySub}>
-                    Total Cash Payable on Completion: ₹{reviewBooking.pricing?.totalAmount || 0}
-                    {reviewBooking.paymentDetails?.cashConfirmedByProvider
-                      ? ' (Provider marked cash received)'
-                      : ' (Pay directly to provider)'}
+                  {(reviewBooking.spareParts?.paymentMethod === 'cash' ||
+                    (!reviewBooking.spareParts?.paymentMethod && reviewBooking.paymentMethod === 'cash')) && (
+                    <View style={styles.cashNoticeBox}>
+                      <Ionicons name="information-circle-outline" size={18} color="#10B981" />
+                      <Text style={styles.cashNoticeText}>
+                        Cash on service selected. Please pay{' '}
+                        <Text style={{ fontWeight: '700', color: '#FFFFFF' }}>
+                          ₹{reviewBooking.paymentMethod === 'online' && reviewBooking.paymentStatus === 'paid'
+                            ? reviewBooking.spareParts.totalAdditionalAmount
+                            : (reviewBooking.pricing?.totalAmount || 0)}
+                        </Text>{' '}
+                        directly to the service provider. The provider will mark cash received upon payment.
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Already Paid confirmation banner for Approved Parts */}
+              {reviewBooking.spareParts.status === 'approved' && reviewBooking.spareParts.paymentStatus === 'paid' && (
+                <View style={[styles.onlinePayBox, { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: '#059669' }]}>
+                  <Ionicons name="checkmark-circle" size={24} color="#10B981" style={{ marginBottom: 4 }} />
+                  <Text style={[styles.onlinePayTitle, { color: '#10B981' }]}>
+                    {reviewBooking.spareParts?.paymentMethod === 'cash'
+                      ? 'Cash Payment Received & Confirmed'
+                      : 'Additional Charges Paid & Verified'}
+                  </Text>
+                  <Text style={[styles.onlinePaySub, { color: '#D1D5DB', marginBottom: 0 }]}>
+                    All additional charges (₹{reviewBooking.spareParts.totalAdditionalAmount}) have been settled successfully.
                   </Text>
                 </View>
               )}
@@ -1349,6 +1470,102 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF'
+  },
+  paymentMethodSelectionBox: {
+    backgroundColor: '#161324',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2D274A',
+    padding: 14,
+    marginBottom: 16
+  },
+  paymentOptionsHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 2
+  },
+  paymentOptionsSub: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginBottom: 12
+  },
+  paymentOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#1E1A30',
+    borderWidth: 1.5,
+    borderColor: '#373059',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    gap: 10
+  },
+  paymentOptionCardActive: {
+    borderColor: '#7C3AED',
+    backgroundColor: '#241B42'
+  },
+  paymentOptionCardActiveCash: {
+    borderColor: '#10B981',
+    backgroundColor: '#0F2620'
+  },
+  paymentOptionRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#6B7280',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2
+  },
+  paymentOptionRadioInner: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#7C3AED'
+  },
+  paymentOptionIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  paymentOptionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 2
+  },
+  paymentOptionDesc: {
+    fontSize: 11,
+    color: '#D1D5DB',
+    lineHeight: 16
+  },
+  paymentOptionNote: {
+    fontSize: 10.5,
+    color: '#A78BFA',
+    marginTop: 4,
+    fontWeight: '600'
+  },
+  cashNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 6,
+    gap: 8
+  },
+  cashNoticeText: {
+    flex: 1,
+    fontSize: 11.5,
+    color: '#A7F3D0',
+    lineHeight: 16
   },
   modalActionFooter: {
     flexDirection: 'row',

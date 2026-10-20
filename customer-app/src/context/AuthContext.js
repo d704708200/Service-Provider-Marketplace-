@@ -59,13 +59,20 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (err) {
       console.warn('Session restoration check:', err.userMessage || err.message);
-      // If 401, clear session; if network offline, fallback to cached user
+      // If 401 or invalid session, clear session; if network offline, fallback to cached user only if token still exists
       if (err.response?.status === 401) {
         await logout();
       } else {
-        const cachedUser = await authStorage.getUser();
-        if (cachedUser && cachedUser.role === 'customer') {
-          setUser(cachedUser);
+        const currentToken = await authStorage.getToken();
+        if (currentToken) {
+          const cachedUser = await authStorage.getUser();
+          if (cachedUser && cachedUser.role === 'customer') {
+            setUser(cachedUser);
+          } else {
+            await logout();
+          }
+        } else {
+          await logout();
         }
       }
     } finally {

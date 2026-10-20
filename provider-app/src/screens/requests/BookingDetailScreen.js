@@ -100,7 +100,7 @@ export default function BookingDetailScreen({ route, navigation }) {
   };
 
   const handleCompleteService = async () => {
-    // Check if extra materials proposal is pending customer approval
+    // 1. Check if extra materials proposal is pending customer approval
     if (
       booking.spareParts &&
       ['pending_approval', 'pending_customer_approval'].includes(booking.spareParts.status)
@@ -112,18 +112,41 @@ export default function BookingDetailScreen({ route, navigation }) {
       return;
     }
 
-    // Check if extra materials were approved and online payment is still pending
+    // 2. Check if cash for booking or spare parts is unpaid
+    if (booking.paymentMethod === 'cash' && booking.paymentStatus !== 'paid') {
+      Alert.alert(
+        'Cash Collection Required',
+        `Please collect cash (₹${booking.pricing?.totalAmount || 0}) from the customer and tap "Mark Cash Received" before completing the service.`
+      );
+      return;
+    }
+
+    // 3. Check if extra materials were approved with cash selected and cash is not yet marked received
     if (
       booking.spareParts &&
       booking.spareParts.status === 'approved' &&
-      booking.paymentMethod === 'online' &&
-      booking.paymentStatus === 'paid' &&
+      booking.spareParts.paymentMethod === 'cash' &&
+      booking.spareParts.paymentStatus !== 'paid' &&
+      booking.spareParts.totalAdditionalAmount > 0
+    ) {
+      Alert.alert(
+        'Cash Collection Required',
+        `The customer selected Cash on Service for approved extra materials (₹${booking.spareParts.totalAdditionalAmount}). Please collect cash and tap "Collect Extra Cash" before completing the service.`
+      );
+      return;
+    }
+
+    // 4. Check if extra materials were approved with online payment pending
+    if (
+      booking.spareParts &&
+      booking.spareParts.status === 'approved' &&
+      (booking.spareParts.paymentMethod === 'online' || !booking.spareParts.paymentMethod) &&
       booking.spareParts.paymentStatus !== 'paid' &&
       booking.spareParts.totalAdditionalAmount > 0
     ) {
       Alert.alert(
         'Payment Pending',
-        `The customer has approved extra materials (+₹${booking.spareParts.totalAdditionalAmount}) but has not completed the online payment yet. Please ask the customer to pay via their Customer App before completing.`
+        `The customer has approved extra materials (+₹${booking.spareParts.totalAdditionalAmount}) but has not completed payment yet. Please ask the customer to pay via their Customer App before completing.`
       );
       return;
     }
@@ -478,10 +501,24 @@ export default function BookingDetailScreen({ route, navigation }) {
               {booking.spareParts.status === 'approved' && (
                 <View style={styles.approvedBox}>
                   <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                  <Text style={styles.approvedText}>
-                    Approved by customer. Total revised to ₹{booking.pricing?.totalAmount}.
-                    {booking.spareParts.paymentStatus === 'paid' ? ' (Paid)' : ' (Payment pending)'}
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.approvedText}>
+                      Approved by customer. Total revised to ₹{booking.pricing?.totalAmount}.
+                    </Text>
+                    <Text style={[styles.approvedText, { marginTop: 3, fontWeight: '700' }]}>
+                      {booking.spareParts.paymentStatus === 'paid' ? (
+                        <Text style={{ color: '#10B981' }}>✓ Additional charges (₹{booking.spareParts.totalAdditionalAmount}) PAID</Text>
+                      ) : booking.spareParts.paymentMethod === 'cash' ? (
+                        <Text style={{ color: '#FBBF24' }}>
+                          💵 Customer selected Cash on Service: Collect ₹{booking.spareParts.totalAdditionalAmount} in cash from customer.
+                        </Text>
+                      ) : (
+                        <Text style={{ color: '#A78BFA' }}>
+                          💳 Customer paying online via Razorpay (Payment pending).
+                        </Text>
+                      )}
+                    </Text>
+                  </View>
                 </View>
               )}
             </View>
@@ -621,9 +658,18 @@ export default function BookingDetailScreen({ route, navigation }) {
 
           {booking.status === 'in_progress' && (
             <View style={{ flex: 1, flexDirection: 'row', gap: 10 }}>
-              {booking.paymentMethod === 'cash' && booking.paymentStatus !== 'paid' && (
+              {((booking.paymentMethod === 'cash' && booking.paymentStatus !== 'paid') ||
+                (booking.spareParts?.status === 'approved' &&
+                  booking.spareParts?.paymentMethod === 'cash' &&
+                  booking.spareParts?.paymentStatus !== 'paid')) && (
                 <Button
-                  title={actionLoading ? 'Recording...' : 'Mark Cash Received'}
+                  title={
+                    actionLoading
+                      ? 'Recording...'
+                      : booking.paymentMethod === 'online'
+                      ? `Collect Extra Cash (₹${booking.spareParts?.totalAdditionalAmount || 0})`
+                      : 'Mark Cash Received'
+                  }
                   variant="primary"
                   loading={actionLoading}
                   disabled={actionLoading}

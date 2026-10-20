@@ -9,7 +9,8 @@ const {
   validateRejectBooking,
   validateVerifyPayment,
   validateSubmitSpareParts,
-  validateReviewSpareParts
+  validateReviewSpareParts,
+  validateSelectSparePartsPaymentMethod
 } = require('../middleware/validation');
 
 // ==========================================
@@ -60,6 +61,16 @@ router.patch(
   validateObjectId('id'),
   validateReviewSpareParts,
   bookingController.reviewSpareParts
+);
+
+// Customer selects payment method (online vs cash) for approved spare parts
+router.patch(
+  '/customer/:id/spare-parts/payment-method',
+  authenticate,
+  requireRole('customer'),
+  validateObjectId('id'),
+  validateSelectSparePartsPaymentMethod,
+  bookingController.selectSparePartsPaymentMethod
 );
 
 // Customer creates Razorpay order for approved spare parts

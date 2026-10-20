@@ -1327,6 +1327,28 @@ const validateReviewSpareParts = (req, res, next) => {
   next();
 };
 
+const validateSelectSparePartsPaymentMethod = (req, res, next) => {
+  const { paymentMethod } = req.body;
+  const errors = [];
+
+  if (!paymentMethod || !['cash', 'online'].includes(paymentMethod)) {
+    errors.push("Payment method must be either 'online' or 'cash'");
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   validateRegisterCustomer,
   validateRegisterProvider,
@@ -1356,7 +1378,8 @@ module.exports = {
   validateUpdateBannerConfig,
   validateVerifyPayment,
   validateSubmitSpareParts,
-  validateReviewSpareParts
+  validateReviewSpareParts,
+  validateSelectSparePartsPaymentMethod
 };
 
 
