@@ -36,8 +36,10 @@ export default function BookingHistoryScreen({ navigation }) {
   const fetchBookings = useCallback(async () => {
     try {
       setFetchError(null);
-      const res = await bookingApi.getMyBookings();
-      setBookings(res.data || []);
+      const res = await bookingApi.getMyBookings({ limit: 100 });
+      const rawList = res?.data?.bookings || res?.data || [];
+      const bookingsList = Array.isArray(rawList) ? rawList : [];
+      setBookings(bookingsList);
     } catch (err) {
       setFetchError(err.userMessage || err.message || 'Failed to load bookings');
     } finally {
