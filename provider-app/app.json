@@ -18,10 +18,12 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.mendroo.provider",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#020a25"
-      }
+      },
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/favicon.png"

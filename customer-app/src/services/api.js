@@ -24,12 +24,17 @@ export const setOnUnauthorizedCallback = (callback) => {
   onUnauthorizedCallback = callback;
 };
 
-// Request Interceptor: Attach Bearer token
+// Request Interceptor: Attach Bearer token and handle FormData Content-Type
 api.interceptors.request.use(
   async (config) => {
     const token = await authStorage.getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    // If request payload is FormData, do NOT force Content-Type: application/json or manual multipart
+    // Let the browser or React Native network client generate the multipart boundary automatically
+    if (config.data instanceof FormData || (config.data && typeof config.data.getParts === 'function')) {
+      delete config.headers['Content-Type'];
     }
     return config;
   },
@@ -236,11 +241,9 @@ export const customerApi = {
     return response.data;
   },
   uploadAvatar: async (formData) => {
-    const response = await api.post('/customers/me/avatar', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
+    // Note: Do NOT manually set 'Content-Type': 'multipart/form-data' without a boundary!
+    // Axios / browser / React Native automatically attaches multipart/form-data; boundary=...
+    const response = await api.post('/customers/me/avatar', formData);
     return response.data;
   },
   getAddresses: async () => {

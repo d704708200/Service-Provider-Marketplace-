@@ -1,11 +1,17 @@
 import axios from 'axios';
 import { authStorage } from '../storage/authStorage';
+import { getApiBaseUrl, API_CONFIG } from '../config/env';
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api';
+const BASE_URL = getApiBaseUrl();
+
+// Safe diagnostic log on development startup (without secrets or tokens)
+if (__DEV__) {
+  console.log(`[Provider API Config] Active Base URL: ${BASE_URL}`);
+}
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 15000,
+  timeout: API_CONFIG.TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json'
@@ -18,12 +24,17 @@ export const setOnUnauthorizedCallback = (callback) => {
   onUnauthorizedCallback = callback;
 };
 
-// Request Interceptor: Attach Bearer token
+// Request Interceptor: Attach Bearer token and handle FormData Content-Type
 api.interceptors.request.use(
   async (config) => {
     const token = await authStorage.getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    // If request payload is FormData, do NOT force Content-Type: application/json or manual multipart
+    // Let the browser or React Native network client generate the multipart boundary automatically
+    if (config.data instanceof FormData || (config.data && typeof config.data.getParts === 'function')) {
+      delete config.headers['Content-Type'];
     }
     return config;
   },
@@ -146,11 +157,9 @@ export const providerApi = {
     return response.data;
   },
   uploadAvatar: async (formData) => {
-    const response = await api.post('/providers/me/avatar', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
+    // Note: Do NOT manually set 'Content-Type': 'multipart/form-data' without a boundary!
+    // Axios / browser / React Native automatically attaches multipart/form-data; boundary=...
+    const response = await api.post('/providers/me/avatar', formData);
     return response.data;
   }
 };

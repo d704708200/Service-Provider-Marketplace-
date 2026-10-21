@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { providerApi } from '../../services/api';
 import { Header, Card, Badge, Button, Input } from '../../components/common';
+import { getApiBaseUrl, API_CONFIG } from '../../config/env';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
@@ -28,15 +29,14 @@ export default function ProfileScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [cacheBuster, setCacheBuster] = useState(Date.now());
+  const [loggingOut, setLoggingOut] = useState(false);
 
   // Helper to format avatar URL with full backend base URL for relative paths
   const getFullAvatarUrl = (avatarPath) => {
     if (!avatarPath) return null;
     let url = avatarPath;
     if (url.startsWith('/')) {
-      const baseUrl = process.env.EXPO_PUBLIC_API_URL
-        ? process.env.EXPO_PUBLIC_API_URL.replace(/\/api\/?$/, '')
-        : 'http://localhost:5000';
+      const baseUrl = getApiBaseUrl().replace(/\/api\/?$/, '');
       url = `${baseUrl}${url}`;
     }
     const separator = url.includes('?') ? '&' : '?';
@@ -77,22 +77,30 @@ export default function ProfileScreen({ navigation }) {
 
       setUploadingPhoto(true);
 
-      // 3. Prepare FormData
+      // 3. Prepare FormData for browser vs native
       const formData = new FormData();
       const uri = asset.uri;
-      const uriParts = uri.split('.');
-      const fileType = uriParts[uriParts.length - 1]?.toLowerCase() || 'jpg';
-      const mimeType = asset.mimeType || (fileType === 'png' ? 'image/png' : 'image/jpeg');
+      const cleanExt = (asset.mimeType?.includes('png') || uri.endsWith('.png')) ? 'png' : 'jpg';
+      const safeFilename = `provider_avatar_${Date.now()}.${cleanExt}`;
+      const safeMimeType = asset.mimeType || (cleanExt === 'png' ? 'image/png' : 'image/jpeg');
 
       if (Platform.OS === 'web') {
-        const fetchRes = await fetch(uri);
-        const blob = await fetchRes.blob();
-        formData.append('avatar', blob, `provider_avatar_${Date.now()}.${fileType}`);
+        // In browser (React Native Web)
+        if (asset.file instanceof Blob) {
+          formData.append('avatar', asset.file, safeFilename);
+        } else {
+          // Fetch data URI or blob URL
+          const fetchRes = await fetch(uri);
+          const blob = await fetchRes.blob();
+          const file = new File([blob], safeFilename, { type: safeMimeType });
+          formData.append('avatar', file, safeFilename);
+        }
       } else {
+        // Native React Native (iOS / Android)
         formData.append('avatar', {
           uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
-          name: `provider_avatar_${Date.now()}.${fileType}`,
-          type: mimeType
+          name: safeFilename,
+          type: safeMimeType
         });
       }
 
@@ -196,10 +204,34 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  const performLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+    } catch (err) {
+      console.error('Logout failed:', err);
+      Alert.alert('Sign Out Failed', err.message || 'Could not complete sign out. Please try again.');
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
   const handleLogout = () => {
+    if (loggingOut) return;
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm
+        ? window.confirm('Are you sure you want to sign out of Provider Portal?')
+        : true;
+      if (confirmed) {
+        performLogout();
+      }
+      return;
+    }
+
     Alert.alert('Sign Out', 'Are you sure you want to sign out of Provider Portal?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: async () => await logout() }
+      { text: 'Sign Out', style: 'destructive', onPress: performLogout }
     ]);
   };
 
@@ -431,10 +463,28 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </Card>
 
+        {/* Application Information */}
+        <Card style={styles.card}>
+          <Text style={styles.sectionTitle}>Application Information</Text>
+          <View style={styles.row}>
+            <Text style={styles.label}>Portal Version</Text>
+            <Text style={styles.val}>1.0.0 (Phase 11)</Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.row}>
+            <Text style={styles.label}>API Endpoint</Text>
+            <Text style={styles.val} numberOfLines={1}>
+              {API_CONFIG.BASE_URL}
+            </Text>
+          </View>
+        </Card>
+
         <Button
-          title="Sign Out"
+          title={loggingOut ? "Signing Out..." : "Sign Out"}
           onPress={handleLogout}
           variant="danger"
+          loading={loggingOut}
+          disabled={loggingOut}
           style={styles.logoutBtn}
         />
       </ScrollView>

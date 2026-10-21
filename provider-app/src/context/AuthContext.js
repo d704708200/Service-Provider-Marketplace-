@@ -112,6 +112,40 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const register = async (providerData) => {
+    clearError();
+    try {
+      const response = await authApi.registerProvider({
+        name: (providerData.name || '').trim(),
+        email: (providerData.email || '').trim().toLowerCase(),
+        phone: (providerData.phone || '').trim(),
+        password: providerData.password,
+        businessName: (providerData.businessName || '').trim(),
+        bio: providerData.bio ? providerData.bio.trim() : '',
+        experienceYears: Number(providerData.experienceYears) || 0
+      });
+
+      if (response?.success && response.data) {
+        const { token: receivedToken, user: receivedUser, profile: receivedProfile } = response.data;
+
+        await authStorage.setToken(receivedToken);
+        await authStorage.setUser(receivedUser);
+
+        setToken(receivedToken);
+        setUser(receivedUser);
+        setProfile(receivedProfile || null);
+        return { success: true, data: response.data };
+      }
+      const genericErr = 'Registration failed: Invalid server response.';
+      setError(genericErr);
+      return { success: false, error: genericErr };
+    } catch (err) {
+      const msg = err.userMessage || err.message || 'Registration failed. Please verify your details.';
+      setError(msg);
+      return { success: false, error: msg };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -123,6 +157,7 @@ export const AuthProvider = ({ children }) => {
         error,
         clearError,
         login,
+        register,
         logout,
         checkAuthSession
       }}

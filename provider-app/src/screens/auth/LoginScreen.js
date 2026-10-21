@@ -6,16 +6,18 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Image
+  Image,
+  TouchableOpacity
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { Input, Button, Card } from '../../components/common';
+import API_CONFIG from '../../config/env';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
-export default function LoginScreen() {
+export default function LoginScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { login, error: authError, clearError } = useAuth();
 
@@ -26,8 +28,19 @@ export default function LoginScreen() {
 
   const validate = () => {
     const errs = {};
-    if (!email.trim()) errs.email = 'Email address is required';
-    if (!password) errs.password = 'Password is required';
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email.trim()) {
+      errs.email = 'Email address is required';
+    } else if (!emailRegex.test(email.trim())) {
+      errs.email = 'Please enter a valid email address';
+    }
+
+    if (!password) {
+      errs.password = 'Password is required';
+    } else if (password.length < 6) {
+      errs.password = 'Password must be at least 6 characters';
+    }
+
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -113,6 +126,28 @@ export default function LoginScreen() {
             disabled={loading}
             style={styles.submitBtn}
           />
+
+          {/* Navigation to Create Account */}
+          <View style={styles.registerRow}>
+            <Text style={styles.registerPrompt}>Don't have an account? </Text>
+            <TouchableOpacity
+              onPress={() => {
+                clearError();
+                navigation?.navigate('Register');
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.registerLink}>Create Account</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Safe Connectivity Diagnostic Indicator */}
+          <View style={styles.connectivityRow}>
+            <View style={styles.activeDot} />
+            <Text style={styles.connectivityText} numberOfLines={1}>
+              API Endpoint: {API_CONFIG.BASE_URL}
+            </Text>
+          </View>
         </Card>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -177,5 +212,42 @@ const styles = StyleSheet.create({
   submitBtn: {
     marginTop: spacing.sm,
     backgroundColor: '#7C3AED'
+  },
+  connectivityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: '#252136',
+    gap: 6
+  },
+  activeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#10B981'
+  },
+  connectivityText: {
+    ...typography.caption,
+    color: '#6B7280',
+    fontSize: 11
+  },
+  registerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: spacing.lg,
+    paddingVertical: spacing.xs
+  },
+  registerPrompt: {
+    ...typography.bodyMedium,
+    color: '#9CA3AF'
+  },
+  registerLink: {
+    ...typography.bodyMedium,
+    color: '#A78BFA',
+    fontWeight: '700'
   }
 });

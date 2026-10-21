@@ -85,22 +85,30 @@ export default function ProfileScreen({ navigation }) {
 
       setUploadingPhoto(true);
 
-      // 3. Prepare FormData
+      // 3. Prepare FormData for browser vs native
       const formData = new FormData();
       const uri = asset.uri;
-      const uriParts = uri.split('.');
-      const fileType = uriParts[uriParts.length - 1]?.toLowerCase() || 'jpg';
-      const mimeType = asset.mimeType || (fileType === 'png' ? 'image/png' : 'image/jpeg');
+      const cleanExt = (asset.mimeType?.includes('png') || uri.endsWith('.png')) ? 'png' : 'jpg';
+      const safeFilename = `avatar_${Date.now()}.${cleanExt}`;
+      const safeMimeType = asset.mimeType || (cleanExt === 'png' ? 'image/png' : 'image/jpeg');
 
       if (Platform.OS === 'web') {
-        const fetchRes = await fetch(uri);
-        const blob = await fetchRes.blob();
-        formData.append('avatar', blob, `avatar_${Date.now()}.${fileType}`);
+        // In browser (React Native Web)
+        if (asset.file instanceof Blob) {
+          formData.append('avatar', asset.file, safeFilename);
+        } else {
+          // Fetch data URI or blob URL
+          const fetchRes = await fetch(uri);
+          const blob = await fetchRes.blob();
+          const file = new File([blob], safeFilename, { type: safeMimeType });
+          formData.append('avatar', file, safeFilename);
+        }
       } else {
+        // Native React Native (iOS / Android)
         formData.append('avatar', {
           uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
-          name: `avatar_${Date.now()}.${fileType}`,
-          type: mimeType
+          name: safeFilename,
+          type: safeMimeType
         });
       }
 
