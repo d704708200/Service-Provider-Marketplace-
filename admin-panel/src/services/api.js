@@ -204,12 +204,28 @@ export const providerApi = {
     );
     return response.data;
   },
+  deleteProvider: async (providerId) => {
+    const response = await api.delete(`/providers/admin/${providerId}`);
+    return response.data;
+  },
   getPublicProviders: async (params = {}) => {
     const response = await api.get('/providers', { params });
     return response.data;
   },
   getPublicProviderById: async (id) => {
     const response = await api.get(`/providers/${id}`);
+    return response.data;
+  }
+};
+
+// Customer API Methods
+export const customerApi = {
+  getAdminCustomers: async (params = {}) => {
+    const response = await api.get('/customers/admin', { params });
+    return response.data;
+  },
+  deleteCustomer: async (customerId) => {
+    const response = await api.delete(`/customers/admin/${customerId}`);
     return response.data;
   }
 };

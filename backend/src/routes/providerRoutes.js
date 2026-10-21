@@ -227,6 +227,14 @@ router.patch(
   providerController.updateTopRatedStatus
 );
 
+router.delete(
+  '/admin/:id',
+  authenticate,
+  requireRole('admin'),
+  validateObjectId('id'),
+  providerController.deleteProviderByAdmin
+);
+
 // =========================================================
 // 3. PUBLIC DISCOVERY ROUTES (Customers / Unauthenticated)
 // =========================================================

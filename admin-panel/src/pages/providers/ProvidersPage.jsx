@@ -22,7 +22,8 @@ import {
   Star,
   ToggleLeft,
   ToggleRight,
-  X
+  X,
+  Trash2
 } from 'lucide-react';
 import { providerApi, categoryApi } from '../../services/api';
 import Card from '../../components/common/Card';
@@ -231,6 +232,36 @@ const ProvidersPage = () => {
         } catch (err) {
           setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
           setApiError(err.userMessage || 'Failed to update account status.');
+        }
+      }
+    });
+  };
+
+  // Delete / Terminate Provider Account
+  const handleDeleteProvider = (provider) => {
+    const businessName = provider.businessName || 'Unnamed Business';
+    const email = provider.user?.email || 'No email';
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Service Provider Account',
+      message: `Are you sure you want to delete the provider account for "${businessName}" (${email})? This will deactivate the provider account, terminate dispatch availability, cancel any pending dispatches, and preserve historical bookings for audit purposes.`,
+      confirmText: 'Delete Provider',
+      confirmVariant: 'danger',
+      isLoading: false,
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+        try {
+          await providerApi.deleteProvider(provider._id);
+          setSuccessMessage(`Provider "${businessName}" deleted successfully.`);
+          setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+          if (isDetailModalOpen && selectedProvider?._id === provider._id) {
+            setIsDetailModalOpen(false);
+          }
+          fetchProviders();
+        } catch (err) {
+          setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+          setApiError(err.userMessage || 'Failed to delete provider.');
         }
       }
     });
@@ -633,14 +664,25 @@ const ProvidersPage = () => {
 
                       {/* Actions */}
                       <td className="px-6 py-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDetailModal(provider)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>View Profile</span>
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDetailModal(provider)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>View Profile</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProvider(provider)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
+                            title="Delete Provider Account"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -930,7 +972,16 @@ const ProvidersPage = () => {
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => handleDeleteProvider(selectedProvider)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Delete Account</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setIsDetailModalOpen(false)}

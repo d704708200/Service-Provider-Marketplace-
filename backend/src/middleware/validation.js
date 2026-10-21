@@ -64,6 +64,17 @@ const validateRegisterProvider = (req, res, next) => {
     errors.push('Experience years must be a non-negative number');
   }
 
+  const { categories } = req.body;
+  if (!categories || !Array.isArray(categories) || categories.length === 0) {
+    errors.push('At least one service category must be selected');
+  } else {
+    const mongoose = require('mongoose');
+    const invalidId = categories.some((id) => !mongoose.Types.ObjectId.isValid(id));
+    if (invalidId) {
+      errors.push('One or more selected category IDs are invalid');
+    }
+  }
+
   if (errors.length > 0) {
     return res.status(400).json({
       success: false,

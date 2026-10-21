@@ -100,6 +100,14 @@ export const authApi = {
   }
 };
 
+// Public Category APIs
+export const categoryApi = {
+  getPublicCategories: async (params = {}) => {
+    const response = await api.get('/categories', { params });
+    return response.data;
+  }
+};
+
 // Provider Bookings & Requests APIs
 export const bookingApi = {
   getPendingRequests: async (params = {}) => {

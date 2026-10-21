@@ -122,7 +122,8 @@ export const AuthProvider = ({ children }) => {
         password: providerData.password,
         businessName: (providerData.businessName || '').trim(),
         bio: providerData.bio ? providerData.bio.trim() : '',
-        experienceYears: Number(providerData.experienceYears) || 0
+        experienceYears: Number(providerData.experienceYears) || 0,
+        categories: Array.isArray(providerData.categories) ? providerData.categories : []
       });
 
       if (response?.success && response.data) {

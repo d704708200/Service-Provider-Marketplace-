@@ -234,6 +234,188 @@ const setDefaultCustomerAddressByUserId = async (userId, addressId) => {
   return customer.addresses;
 };
 
+/**
+ * =========================================================
+ * ADMINISTRATIVE CUSTOMER MANAGEMENT METHODS
+ * =========================================================
+ */
+
+/**
+ * List registered customers with search, status filter, and pagination
+ */
+const getAdminCustomers = async (query = {}) => {
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(query.limit, 10) || 10));
+  const skip = (page - 1) * limit;
+
+  // 1. Build User query for customers
+  const userFilter = { role: 'customer' };
+
+  if (query.status && query.status !== 'all') {
+    if (query.status === 'active') {
+      userFilter.isActive = true;
+    } else if (query.status === 'inactive' || query.status === 'suspended') {
+      userFilter.isActive = false;
+    }
+  }
+
+  if (query.search && query.search.trim()) {
+    const rawSearch = query.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = new RegExp(rawSearch, 'i');
+    userFilter.$or = [
+      { name: searchRegex },
+      { email: searchRegex },
+      { phone: searchRegex }
+    ];
+  }
+
+  const [users, total] = await Promise.all([
+    User.find(userFilter)
+      .select('-password -__v')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    User.countDocuments(userFilter)
+  ]);
+
+  if (users.length === 0) {
+    return {
+      customers: [],
+      pagination: {
+        page,
+        limit,
+        total: 0,
+        pages: 1
+      }
+    };
+  }
+
+  const userIds = users.map((u) => u._id);
+
+  // 2. Load linked Customer profiles
+  const customerProfiles = await Customer.find({ user: { $in: userIds } }).lean();
+  const profileMap = new Map();
+  customerProfiles.forEach((p) => {
+    profileMap.set(p.user.toString(), p);
+  });
+
+  // 3. Load booking counts for each customer profile
+  const Booking = require('../models/Booking');
+  const customerProfileIds = customerProfiles.map((p) => p._id);
+  const bookingCounts = await Booking.aggregate([
+    { $match: { customer: { $in: customerProfileIds } } },
+    { $group: { _id: '$customer', count: { $sum: 1 } } }
+  ]);
+  const bookingCountMap = new Map();
+  bookingCounts.forEach((b) => {
+    bookingCountMap.set(b._id.toString(), b.count);
+  });
+
+  // 4. Merge results
+  const customers = users.map((u) => {
+    const profile = profileMap.get(u._id.toString()) || null;
+    const totalBookings = profile ? bookingCountMap.get(profile._id.toString()) || 0 : 0;
+    return {
+      _id: profile ? profile._id : u._id,
+      userId: u._id,
+      name: u.name,
+      email: u.email,
+      phone: u.phone,
+      avatar: u.avatar,
+      role: u.role,
+      isActive: u.isActive,
+      isVerified: u.isVerified,
+      createdAt: u.createdAt,
+      totalBookings,
+      addressesCount: profile?.addresses ? profile.addresses.length : 0,
+      defaultPaymentMethod: profile?.defaultPaymentMethod || 'cash'
+    };
+  });
+
+  return {
+    customers,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit) || 1
+    }
+  };
+};
+
+/**
+ * Safe Admin Delete / Deactivation of Customer Account
+ * Preserves financial transaction integrity and legal booking history.
+ */
+const deleteCustomerByAdmin = async (identifier, adminUserId) => {
+  // 1. Resolve Customer or User
+  let user = null;
+  let customer = null;
+
+  if (mongoose.Types.ObjectId.isValid(identifier)) {
+    // Check if identifier is Customer._id
+    customer = await Customer.findById(identifier);
+    if (customer) {
+      user = await User.findById(customer.user);
+    } else {
+      // Check if identifier is User._id
+      user = await User.findById(identifier);
+      if (user && user.role === 'customer') {
+        customer = await Customer.findOne({ user: user._id });
+      }
+    }
+  }
+
+  if (!user || user.role !== 'customer') {
+    const err = new Error(`Customer not found with ID '${identifier}'`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Guard: Cannot delete administrator
+  if (user.role === 'admin') {
+    const err = new Error('Cannot delete an administrator account');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // Guard: Self deletion protection
+  if (adminUserId && user._id.toString() === adminUserId.toString()) {
+    const err = new Error('Administrators cannot delete their own authenticated account');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // 2. Perform safe deactivation and sanitization
+  user.isActive = false;
+  await user.save();
+
+  // Cancel any active / pending bookings to avoid orphaned active dispatches
+  const Booking = require('../models/Booking');
+  if (customer) {
+    await Booking.updateMany(
+      { customer: customer._id, status: { $in: ['pending', 'accepted'] } },
+      {
+        $set: {
+          status: 'cancelled',
+          cancelledBy: 'admin',
+          cancellationReason: 'Account terminated by platform administrator'
+        }
+      }
+    );
+  }
+
+  return {
+    success: true,
+    deletedId: customer ? customer._id : user._id,
+    userId: user._id,
+    name: user.name,
+    email: user.email,
+    isActive: user.isActive
+  };
+};
+
 module.exports = {
   getCustomerProfileByUserId,
   updateCustomerProfileByUserId,
@@ -241,5 +423,7 @@ module.exports = {
   addCustomerAddressByUserId,
   updateCustomerAddressByUserId,
   deleteCustomerAddressByUserId,
-  setDefaultCustomerAddressByUserId
+  setDefaultCustomerAddressByUserId,
+  getAdminCustomers,
+  deleteCustomerByAdmin
 };

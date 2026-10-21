@@ -496,6 +496,24 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.val}>Verified Provider</Text>
           </View>
           <View style={styles.divider} />
+          <View style={styles.categoriesRow}>
+            <Text style={styles.label}>Service Categories</Text>
+            <View style={styles.categoryPillsWrapper}>
+              {Array.isArray(profile?.categories) && profile.categories.length > 0 ? (
+                profile.categories.map((cat, idx) => (
+                  <View key={cat?._id || cat || idx} style={styles.categoryPill}>
+                    <Ionicons name="pricetag" size={11} color="#A78BFA" style={{ marginRight: 4 }} />
+                    <Text style={styles.categoryPillText}>
+                      {typeof cat === 'object' && cat !== null ? (cat.name || 'Category') : 'Service Category'}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.noCategoriesText}>None specified</Text>
+              )}
+            </View>
+          </View>
+          <View style={styles.divider} />
           <View style={styles.row}>
             <Text style={styles.label}>Availability Status</Text>
             <Badge
@@ -903,5 +921,36 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: '#E5E7EB'
+  },
+  categoriesRow: {
+    paddingVertical: spacing.xs,
+    gap: 6
+  },
+  categoryPillsWrapper: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4
+  },
+  categoryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.35)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6
+  },
+  categoryPillText: {
+    ...typography.caption,
+    color: '#DDD6FE',
+    fontWeight: '600',
+    fontSize: 11
+  },
+  noCategoriesText: {
+    ...typography.bodySmall,
+    color: '#6B7280',
+    fontStyle: 'italic'
   }
 });

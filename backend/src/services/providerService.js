@@ -1114,6 +1114,84 @@ const updateTopRatedStatus = async (providerId, { showInTopRated, topRatedOrder 
   return await getAdminProviderById(providerId);
 };
 
+/**
+ * Admin: Safe Delete / Deactivation of Provider Account
+ * Preserves financial transaction integrity, completed service histories, reviews, and legal records.
+ */
+const deleteProviderByAdmin = async (identifier, adminUserId) => {
+  let provider = null;
+  let user = null;
+
+  if (mongoose.Types.ObjectId.isValid(identifier)) {
+    // Check if identifier is Provider._id
+    provider = await Provider.findById(identifier);
+    if (provider) {
+      user = await User.findById(provider.user);
+    } else {
+      // Check if identifier is User._id
+      user = await User.findById(identifier);
+      if (user && user.role === 'provider') {
+        provider = await Provider.findOne({ user: user._id });
+      }
+    }
+  }
+
+  if (!user || user.role !== 'provider' || !provider) {
+    const err = new Error(`Provider not found with ID '${identifier}'`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Guard: Cannot delete administrator
+  if (user.role === 'admin') {
+    const err = new Error('Cannot delete an administrator account');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // Guard: Self deletion protection
+  if (adminUserId && user._id.toString() === adminUserId.toString()) {
+    const err = new Error('Administrators cannot delete their own authenticated account');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // 1. Deactivate User account
+  user.isActive = false;
+  await user.save();
+
+  // 2. Deactivate Provider profile availability and suspend verification
+  provider.isAvailable = false;
+  provider.verificationStatus = 'suspended';
+  provider.showInTopRated = false;
+  await provider.save();
+
+  // 3. Deactivate custom services offered by this provider
+  await Service.updateMany({ provider: provider._id }, { $set: { isActive: false } });
+
+  // 4. Cancel active/pending bookings to prevent orphaned dispatches
+  await Booking.updateMany(
+    { provider: provider._id, status: { $in: ['pending', 'accepted'] } },
+    {
+      $set: {
+        status: 'cancelled',
+        cancelledBy: 'admin',
+        cancellationReason: 'Provider account terminated by platform administrator'
+      }
+    }
+  );
+
+  return {
+    success: true,
+    deletedId: provider._id,
+    userId: user._id,
+    businessName: provider.businessName,
+    email: user.email,
+    isActive: user.isActive,
+    verificationStatus: provider.verificationStatus
+  };
+};
+
 module.exports = {
   getProviderProfileByUserId,
   updateProviderProfileByUserId,
@@ -1138,5 +1216,6 @@ module.exports = {
   reviewDocument,
   updateProviderVerification,
   updateProviderAccountStatus,
-  updateTopRatedStatus
+  updateTopRatedStatus,
+  deleteProviderByAdmin
 };

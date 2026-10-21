@@ -547,6 +547,23 @@ const updateTopRatedStatus = async (req, res, next) => {
   }
 };
 
+/**
+ * DELETE /api/providers/admin/:id
+ * Admin deletes (safely deactivates) provider account
+ */
+const deleteProviderByAdmin = async (req, res, next) => {
+  try {
+    const result = await providerService.deleteProviderByAdmin(req.params.id, req.user._id);
+    res.status(200).json({
+      success: true,
+      message: 'Provider account deleted successfully',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getProviderMe,
   updateProviderMe,
@@ -574,5 +591,6 @@ module.exports = {
   reviewDocument,
   updateProviderVerification,
   updateProviderAccountStatus,
-  updateTopRatedStatus
+  updateTopRatedStatus,
+  deleteProviderByAdmin
 };

@@ -164,6 +164,41 @@ const setDefaultCustomerAddress = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/customers/admin
+ * Admin lists customers with filtering, search, and pagination
+ */
+const getAdminCustomers = async (req, res, next) => {
+  try {
+    const result = await customerService.getAdminCustomers(req.query);
+    res.status(200).json({
+      success: true,
+      message: 'Customers retrieved successfully',
+      data: result.customers,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/customers/admin/:id
+ * Admin deletes (safely deactivates) customer account
+ */
+const deleteCustomerByAdmin = async (req, res, next) => {
+  try {
+    const result = await customerService.deleteCustomerByAdmin(req.params.id, req.user._id);
+    res.status(200).json({
+      success: true,
+      message: 'Customer account deleted successfully',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getCustomerMe,
   updateCustomerMe,
@@ -172,5 +207,7 @@ module.exports = {
   addCustomerAddress,
   updateCustomerAddress,
   deleteCustomerAddress,
-  setDefaultCustomerAddress
+  setDefaultCustomerAddress,
+  getAdminCustomers,
+  deleteCustomerByAdmin
 };

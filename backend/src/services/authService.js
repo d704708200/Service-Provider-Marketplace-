@@ -1,4 +1,4 @@
-﻿const bcrypt = require('bcryptjs');
+const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Customer = require('../models/Customer');
@@ -162,7 +162,7 @@ const registerCustomer = async ({ name, email, phone, password, address, default
  * Creates User (role='provider') and Provider profile consistently.
  * Provider verificationStatus is set to 'pending' as required.
  */
-const registerProvider = async ({ name, email, phone, password, businessName, bio, experienceYears }) => {
+const registerProvider = async ({ name, email, phone, password, businessName, bio, experienceYears, categories }) => {
   const existingEmail = await User.findOne({ email: email.trim().toLowerCase() });
   if (existingEmail) {
     const err = new Error('An account with this email address already exists');
@@ -174,6 +174,27 @@ const registerProvider = async ({ name, email, phone, password, businessName, bi
   if (existingPhone) {
     const err = new Error('An account with this phone number already exists');
     err.statusCode = 409;
+    throw err;
+  }
+
+  // Validate categories: ensure at least one active category is selected
+  const Category = require('../models/Category');
+  if (!categories || !Array.isArray(categories) || categories.length === 0) {
+    const err = new Error('At least one service category is required for provider registration');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Deduplicate category IDs
+  const uniqueCategoryIds = [...new Set(categories.map((c) => c.toString()))];
+  const activeCategories = await Category.find({
+    _id: { $in: uniqueCategoryIds },
+    isActive: true
+  });
+
+  if (activeCategories.length !== uniqueCategoryIds.length) {
+    const err = new Error('One or more selected categories are invalid, inactive, or do not exist');
+    err.statusCode = 400;
     throw err;
   }
 
@@ -220,6 +241,7 @@ const registerProvider = async ({ name, email, phone, password, businessName, bi
           businessName: businessName ? businessName.trim() : '',
           bio: bio ? bio.trim() : '',
           experienceYears: experienceYears || 0,
+          categories: activeCategories.map((cat) => cat._id),
           verificationStatus: 'pending',
           isAvailable: true
         }
