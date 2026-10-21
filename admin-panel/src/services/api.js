@@ -1,6 +1,26 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// Resolve API base URL:
+// 1. Explicit environment variable import.meta.env.VITE_API_URL if configured
+// 2. If running on public hosting (e.g. Netlify, Vercel), default to the live production Render backend
+// 3. Fall back to local development server (localhost:5000) only when developing on localhost
+const resolveBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  if (typeof window !== 'undefined' && window.location) {
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === '[::1]';
+    if (!isLocalhost) {
+      return 'https://service-provider-marketplace.onrender.com/api';
+    }
+  }
+  return 'http://localhost:5000/api';
+};
+
+const BASE_URL = resolveBaseUrl();
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -262,6 +282,87 @@ export const bannerApi = {
   },
   getPublicBanner: async () => {
     const response = await api.get('/banner');
+    return response.data;
+  }
+};
+
+// Dashboard & Analytics API Methods
+export const dashboardApi = {
+  getOverviewStats: async () => {
+    // Aggregates live customer count, provider count, pending verifications, catalog count, and booking stats
+    const [custRes, provRes, pendingRes, svcRes, bkStatsRes] = await Promise.all([
+      customerApi.getAdminCustomers({ limit: 1 }),
+      providerApi.getAdminProviders({ limit: 1 }),
+      providerApi.getPendingVerifications({ limit: 1 }),
+      serviceApi.getAdminServices({ limit: 1 }),
+      bookingApi.getAdminBookingStats().catch(() => ({ success: false, data: null }))
+    ]);
+
+    return {
+      success: true,
+      data: {
+        customersCount: custRes?.pagination?.total ?? (custRes?.data?.length || 0),
+        providersCount: provRes?.pagination?.total ?? (provRes?.data?.length || 0),
+        pendingVerificationsCount: pendingRes?.pagination?.total ?? (pendingRes?.data?.length || 0),
+        servicesCount: svcRes?.pagination?.total ?? (svcRes?.data?.length || 0),
+        bookingStats: bkStatsRes?.data || null
+      }
+    };
+  },
+  getRecentActivity: async () => {
+    // Reuses the live bookings endpoint to generate real-time activity events
+    const bkRes = await bookingApi.getAdminBookings({ limit: 8 });
+    return {
+      success: true,
+      data: bkRes?.data || []
+    };
+  }
+};
+
+// Reviews & Ratings Moderation API Methods
+export const reviewApi = {
+  getAdminReviews: async (params = {}) => {
+    const response = await api.get('/reviews/admin', { params });
+    return response.data;
+  },
+  updateReviewVisibility: async (id, isPublic) => {
+    const response = await api.patch(`/reviews/admin/${id}/visibility`, { isPublic });
+    return response.data;
+  },
+  deleteReview: async (id) => {
+    const response = await api.delete(`/reviews/admin/${id}`);
+    return response.data;
+  }
+};
+
+// Service Areas & Locations API Methods
+export const locationApi = {
+  getAdminLocations: async (params = {}) => {
+    const response = await api.get('/locations/admin', { params });
+    return response.data;
+  },
+  createLocation: async (locationData) => {
+    const response = await api.post('/locations/admin', locationData);
+    return response.data;
+  },
+  updateLocation: async (id, locationData) => {
+    const response = await api.put(`/locations/admin/${id}`, locationData);
+    return response.data;
+  },
+  toggleLocationStatus: async (id, isActive) => {
+    const response = await api.patch(`/locations/admin/${id}/status`, { isActive });
+    return response.data;
+  },
+  deleteLocation: async (id) => {
+    const response = await api.delete(`/locations/admin/${id}`);
+    return response.data;
+  }
+};
+
+// Reports & Financial Analytics API Methods
+export const reportApi = {
+  getPlatformReports: async (params = {}) => {
+    const response = await api.get('/reports/admin', { params });
     return response.data;
   }
 };

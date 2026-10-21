@@ -12,6 +12,9 @@ const providerRoutes = require('./routes/providerRoutes');
 const customerRoutes = require('./routes/customerRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const bannerRoutes = require('./routes/bannerRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
+const serviceAreaRoutes = require('./routes/serviceAreaRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 const app = express();
 
@@ -71,6 +74,9 @@ app.use('/api/providers', providerRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/banner', bannerRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/locations', serviceAreaRoutes);
+app.use('/api/reports', reportRoutes);
 
 // 404 Handler
 app.use(notFoundHandler);

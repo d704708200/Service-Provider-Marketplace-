@@ -1,4 +1,4 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 const serviceAreaSchema = new mongoose.Schema(
   {
@@ -26,8 +26,7 @@ const serviceAreaSchema = new mongoose.Schema(
     polygon: {
       type: {
         type: String,
-        enum: ['Polygon'],
-        default: 'Polygon'
+        enum: ['Polygon']
       },
       coordinates: {
         type: [[[Number]]] // [[[lng, lat], [lng, lat], ...]]
