@@ -782,6 +782,30 @@ const getPublicProviders = async (query = {}) => {
     }
   }
 
+  // Parse customer coordinates if passed
+  const customerLat = query.latitude !== undefined && !Number.isNaN(Number(query.latitude))
+    ? Number(query.latitude)
+    : null;
+  const customerLng = query.longitude !== undefined && !Number.isNaN(Number(query.longitude))
+    ? Number(query.longitude)
+    : null;
+
+  // Haversine formula to compute distance in km between two geo coordinates
+  const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
+    if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) *
+        Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Number((R * c).toFixed(1));
+  };
+
   const sortOrder = isTopRatedOnly
     ? { topRatedOrder: 1, 'rating.average': -1, createdAt: -1 }
     : { 'rating.average': -1, completedBookingsCount: -1 };
@@ -837,6 +861,13 @@ const getPublicProviders = async (query = {}) => {
       const specialization =
         p.categories && p.categories.length > 0 ? p.categories[0].name : (p.specialization || '');
 
+      // Compute geographic distance if both provider and customer coordinates exist
+      let distanceKm = null;
+      if (customerLat != null && customerLng != null && p.location?.coordinates?.length === 2) {
+        const [pLng, pLat] = p.location.coordinates;
+        distanceKm = calculateDistanceKm(customerLat, customerLng, pLat, pLng);
+      }
+
       return {
         _id: p._id,
         businessName: p.businessName || p.user?.name || '',
@@ -853,7 +884,10 @@ const getPublicProviders = async (query = {}) => {
         showInTopRated: Boolean(p.showInTopRated),
         topRatedOrder: p.topRatedOrder || 0,
         user: p.user,
-        isAvailable: p.isAvailable
+        isAvailable: p.isAvailable,
+        businessAddress: p.businessAddress || null,
+        location: p.location || null,
+        distance: distanceKm // Real distance in km, or null if coordinates unavailable
       };
     })
   );

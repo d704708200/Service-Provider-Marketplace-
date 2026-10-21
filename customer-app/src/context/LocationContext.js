@@ -34,6 +34,24 @@ export const LocationProvider = ({ children }) => {
   // Check current permission without prompting
   const checkPermission = useCallback(async () => {
     try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.permissions) {
+        try {
+          const permResult = await navigator.permissions.query({ name: 'geolocation' });
+          if (permResult.state === 'granted') {
+            setPermissionStatus('granted');
+            return 'granted';
+          }
+          if (permResult.state === 'denied') {
+            setPermissionStatus('blocked');
+            return 'blocked';
+          }
+          setPermissionStatus('undetermined');
+          return 'undetermined';
+        } catch (permErr) {
+          // Fall through to expo check
+        }
+      }
+
       const { status, canAskAgain } = await Location.getForegroundPermissionsAsync();
       if (status === 'granted') {
         setPermissionStatus('granted');
@@ -60,27 +78,55 @@ export const LocationProvider = ({ children }) => {
     setIsLoading(true);
     setError(null);
     try {
-      // 1. Verify location services enabled (GPS)
-      const isLocationServicesEnabled = await Location.hasServicesEnabledAsync();
-      if (!isLocationServicesEnabled) {
-        setError('Location services are turned off. Please enable GPS.');
-        setIsLoading(false);
-        return null;
+      let latitude = null;
+      let longitude = null;
+
+      // 1. Verify location services enabled (GPS on native)
+      if (Platform.OS !== 'web') {
+        const isLocationServicesEnabled = await Location.hasServicesEnabledAsync();
+        if (!isLocationServicesEnabled) {
+          setError('Location services are turned off. Please enable GPS.');
+          setIsLoading(false);
+          return null;
+        }
       }
 
-      // 2. Fetch position with balanced accuracy for fast response & low battery consumption
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-        timeout: 12000
-      });
+      // 2. Fetch position
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
+        // Direct browser Geolocation API
+        const webPosition = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 60000
+          });
+        });
+        latitude = webPosition.coords.latitude;
+        longitude = webPosition.coords.longitude;
+      } else {
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+          timeout: 12000
+        });
+        latitude = position.coords.latitude;
+        longitude = position.coords.longitude;
+      }
 
-      const { latitude, longitude } = position.coords;
+      if (latitude == null || longitude == null) {
+        throw new Error('Unable to determine coordinates from device location sensor.');
+      }
+
+      if (__DEV__) {
+        console.log('[LocationContext] Acquired coordinates:', { latitude, longitude });
+      }
 
       // 3. Reverse geocode to get human-readable city & locality
       let city = 'Current Location';
       let state = '';
       let formattedAddress = 'Near you';
 
+      // Try Expo reverse geocoding first
+      let resolved = false;
       try {
         const geocode = await Location.reverseGeocodeAsync({ latitude, longitude });
         if (geocode && geocode.length > 0) {
@@ -90,9 +136,29 @@ export const LocationProvider = ({ children }) => {
           formattedAddress = [item.name, item.district || item.city, item.region]
             .filter(Boolean)
             .join(', ');
+          resolved = true;
         }
-      } catch (geoErr) {
-        // Geocoding failure non-fatal; coordinates are still valid
+      } catch (expoGeoErr) {
+        if (__DEV__) console.warn('[LocationContext] expo-location reverse geocoding fallback triggered:', expoGeoErr?.message);
+      }
+
+      // Web fallback: Nominatim OpenStreetMap reverse geocoding if Expo reverse geocode is empty on web
+      if (!resolved || city === 'Current Location') {
+        try {
+          const osmRes = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
+            { headers: { 'User-Agent': 'ServiceProviderMarketplaceCustomerApp/1.0' } }
+          );
+          if (osmRes.ok) {
+            const osmData = await osmRes.json();
+            const addr = osmData.address || {};
+            city = addr.city || addr.town || addr.village || addr.suburb || addr.state_district || city;
+            state = addr.state || state;
+            formattedAddress = osmData.display_name || formattedAddress;
+          }
+        } catch (osmErr) {
+          // Non-fatal, coordinates still work
+        }
       }
 
       const newLoc = {
@@ -104,12 +170,19 @@ export const LocationProvider = ({ children }) => {
         updatedAt: Date.now()
       };
 
+      if (__DEV__) {
+        console.log('[LocationContext] Resolved location:', newLoc);
+      }
+
       setLocation(newLoc);
       await AsyncStorage.setItem(STORAGE_KEYS.SAVED_LOCATION, JSON.stringify(newLoc));
       setIsLoading(false);
       return newLoc;
     } catch (err) {
       const errMsg = err?.message || 'Failed to determine current location.';
+      if (__DEV__) {
+        console.warn('[LocationContext] Location error:', errMsg);
+      }
       setError(errMsg);
       setIsLoading(false);
       return null;
@@ -120,6 +193,19 @@ export const LocationProvider = ({ children }) => {
   const requestPermission = useCallback(async () => {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_REQUESTED_PERMISSION, 'true');
+
+      if (Platform.OS === 'web') {
+        setShowPermissionModal(false);
+        const loc = await fetchCurrentLocation();
+        if (loc) {
+          setPermissionStatus('granted');
+          return loc;
+        } else {
+          setPermissionStatus('denied');
+          return null;
+        }
+      }
+
       const { status, canAskAgain } = await Location.requestForegroundPermissionsAsync();
 
       if (status === 'granted') {
@@ -144,7 +230,9 @@ export const LocationProvider = ({ children }) => {
 
   // Open OS system settings if permanently blocked
   const openAppSettings = useCallback(() => {
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'web') {
+      alert('To enable location in your browser, click the site settings / lock icon in the address bar and set Location to Allow.');
+    } else if (Platform.OS === 'ios') {
       Linking.openURL('app-settings:');
     } else {
       Linking.openSettings();

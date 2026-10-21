@@ -155,14 +155,21 @@ export default function HomeScreen({ navigation }) {
       }
 
       if (__DEV__) {
-        console.log('[HomeScreen] Data loaded:', {
+        console.log('[HomeScreen] API Parameters & Location Status:', {
+          permissionStatus,
+          coordinatesAvailable: Boolean(location?.latitude && location?.longitude),
+          latitude: location?.latitude ?? null,
+          longitude: location?.longitude ?? null,
+          city: location?.city ?? null,
+          nearbyQueryParams: nearbyParams
+        });
+        console.log('[HomeScreen] Data Loaded Record Counts:', {
           allCategoriesCount: allCategories.length,
           quickServicesCount: quickList.length,
           popularServicesCount: popList.length,
           servicesCount: servicesList.length,
           topRatedCount: topRatedList.length,
-          allProvidersCount: allProvidersList.length,
-          activeLocation: location?.city || 'Default'
+          nearbyProvidersCount: allProvidersList.length
         });
       }
 
@@ -175,7 +182,7 @@ export default function HomeScreen({ navigation }) {
       setBannerConfig(bannerRes?.data || null);
     } catch (err) {
       if (__DEV__) {
-        console.error('[HomeScreen] Error fetching home data:', err);
+        console.error('[HomeScreen] Error fetching home data:', err?.message || err);
       }
       setError('Unable to load home services. Please check your connection.');
     } finally {

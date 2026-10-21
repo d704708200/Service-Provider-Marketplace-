@@ -83,6 +83,24 @@ const providerSchema = new mongoose.Schema(
         ref: 'ServiceArea'
       }
     ],
+    // Physical business address & GeoJSON coordinates for proximity matching
+    businessAddress: {
+      street: { type: String, trim: true, default: '' },
+      city: { type: String, trim: true, default: '' },
+      state: { type: String, trim: true, default: '' },
+      zipCode: { type: String, trim: true, default: '' }
+    },
+    location: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point'
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        default: undefined
+      }
+    },
     documents: [documentSchema],
     // KYC Document Fields
     aadhaarFrontImage: {
@@ -188,6 +206,8 @@ providerSchema.index({ categories: 1 });
 providerSchema.index({ isDeleted: 1 });
 providerSchema.index({ 'rating.average': -1 });
 providerSchema.index({ showInTopRated: 1, topRatedOrder: 1 });
+providerSchema.index({ location: '2dsphere' });
+providerSchema.index({ 'businessAddress.city': 1 });
 
 const Provider = mongoose.model('Provider', providerSchema);
 
