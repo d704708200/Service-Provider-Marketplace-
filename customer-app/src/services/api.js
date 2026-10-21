@@ -290,4 +290,19 @@ export const reviewApi = {
   }
 };
 
+// ==========================================
+// 9. Home Promotional Banner API
+// ==========================================
+export const bannerApi = {
+  getBanner: async () => {
+    const response = await api.get('/banner');
+    return response.data;
+  },
+  getPublicBanner: async () => {
+    const response = await api.get('/banner');
+    return response.data;
+  }
+};
+
 export default api;
+

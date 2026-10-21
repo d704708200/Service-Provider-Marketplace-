@@ -61,32 +61,100 @@ export default function HomeScreen({ navigation }) {
   const [bannerConfig, setBannerConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Helper to extract an array safely from any standard API response envelope
+  const extractArray = (res) => {
+    if (!res) return [];
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res.data)) return res.data;
+    if (Array.isArray(res.data?.data)) return res.data.data;
+    if (Array.isArray(res.data?.providers)) return res.data.providers;
+    if (Array.isArray(res.data?.categories)) return res.data.categories;
+    if (Array.isArray(res.data?.services)) return res.data.services;
+    if (Array.isArray(res.providers)) return res.providers;
+    if (Array.isArray(res.categories)) return res.categories;
+    if (Array.isArray(res.services)) return res.services;
+    return [];
+  };
 
   const fetchData = useCallback(async () => {
+    setError(null);
     try {
       const [allCatRes, quickCatRes, popCatRes, servRes, topProvRes, allProvRes, bannerRes] = await Promise.all([
-        categoryApi.getAll().catch(() => ({ data: [] })),
-        categoryApi.getAll({ quickServices: true }).catch(() => ({ data: [] })),
-        categoryApi.getAll({ popularServices: true }).catch(() => ({ data: [] })),
-        serviceApi.getAll({ limit: 6 }).catch(() => ({ data: [] })),
-        providerApi.getAll({ topRated: true }).catch(() => ({ data: [] })),
-        providerApi.getAll({ limit: 6 }).catch(() => ({ data: [] })),
-        bannerApi.getBanner().catch(() => ({ data: null }))
+        categoryApi.getAll().catch((e) => {
+          if (__DEV__) console.warn('[HomeScreen] all categories fetch failed:', e?.message);
+          return { data: [] };
+        }),
+        categoryApi.getAll({ quickServices: true }).catch((e) => {
+          if (__DEV__) console.warn('[HomeScreen] quick services fetch failed:', e?.message);
+          return { data: [] };
+        }),
+        categoryApi.getAll({ popularServices: true }).catch((e) => {
+          if (__DEV__) console.warn('[HomeScreen] popular services fetch failed:', e?.message);
+          return { data: [] };
+        }),
+        serviceApi.getAll({ limit: 6 }).catch((e) => {
+          if (__DEV__) console.warn('[HomeScreen] services fetch failed:', e?.message);
+          return { data: [] };
+        }),
+        providerApi.getAll({ topRated: true }).catch((e) => {
+          if (__DEV__) console.warn('[HomeScreen] top rated providers fetch failed:', e?.message);
+          return { data: [] };
+        }),
+        providerApi.getAll({ limit: 6 }).catch((e) => {
+          if (__DEV__) console.warn('[HomeScreen] all providers fetch failed:', e?.message);
+          return { data: [] };
+        }),
+        bannerApi && typeof bannerApi.getBanner === 'function'
+          ? bannerApi.getBanner().catch((e) => {
+              if (__DEV__) console.warn('[HomeScreen] banner fetch failed:', e?.message);
+              return { data: null };
+            })
+          : Promise.resolve({ data: null })
       ]);
 
-      const allCategories = allCatRes.data || [];
-      const quickList = quickCatRes.data || [];
-      const popList = popCatRes.data || [];
+      const allCategories = extractArray(allCatRes);
+      let quickList = extractArray(quickCatRes);
+      let popList = extractArray(popCatRes);
+      const servicesList = extractArray(servRes);
+      let topRatedList = extractArray(topProvRes);
+      const allProvidersList = extractArray(allProvRes);
+
+      // Business logic fallbacks if specific filter flags yield empty but general active records exist
+      if (quickList.length === 0 && allCategories.length > 0) {
+        quickList = allCategories.slice(0, 4);
+      }
+      if (popList.length === 0 && allCategories.length > 0) {
+        popList = allCategories.slice(0, 3);
+      }
+      if (topRatedList.length === 0 && allProvidersList.length > 0) {
+        topRatedList = allProvidersList.slice(0, 3);
+      }
+
+      if (__DEV__) {
+        console.log('[HomeScreen] Data loaded:', {
+          allCategoriesCount: allCategories.length,
+          quickServicesCount: quickList.length,
+          popularServicesCount: popList.length,
+          servicesCount: servicesList.length,
+          topRatedCount: topRatedList.length,
+          allProvidersCount: allProvidersList.length
+        });
+      }
 
       setCategories(allCategories);
       setQuickServices(quickList);
       setPopularServices(popList);
-      setFeaturedServices(servRes.data || []);
-      setTopRatedProviders(topProvRes.data || []);
-      setNearbyProviders(allProvRes.data || []);
+      setFeaturedServices(servicesList);
+      setTopRatedProviders(topRatedList);
+      setNearbyProviders(allProvidersList);
       setBannerConfig(bannerRes?.data || null);
     } catch (err) {
-      // Handled gracefully
+      if (__DEV__) {
+        console.error('[HomeScreen] Error fetching home data:', err);
+      }
+      setError('Unable to load home services. Please check your connection.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -162,6 +230,25 @@ export default function HomeScreen({ navigation }) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7C3AED']} />
         }
       >
+        {/* Error message with retry button */}
+        {error ? (
+          <View style={styles.errorBannerBox}>
+            <Ionicons name="alert-circle-outline" size={20} color="#F87171" style={{ marginRight: 8 }} />
+            <Text style={styles.errorBannerText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={fetchData} activeOpacity={0.8}>
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {/* Global Loading Indicator when initial loading */}
+        {loading && !refreshing ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#7C3AED" />
+            <Text style={styles.loadingText}>Loading marketplace services...</Text>
+          </View>
+        ) : null}
+
         {/* Hero Banner matching Figma */}
         <View style={styles.heroBanner}>
           <View style={styles.heroBadgeRow}>
@@ -386,7 +473,11 @@ export default function HomeScreen({ navigation }) {
                     {formatRating(nearbyProvider.rating, '5.0')}
                   </Text>
                   <Text style={styles.dotDivider}>•</Text>
-                  <Text style={styles.expText}>{nearbyProvider.distance || 1.4}km</Text>
+                  <Text style={styles.expText}>
+                    {nearbyProvider.distance != null
+                      ? `${typeof nearbyProvider.distance === 'number' ? nearbyProvider.distance.toFixed(1) : nearbyProvider.distance}km away`
+                      : 'Serving your city'}
+                  </Text>
                 </View>
                 <Text style={styles.availableNowText}>Available now</Text>
               </View>
@@ -946,5 +1037,45 @@ const styles = StyleSheet.create({
   emptySectionText: {
     fontSize: 12,
     color: '#71717A'
+  },
+  loadingContainer: {
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8
+  },
+  loadingText: {
+    fontSize: 13,
+    color: '#9CA3AF'
+  },
+  errorBannerBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#2A1515',
+    borderWidth: 1,
+    borderColor: '#7F1D1D',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginVertical: 10
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#FCA5A5'
+  },
+  retryButton: {
+    backgroundColor: '#DC2626',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginLeft: 10
+  },
+  retryButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF'
   }
 });
+
