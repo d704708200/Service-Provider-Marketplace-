@@ -35,6 +35,41 @@ const updateCustomerMe = async (req, res, next) => {
 };
 
 /**
+ * POST /api/customers/me/avatar
+ * Authenticated customer uploads a new profile avatar photo
+ */
+const uploadCustomerAvatar = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'No image file uploaded. Please select an image.',
+          statusCode: 400,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+
+    const { uploadImage } = require('../config/cloudinary');
+    const uploadResult = await uploadImage(req.file, { folder: 'marketplace/customers' });
+
+    // Update customer's user avatar
+    const updated = await customerService.updateCustomerProfileByUserId(req.user._id, {
+      avatar: uploadResult.url
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile photo uploaded successfully',
+      data: updated
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * GET /api/customers/me/addresses
  * Authenticated customer lists saved addresses
  */
@@ -132,6 +167,7 @@ const setDefaultCustomerAddress = async (req, res, next) => {
 module.exports = {
   getCustomerMe,
   updateCustomerMe,
+  uploadCustomerAvatar,
   getCustomerAddresses,
   addCustomerAddress,
   updateCustomerAddress,

@@ -35,6 +35,41 @@ const updateProviderMe = async (req, res, next) => {
 };
 
 /**
+ * POST /api/providers/me/avatar
+ * Authenticated provider uploads a new profile/business avatar photo
+ */
+const uploadProviderAvatar = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'No image file uploaded. Please select an image.',
+          statusCode: 400,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+
+    const { uploadImage } = require('../config/cloudinary');
+    const uploadResult = await uploadImage(req.file, { folder: 'marketplace/providers' });
+
+    // Update provider's user avatar
+    const updated = await providerService.updateProviderProfileByUserId(req.user._id, {
+      avatar: uploadResult.url
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Provider profile photo uploaded successfully',
+      data: updated
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * GET /api/providers/me/services
  * Authenticated provider views their own services
  */
@@ -441,6 +476,7 @@ const updateTopRatedStatus = async (req, res, next) => {
 module.exports = {
   getProviderMe,
   updateProviderMe,
+  uploadProviderAvatar,
   getProviderServices,
   addProviderService,
   updateProviderService,

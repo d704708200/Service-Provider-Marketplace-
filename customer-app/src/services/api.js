@@ -235,6 +235,14 @@ export const customerApi = {
     const response = await api.put('/customers/me', data);
     return response.data;
   },
+  uploadAvatar: async (formData) => {
+    const response = await api.post('/customers/me/avatar', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
   getAddresses: async () => {
     const response = await api.get('/customers/me/addresses');
     return response.data;

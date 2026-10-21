@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const providerController = require('../controllers/providerController');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { uploadSingleAvatar } = require('../middleware/upload');
 const {
   validateObjectId,
   validateUpdateProviderProfile,
@@ -33,6 +34,14 @@ router.put(
   requireRole('provider'),
   validateUpdateProviderProfile,
   providerController.updateProviderMe
+);
+
+router.post(
+  '/me/avatar',
+  authenticate,
+  requireRole('provider'),
+  uploadSingleAvatar('avatar'),
+  providerController.uploadProviderAvatar
 );
 
 router.get(

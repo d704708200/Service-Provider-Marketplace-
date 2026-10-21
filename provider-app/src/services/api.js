@@ -144,6 +144,14 @@ export const providerApi = {
   updateProfile: async (data) => {
     const response = await api.put('/providers/me', data);
     return response.data;
+  },
+  uploadAvatar: async (formData) => {
+    const response = await api.post('/providers/me/avatar', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
   }
 };
 

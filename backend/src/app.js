@@ -25,6 +25,17 @@ app.use(corsMiddleware);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Static files serving for uploaded assets (avatars, docs)
+const path = require('path');
+app.use(
+  '/uploads',
+  (req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  },
+  express.static(path.join(__dirname, '../uploads'))
+);
+
 // Health Check Endpoint (reporting system and DB status without exposing internal details)
 app.get('/api/health', (req, res) => {
   const dbStatus = getDBStatus();

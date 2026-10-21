@@ -8,8 +8,11 @@ import {
   TouchableOpacity,
   RefreshControl,
   Modal,
-  ActivityIndicator
+  ActivityIndicator,
+  Platform,
+  Image
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
@@ -23,6 +26,97 @@ export default function ProfileScreen({ navigation }) {
   const { user, profile: authProfile, logout, checkAuthSession } = useAuth();
   const [profile, setProfile] = useState(authProfile);
   const [refreshing, setRefreshing] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [cacheBuster, setCacheBuster] = useState(Date.now());
+
+  // Helper to format avatar URL with full backend base URL for relative paths
+  const getFullAvatarUrl = (avatarPath) => {
+    if (!avatarPath) return null;
+    let url = avatarPath;
+    if (url.startsWith('/')) {
+      const baseUrl = process.env.EXPO_PUBLIC_API_URL
+        ? process.env.EXPO_PUBLIC_API_URL.replace(/\/api\/?$/, '')
+        : 'http://localhost:5000';
+      url = `${baseUrl}${url}`;
+    }
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}v=${cacheBuster}`;
+  };
+
+  const handlePickAndUploadPhoto = async () => {
+    if (uploadingPhoto) return;
+
+    try {
+      // 1. Request photo library permission
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Photo library access is required to update your business profile photo. Please enable it in system settings.'
+        );
+        return;
+      }
+
+      // 2. Open Image Picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      if (!asset.uri) {
+        Alert.alert('Upload Error', 'Selected image could not be loaded.');
+        return;
+      }
+
+      setUploadingPhoto(true);
+
+      // 3. Prepare FormData
+      const formData = new FormData();
+      const uri = asset.uri;
+      const uriParts = uri.split('.');
+      const fileType = uriParts[uriParts.length - 1]?.toLowerCase() || 'jpg';
+      const mimeType = asset.mimeType || (fileType === 'png' ? 'image/png' : 'image/jpeg');
+
+      if (Platform.OS === 'web') {
+        const fetchRes = await fetch(uri);
+        const blob = await fetchRes.blob();
+        formData.append('avatar', blob, `provider_avatar_${Date.now()}.${fileType}`);
+      } else {
+        formData.append('avatar', {
+          uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
+          name: `provider_avatar_${Date.now()}.${fileType}`,
+          type: mimeType
+        });
+      }
+
+      // 4. Call upload API
+      const res = await providerApi.uploadAvatar(formData);
+
+      if (res?.success && res.data) {
+        setProfile(res.data);
+        setCacheBuster(Date.now());
+        await checkAuthSession();
+        Alert.alert('Success', 'Profile photo updated successfully!');
+      } else {
+        Alert.alert('Upload Failed', res?.message || 'Could not update profile photo.');
+      }
+    } catch (err) {
+      console.error('Provider photo upload error:', err);
+      Alert.alert(
+        'Upload Failed',
+        err.userMessage || err.message || 'An error occurred while uploading your profile photo.'
+      );
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   // Edit Profile Modal
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -171,9 +265,35 @@ export default function ProfileScreen({ navigation }) {
         {/* Profile Card */}
         <Card style={styles.card}>
           <View style={styles.profileRow}>
-            <View style={styles.avatar}>
-              <Ionicons name="business" size={28} color="#A78BFA" />
-            </View>
+            <TouchableOpacity
+              style={styles.avatarContainer}
+              onPress={handlePickAndUploadPhoto}
+              activeOpacity={0.8}
+              disabled={uploadingPhoto}
+            >
+              {(() => {
+                const avatarUrl = getFullAvatarUrl(profile?.user?.avatar || user?.avatar);
+                if (avatarUrl) {
+                  return <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />;
+                }
+                return (
+                  <View style={styles.avatarPlaceholder}>
+                    <Ionicons name="business" size={28} color="#A78BFA" />
+                  </View>
+                );
+              })()}
+
+              {uploadingPhoto ? (
+                <View style={styles.avatarLoadingOverlay}>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                </View>
+              ) : (
+                <View style={styles.cameraIconBadge}>
+                  <Ionicons name="camera" size={14} color="#FFFFFF" />
+                </View>
+              )}
+            </TouchableOpacity>
+
             <View style={styles.infoCol}>
               <Text style={styles.name}>{profile?.businessName || user?.name || 'Service Partner'}</Text>
               <Text style={styles.email}>{user?.email}</Text>
@@ -440,13 +560,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md
   },
-  avatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+  avatarContainer: {
+    position: 'relative'
+  },
+  avatarImage: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    borderWidth: 2,
+    borderColor: '#8B5CF6',
+    backgroundColor: '#1F1B2E'
+  },
+  avatarPlaceholder: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
     backgroundColor: '#1F1B2E',
     borderWidth: 1,
     borderColor: '#362E52',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  avatarLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 33,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  cameraIconBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#7C3AED',
+    borderWidth: 2,
+    borderColor: '#161420',
     alignItems: 'center',
     justifyContent: 'center'
   },

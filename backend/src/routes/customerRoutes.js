@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const customerController = require('../controllers/customerController');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { uploadSingleAvatar } = require('../middleware/upload');
 const {
   validateObjectId,
   validateUpdateCustomerProfile,
@@ -17,6 +18,7 @@ router.use(authenticate, requireRole('customer'));
  */
 router.get('/me', customerController.getCustomerMe);
 router.put('/me', validateUpdateCustomerProfile, customerController.updateCustomerMe);
+router.post('/me/avatar', uploadSingleAvatar('avatar'), customerController.uploadCustomerAvatar);
 
 /**
  * Saved Addresses Management
