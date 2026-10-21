@@ -2,11 +2,13 @@ const express = require('express');
 const router = express.Router();
 const providerController = require('../controllers/providerController');
 const { authenticate, requireRole } = require('../middleware/auth');
-const { uploadSingleAvatar } = require('../middleware/upload');
+const { uploadSingleAvatar, uploadSingleKYCDocument } = require('../middleware/upload');
 const {
   validateObjectId,
   validateUpdateProviderProfile,
   validateSubmitDocument,
+  validateSubmitKYCDocuments,
+  validateReviewKYC,
   validateDocumentReview,
   validateProviderVerification,
   validateAccountStatus,
@@ -131,6 +133,22 @@ router.post(
   providerController.submitDocument
 );
 
+router.post(
+  '/me/kyc/upload',
+  authenticate,
+  requireRole('provider'),
+  uploadSingleKYCDocument('document'),
+  providerController.uploadKYCDocument
+);
+
+router.post(
+  '/me/kyc/submit',
+  authenticate,
+  requireRole('provider'),
+  validateSubmitKYCDocuments,
+  providerController.submitKYC
+);
+
 router.delete(
   '/me/documents/:documentId',
   authenticate,
@@ -142,6 +160,14 @@ router.delete(
 // =========================================================
 // 2. ADMIN VERIFICATION & DIRECTORY ROUTES (role: admin)
 // =========================================================
+router.patch(
+  '/admin/:id/kyc/review',
+  authenticate,
+  requireRole('admin'),
+  validateObjectId('id'),
+  validateReviewKYC,
+  providerController.reviewKYC
+);
 router.get(
   '/admin',
   authenticate,

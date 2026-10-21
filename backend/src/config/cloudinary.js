@@ -62,14 +62,15 @@ const uploadImage = async (file, options = {}) => {
   }
 
   // Local storage fallback when Cloudinary credentials are not configured
-  const uploadsDir = path.join(__dirname, '../../uploads/avatars');
+  const subFolder = options.folder ? options.folder.replace(/^marketplace\//, '') : 'avatars';
+  const uploadsDir = path.join(__dirname, '../../uploads', subFolder);
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
 
   const ext = path.extname(file.originalname || '') || '.jpg';
   const cleanExt = ext.startsWith('.') ? ext : `.${ext}`;
-  const filename = `avatar-${Date.now()}-${Math.round(Math.random() * 1e9)}${cleanExt}`;
+  const filename = `doc-${Date.now()}-${Math.round(Math.random() * 1e9)}${cleanExt}`;
   const filePath = path.join(uploadsDir, filename);
 
   if (file.buffer) {
@@ -81,7 +82,7 @@ const uploadImage = async (file, options = {}) => {
   }
 
   // URL returned relative or absolute served via Express static
-  const relativeUrl = `/uploads/avatars/${filename}`;
+  const relativeUrl = `/uploads/${subFolder}/${filename}`;
 
   return {
     url: relativeUrl,

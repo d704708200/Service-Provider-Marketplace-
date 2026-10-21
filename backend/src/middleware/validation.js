@@ -511,7 +511,7 @@ const validateSubmitDocument = (req, res, next) => {
   const { type, documentUrl } = req.body;
   const errors = [];
 
-  const validTypes = ['identity', 'address', 'certificate', 'license', 'other'];
+  const validTypes = ['identity', 'address', 'certificate', 'license', 'aadhaar_front', 'aadhaar_back', 'pan_front', 'pan_back', 'other'];
   if (!type || typeof type !== 'string' || !validTypes.includes(type.trim().toLowerCase())) {
     errors.push(`Document type is required and must be one of: ${validTypes.join(', ')}`);
   }
@@ -520,11 +520,76 @@ const validateSubmitDocument = (req, res, next) => {
     errors.push('Document URL is required');
   } else {
     const trimmedUrl = documentUrl.trim();
-    if (!/^https?:\/\/.+/i.test(trimmedUrl)) {
-      errors.push('Document URL must be a valid HTTP or HTTPS URL');
+    if (!trimmedUrl.startsWith('/') && !/^https?:\/\/.+/i.test(trimmedUrl)) {
+      errors.push('Document URL must be a valid URL or path');
     } else if (trimmedUrl.length > 1000) {
       errors.push('Document URL exceeds maximum length (1000 characters)');
     }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateSubmitKYCDocuments = (req, res, next) => {
+  const { aadhaarFrontImage, aadhaarBackImage, panFrontImage, panBackImage } = req.body;
+  const errors = [];
+
+  if (!aadhaarFrontImage || typeof aadhaarFrontImage !== 'string' || !aadhaarFrontImage.trim()) {
+    errors.push('Aadhaar front photo is required');
+  }
+
+  if (!aadhaarBackImage || typeof aadhaarBackImage !== 'string' || !aadhaarBackImage.trim()) {
+    errors.push('Aadhaar back photo is required');
+  }
+
+  if (!panFrontImage || typeof panFrontImage !== 'string' || !panFrontImage.trim()) {
+    errors.push('PAN front photo is required');
+  }
+
+  // PAN back photo: required by specification unless configured optional
+  const panBackRequired = process.env.PAN_BACK_IMAGE_OPTIONAL !== 'true';
+  if (panBackRequired) {
+    if (!panBackImage || typeof panBackImage !== 'string' || !panBackImage.trim()) {
+      errors.push('PAN back photo is required');
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `KYC submission failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateReviewKYC = (req, res, next) => {
+  const { status, rejectionReason } = req.body;
+  const errors = [];
+
+  const validStatuses = ['verified', 'rejected'];
+  if (!status || !validStatuses.includes(status)) {
+    errors.push(`KYC review status must be either 'verified' or 'rejected'`);
+  }
+
+  if (status === 'rejected' && (!rejectionReason || typeof rejectionReason !== 'string' || !rejectionReason.trim())) {
+    errors.push('A rejection reason is mandatory when rejecting KYC verification');
   }
 
   if (errors.length > 0) {
@@ -1362,6 +1427,8 @@ module.exports = {
   validateUpdateServiceStatus,
   validateUpdateProviderProfile,
   validateSubmitDocument,
+  validateSubmitKYCDocuments,
+  validateReviewKYC,
   validateDocumentReview,
   validateProviderVerification,
   validateAccountStatus,

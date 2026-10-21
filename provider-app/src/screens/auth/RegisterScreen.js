@@ -154,11 +154,12 @@ export default function RegisterScreen({ navigation }) {
             </View>
           ) : null}
 
-          {/* Pending Approval Notice */}
+          {/* 5-Step Registration & KYC Flow Notice */}
           <View style={styles.noticeBanner}>
-            <Ionicons name="information-circle-outline" size={20} color="#A78BFA" />
+            <Ionicons name="shield-checkmark-outline" size={20} color="#A78BFA" />
             <Text style={styles.noticeText}>
-              All new provider registrations are submitted with <Text style={styles.noticeHighlight}>Pending Verification</Text> status. Documents are reviewed before public customer dispatch.
+              <Text style={{ fontWeight: '700', color: '#FFFFFF' }}>Step 1 of 5: </Text>
+              Submit your basic registration details, then complete <Text style={styles.noticeHighlight}>Aadhaar & PAN Card KYC</Text> verification to activate customer dispatch.
             </Text>
           </View>
 

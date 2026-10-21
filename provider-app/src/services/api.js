@@ -47,17 +47,19 @@ api.interceptors.response.use(
   async (error) => {
     if (error.response) {
       const { status, data } = error.response;
+      const serverMessage = data?.error?.message || data?.message;
       const message =
-        data?.error?.message ||
-        data?.message ||
-        (status === 401
-          ? 'Session expired. Please sign in again.'
+        serverMessage ||
+        (status === 400
+          ? 'Validation failed. Please check the information provided.'
+          : status === 401
+          ? 'Invalid email or password.'
           : status === 403
           ? 'Access denied: You lack permission for this provider action.'
           : status === 404
           ? 'The requested booking or resource was not found.'
           : status === 409
-          ? 'State conflict: Booking already claimed or modified by another provider.'
+          ? 'An account with this email address or phone number already exists.'
           : status >= 500
           ? 'Server error occurred. Please try again later.'
           : 'An unexpected error occurred.');
@@ -160,6 +162,14 @@ export const providerApi = {
     // Note: Do NOT manually set 'Content-Type': 'multipart/form-data' without a boundary!
     // Axios / browser / React Native automatically attaches multipart/form-data; boundary=...
     const response = await api.post('/providers/me/avatar', formData);
+    return response.data;
+  },
+  uploadKYCDocument: async (formData) => {
+    const response = await api.post('/providers/me/kyc/upload', formData);
+    return response.data;
+  },
+  submitKYCDocuments: async (kycData) => {
+    const response = await api.post('/providers/me/kyc/submit', kycData);
     return response.data;
   }
 };

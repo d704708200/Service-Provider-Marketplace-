@@ -485,6 +485,128 @@ const submitDocument = async (userId, { type, documentUrl, title }) => {
 };
 
 /**
+ * Submit complete KYC package (Aadhaar Front & Back, PAN Front & Back)
+ */
+const submitKYCDocuments = async (userId, { aadhaarFrontImage, aadhaarBackImage, panFrontImage, panBackImage }) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Set explicit KYC fields
+  provider.aadhaarFrontImage = aadhaarFrontImage.trim();
+  provider.aadhaarBackImage = aadhaarBackImage.trim();
+  provider.panFrontImage = panFrontImage.trim();
+  if (panBackImage && typeof panBackImage === 'string' && panBackImage.trim()) {
+    provider.panBackImage = panBackImage.trim();
+  }
+
+  provider.kycStatus = 'under_review';
+  provider.kycSubmittedAt = new Date();
+  provider.kycRejectionReason = null;
+
+  // If overall provider verification was rejected, move it back to pending for review
+  if (provider.verificationStatus === 'rejected') {
+    provider.verificationStatus = 'pending';
+    provider.rejectionReason = null;
+  }
+
+  // Synchronize documents array for unified admin audit
+  const kycDocsToUpsert = [
+    { type: 'aadhaar_front', url: provider.aadhaarFrontImage },
+    { type: 'aadhaar_back', url: provider.aadhaarBackImage },
+    { type: 'pan_front', url: provider.panFrontImage },
+    ...(provider.panBackImage ? [{ type: 'pan_back', url: provider.panBackImage }] : [])
+  ];
+
+  for (const item of kycDocsToUpsert) {
+    const existingIdx = provider.documents.findIndex(
+      (d) => d.type.toLowerCase() === item.type
+    );
+    if (existingIdx >= 0) {
+      provider.documents[existingIdx].documentUrl = item.url;
+      provider.documents[existingIdx].verificationStatus = 'pending';
+      provider.documents[existingIdx].uploadedAt = new Date();
+      provider.documents[existingIdx].reviewNote = '';
+      provider.documents[existingIdx].reviewedAt = null;
+    } else {
+      provider.documents.push({
+        type: item.type,
+        documentUrl: item.url,
+        verificationStatus: 'pending',
+        uploadedAt: new Date(),
+        reviewNote: '',
+        reviewedAt: null
+      });
+    }
+  }
+
+  await provider.save();
+
+  return await Provider.findById(provider._id)
+    .populate('user', 'name email phone avatar role isActive isVerified createdAt')
+    .lean();
+};
+
+/**
+ * Admin: Review KYC Package (Approve or Reject with reason)
+ */
+const reviewKYC = async (providerId, adminUserId, { status, rejectionReason }) => {
+  const provider = await Provider.findById(providerId);
+  if (!provider) {
+    const err = new Error(`Provider not found with ID '${providerId}'`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  provider.kycStatus = status; // 'verified' or 'rejected'
+  provider.kycReviewedAt = new Date();
+  provider.kycReviewedBy = adminUserId;
+
+  if (status === 'verified') {
+    provider.kycRejectionReason = null;
+    provider.verificationStatus = 'verified';
+    provider.verifiedAt = new Date();
+    provider.rejectionReason = null;
+
+    // Mark documents approved
+    provider.documents.forEach((doc) => {
+      if (['aadhaar_front', 'aadhaar_back', 'pan_front', 'pan_back'].includes(doc.type.toLowerCase())) {
+        doc.verificationStatus = 'approved';
+        doc.reviewedAt = new Date();
+      }
+    });
+
+    await User.findByIdAndUpdate(provider.user, { isVerified: true });
+  } else if (status === 'rejected') {
+    provider.kycRejectionReason = rejectionReason.trim();
+    provider.verificationStatus = 'rejected';
+    provider.rejectionReason = rejectionReason.trim();
+    provider.verifiedAt = null;
+
+    // Mark documents rejected
+    provider.documents.forEach((doc) => {
+      if (['aadhaar_front', 'aadhaar_back', 'pan_front', 'pan_back'].includes(doc.type.toLowerCase())) {
+        doc.verificationStatus = 'rejected';
+        doc.reviewNote = rejectionReason.trim();
+        doc.reviewedAt = new Date();
+      }
+    });
+
+    await User.findByIdAndUpdate(provider.user, { isVerified: false });
+  }
+
+  await provider.save();
+
+  return await Provider.findById(providerId)
+    .populate('user', 'name email phone avatar role isActive isVerified createdAt')
+    .populate('kycReviewedBy', 'name email role')
+    .lean();
+};
+
+/**
  * Delete a document before it is approved
  */
 const deleteDocument = async (userId, documentId) => {
@@ -1006,6 +1128,8 @@ module.exports = {
   updateProviderServiceByUserId,
   deleteProviderServiceByUserId,
   submitDocument,
+  submitKYCDocuments,
+  reviewKYC,
   deleteDocument,
   getPublicProviders,
   getPublicProviderById,

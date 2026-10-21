@@ -94,7 +94,69 @@ const uploadSingleAvatar = (fieldName = 'avatar') => {
   };
 };
 
+const uploadSingleKYCDocument = (fieldName = 'document') => {
+  return (req, res, next) => {
+    const contentType = req.headers['content-type'] || '';
+    if (!contentType.toLowerCase().includes('multipart/form-data')) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Invalid request: Content-Type must be multipart/form-data with a valid boundary',
+          statusCode: 400,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+
+    if (!contentType.includes('boundary=')) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Invalid request: Multipart boundary missing from Content-Type header.',
+          statusCode: 400,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+
+    const uploadMiddleware = upload.single(fieldName);
+    uploadMiddleware(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            success: false,
+            error: {
+              message: 'Document file size exceeds maximum allowed limit of 5MB',
+              statusCode: 400,
+              timestamp: new Date().toISOString()
+            }
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: `Document upload error: ${err.message}`,
+            statusCode: 400,
+            timestamp: new Date().toISOString()
+          }
+        });
+      } else if (err) {
+        return res.status(err.statusCode || 400).json({
+          success: false,
+          error: {
+            message: err.message || 'Document upload failed',
+            statusCode: err.statusCode || 400,
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
+      next();
+    });
+  };
+};
+
 module.exports = {
   upload,
-  uploadSingleAvatar
+  uploadSingleAvatar,
+  uploadSingleKYCDocument
 };

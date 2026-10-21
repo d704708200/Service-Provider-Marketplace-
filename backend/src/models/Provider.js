@@ -84,6 +84,46 @@ const providerSchema = new mongoose.Schema(
       }
     ],
     documents: [documentSchema],
+    // KYC Document Fields
+    aadhaarFrontImage: {
+      type: String,
+      default: null
+    },
+    aadhaarBackImage: {
+      type: String,
+      default: null
+    },
+    panFrontImage: {
+      type: String,
+      default: null
+    },
+    panBackImage: {
+      type: String,
+      default: null
+    },
+    kycStatus: {
+      type: String,
+      enum: ['pending', 'under_review', 'verified', 'rejected'],
+      default: 'pending'
+    },
+    kycSubmittedAt: {
+      type: Date,
+      default: null
+    },
+    kycReviewedAt: {
+      type: Date,
+      default: null
+    },
+    kycReviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    kycRejectionReason: {
+      type: String,
+      trim: true,
+      default: null
+    },
     verificationStatus: {
       type: String,
       enum: ['pending', 'verified', 'rejected', 'suspended'],

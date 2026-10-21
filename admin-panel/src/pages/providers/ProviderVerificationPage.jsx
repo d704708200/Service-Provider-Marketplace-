@@ -576,6 +576,187 @@ const ProviderVerificationPage = () => {
                 </div>
               </div>
 
+              {/* Dedicated KYC Verification Dossier (Aadhaar & PAN 4-Document Grid) */}
+              <div className="p-4 rounded-xl bg-indigo-50/50 border border-indigo-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                    <span className="text-xs font-bold text-indigo-950 uppercase tracking-wider">
+                      KYC Documents Verification (Aadhaar & PAN)
+                    </span>
+                  </div>
+                  <Badge
+                    variant={
+                      reviewingProvider.kycStatus === 'verified' ? 'success' :
+                      reviewingProvider.kycStatus === 'rejected' ? 'danger' :
+                      reviewingProvider.kycStatus === 'under_review' ? 'primary' :
+                      'warning'
+                    }
+                  >
+                    KYC: {reviewingProvider.kycStatus || 'pending'}
+                  </Badge>
+                </div>
+
+                {reviewingProvider.kycSubmittedAt && (
+                  <p className="text-[11px] text-slate-500">
+                    Submitted on {new Date(reviewingProvider.kycSubmittedAt).toLocaleString()}
+                    {reviewingProvider.kycReviewedAt && ` • Last reviewed ${new Date(reviewingProvider.kycReviewedAt).toLocaleString()}`}
+                  </p>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {/* Aadhaar Front */}
+                  <div className="p-3 rounded-lg bg-white border border-slate-200 flex flex-col justify-between">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-slate-900">Aadhaar — Front Side</span>
+                      {reviewingProvider.aadhaarFrontImage ? (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Uploaded</span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">Missing</span>
+                      )}
+                    </div>
+                    {reviewingProvider.aadhaarFrontImage ? (
+                      <div className="space-y-2">
+                        <div className="h-28 rounded-md bg-slate-100 overflow-hidden border border-slate-200">
+                          <img
+                            src={reviewingProvider.aadhaarFrontImage}
+                            alt="Aadhaar Front"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <a
+                          href={reviewingProvider.aadhaarFrontImage}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Inspect Full Photo</span>
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="h-28 rounded-md bg-slate-50 border border-dashed border-slate-300 flex items-center justify-center text-xs text-slate-400">
+                        No image uploaded
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Aadhaar Back */}
+                  <div className="p-3 rounded-lg bg-white border border-slate-200 flex flex-col justify-between">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-slate-900">Aadhaar — Back Side</span>
+                      {reviewingProvider.aadhaarBackImage ? (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Uploaded</span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">Missing</span>
+                      )}
+                    </div>
+                    {reviewingProvider.aadhaarBackImage ? (
+                      <div className="space-y-2">
+                        <div className="h-28 rounded-md bg-slate-100 overflow-hidden border border-slate-200">
+                          <img
+                            src={reviewingProvider.aadhaarBackImage}
+                            alt="Aadhaar Back"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <a
+                          href={reviewingProvider.aadhaarBackImage}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Inspect Full Photo</span>
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="h-28 rounded-md bg-slate-50 border border-dashed border-slate-300 flex items-center justify-center text-xs text-slate-400">
+                        No image uploaded
+                      </div>
+                    )}
+                  </div>
+
+                  {/* PAN Front */}
+                  <div className="p-3 rounded-lg bg-white border border-slate-200 flex flex-col justify-between">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-slate-900">PAN Card — Front Side</span>
+                      {reviewingProvider.panFrontImage ? (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Uploaded</span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">Missing</span>
+                      )}
+                    </div>
+                    {reviewingProvider.panFrontImage ? (
+                      <div className="space-y-2">
+                        <div className="h-28 rounded-md bg-slate-100 overflow-hidden border border-slate-200">
+                          <img
+                            src={reviewingProvider.panFrontImage}
+                            alt="PAN Front"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <a
+                          href={reviewingProvider.panFrontImage}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Inspect Full Photo</span>
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="h-28 rounded-md bg-slate-50 border border-dashed border-slate-300 flex items-center justify-center text-xs text-slate-400">
+                        No image uploaded
+                      </div>
+                    )}
+                  </div>
+
+                  {/* PAN Back */}
+                  <div className="p-3 rounded-lg bg-white border border-slate-200 flex flex-col justify-between">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-slate-900">PAN Card — Back Side</span>
+                      {reviewingProvider.panBackImage ? (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Uploaded</span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">Optional / None</span>
+                      )}
+                    </div>
+                    {reviewingProvider.panBackImage ? (
+                      <div className="space-y-2">
+                        <div className="h-28 rounded-md bg-slate-100 overflow-hidden border border-slate-200">
+                          <img
+                            src={reviewingProvider.panBackImage}
+                            alt="PAN Back"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <a
+                          href={reviewingProvider.panBackImage}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Inspect Full Photo</span>
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="h-28 rounded-md bg-slate-50 border border-dashed border-slate-300 flex items-center justify-center text-xs text-slate-400">
+                        No image uploaded
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {reviewingProvider.kycRejectionReason && (
+                  <div className="text-xs text-rose-700 bg-rose-50 p-2.5 rounded-lg border border-rose-200 mt-2">
+                    <strong>Current KYC Rejection Note:</strong> {reviewingProvider.kycRejectionReason}
+                  </div>
+                )}
+              </div>
+
               {/* Bio */}
               <div>
                 <span className="text-xs font-semibold text-slate-700 block mb-1">

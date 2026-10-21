@@ -176,6 +176,13 @@ export const providerApi = {
     );
     return response.data;
   },
+  reviewKYC: async (providerId, kycData) => {
+    const response = await api.patch(
+      `/providers/admin/${providerId}/kyc/review`,
+      kycData
+    );
+    return response.data;
+  },
   updateVerification: async (providerId, verificationData) => {
     const response = await api.patch(
       `/providers/admin/${providerId}/verification`,

@@ -274,6 +274,80 @@ const submitDocument = async (req, res, next) => {
 };
 
 /**
+ * POST /api/providers/me/kyc/upload
+ * Authenticated provider uploads a single KYC document file
+ */
+const uploadKYCDocument = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'No document file provided in request',
+          statusCode: 400,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+
+    const { docType } = req.body; // e.g. 'aadhaar_front', 'aadhaar_back', 'pan_front', 'pan_back'
+    const cleanDocType = (docType || 'document').replace(/[^a-zA-Z0-9_-]/g, '');
+
+    const { uploadImage } = require('../config/cloudinary');
+    const uploadResult = await uploadImage(req.file, {
+      folder: 'marketplace/kyc_documents',
+      public_id: `kyc_${req.user._id}_${cleanDocType}_${Date.now()}`
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Document uploaded successfully',
+      data: {
+        documentUrl: uploadResult.url,
+        docType: cleanDocType,
+        storage: uploadResult.storage
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/providers/me/kyc/submit
+ * Authenticated provider submits complete KYC package for review
+ */
+const submitKYC = async (req, res, next) => {
+  try {
+    const result = await providerService.submitKYCDocuments(req.user._id, req.body);
+    res.status(200).json({
+      success: true,
+      message: 'KYC documents submitted successfully. Verification is now under review.',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/providers/admin/:id/kyc/review
+ * Admin reviews KYC package and approves or rejects with reason
+ */
+const reviewKYC = async (req, res, next) => {
+  try {
+    const result = await providerService.reviewKYC(req.params.id, req.user._id, req.body);
+    res.status(200).json({
+      success: true,
+      message: `KYC verification status updated to '${req.body.status}'`,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * DELETE /api/providers/me/documents/:documentId
  * Authenticated provider deletes an unapproved document
  */
@@ -488,6 +562,9 @@ module.exports = {
   updateProviderServiceArea,
   deleteProviderServiceArea,
   submitDocument,
+  uploadKYCDocument,
+  submitKYC,
+  reviewKYC,
   deleteDocument,
   getPublicProviders,
   getPublicProviderById,

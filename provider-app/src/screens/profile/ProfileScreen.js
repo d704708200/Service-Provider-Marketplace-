@@ -286,9 +286,21 @@ export default function ProfileScreen({ navigation }) {
                   ]}
                 >
                   {verificationStatus === 'pending'
-                    ? 'Platform administrators are reviewing your documents. Once verified, you will be eligible for customer bookings.'
-                    : profile?.rejectionReason || 'Please review your uploaded documents or contact support.'}
+                    ? (profile?.kycStatus === 'under_review'
+                      ? 'Platform administrators are reviewing your KYC documents (Aadhaar & PAN). Once verified, you will be eligible for customer bookings.'
+                      : 'Upload required Aadhaar and PAN documents in KYC Verification to proceed with account approval.')
+                    : profile?.kycRejectionReason || profile?.rejectionReason || 'Please review your uploaded KYC documents or contact support.'}
                 </Text>
+                <TouchableOpacity
+                  style={styles.kycActionBtn}
+                  onPress={() => navigation.navigate('KYC')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="shield-checkmark-outline" size={15} color="#FFFFFF" />
+                  <Text style={styles.kycActionBtnText}>
+                    {profile?.kycStatus === 'under_review' ? 'View KYC Status' : 'Complete KYC Verification'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
           </Card>
@@ -392,6 +404,37 @@ export default function ProfileScreen({ navigation }) {
               </View>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.navRow}
+            onPress={() => navigation.navigate('KYC')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.navLeft}>
+              <View style={[styles.iconCircle, { backgroundColor: '#2E1065' }]}>
+                <Ionicons name="shield-checkmark" size={18} color="#C4B5FD" />
+              </View>
+              <View>
+                <Text style={styles.navLabel}>KYC Verification</Text>
+                <Text style={styles.navSub}>Aadhaar & PAN document compliance</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={[
+                styles.kycNavBadge,
+                verificationStatus === 'verified' ? styles.kycNavBadgeVerified :
+                verificationStatus === 'rejected' ? styles.kycNavBadgeRejected :
+                styles.kycNavBadgePending
+              ]}>
+                <Text style={styles.kycNavBadgeText}>
+                  {verificationStatus.toUpperCase()}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+            </View>
           </TouchableOpacity>
 
           <View style={styles.divider} />
@@ -819,5 +862,46 @@ const styles = StyleSheet.create({
   errorText: {
     ...typography.bodySmall,
     color: '#F87171'
+  },
+  kycActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#7C3AED',
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+    gap: 6
+  },
+  kycActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  kycNavBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4
+  },
+  kycNavBadgeVerified: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)'
+  },
+  kycNavBadgePending: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.4)'
+  },
+  kycNavBadgeRejected: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)'
+  },
+  kycNavBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#E5E7EB'
   }
 });
