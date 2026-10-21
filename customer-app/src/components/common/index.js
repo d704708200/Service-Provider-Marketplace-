@@ -6,3 +6,4 @@ export { default as Badge } from './Badge';
 export { default as LoadingScreen } from './LoadingScreen';
 export { default as EmptyState } from './EmptyState';
 export { default as ErrorView } from './ErrorView';
+export { default as LocationPermissionModal } from './LocationPermissionModal';

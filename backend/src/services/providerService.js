@@ -760,6 +760,28 @@ const getPublicProviders = async (query = {}) => {
     filter.$and.push({ $or: searchConditions });
   }
 
+  // 3. Optional Location / City / Service Area filtering
+  if (query.city && String(query.city).trim()) {
+    const cityRegex = new RegExp(escapeRegex(query.city.trim()), 'i');
+    const matchedAreas = await ServiceArea.find({
+      city: cityRegex,
+      isActive: true
+    }).select('_id').lean();
+
+    if (matchedAreas.length > 0) {
+      const areaIds = matchedAreas.map((a) => a._id);
+      // Filter providers who serve these areas, or if none have explicit areas configured, keep all active providers in marketplace
+      const providersInArea = await Provider.countDocuments({
+        serviceAreas: { $in: areaIds },
+        verificationStatus: 'verified',
+        isDeleted: { $ne: true }
+      });
+      if (providersInArea > 0) {
+        filter.serviceAreas = { $in: areaIds };
+      }
+    }
+  }
+
   const sortOrder = isTopRatedOnly
     ? { topRatedOrder: 1, 'rating.average': -1, createdAt: -1 }
     : { 'rating.average': -1, completedBookingsCount: -1 };

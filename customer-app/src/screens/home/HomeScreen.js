@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useLocation } from '../../context/LocationContext';
 import { categoryApi, serviceApi, providerApi, bannerApi } from '../../services/api';
 import { formatRating } from '../../utils/formatters';
 import colors from '../../theme/colors';
@@ -51,6 +52,13 @@ const resolveIconName = (icon, name) => {
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const {
+    location,
+    permissionStatus,
+    isLoading: isLocationLoading,
+    promptLocationFlow,
+    fetchCurrentLocation
+  } = useLocation();
 
   const [categories, setCategories] = useState([]);
   const [quickServices, setQuickServices] = useState([]);
@@ -62,6 +70,11 @@ export default function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+
+  // Auto-prompt location on startup (once) or check existing permission
+  useEffect(() => {
+    promptLocationFlow(false);
+  }, []);
 
   // Helper to extract an array safely from any standard API response envelope
   const extractArray = (res) => {
@@ -81,6 +94,15 @@ export default function HomeScreen({ navigation }) {
   const fetchData = useCallback(async () => {
     setError(null);
     try {
+      const nearbyParams = { limit: 6 };
+      if (location?.city) {
+        nearbyParams.city = location.city;
+      }
+      if (location?.latitude && location?.longitude) {
+        nearbyParams.latitude = location.latitude;
+        nearbyParams.longitude = location.longitude;
+      }
+
       const [allCatRes, quickCatRes, popCatRes, servRes, topProvRes, allProvRes, bannerRes] = await Promise.all([
         categoryApi.getAll().catch((e) => {
           if (__DEV__) console.warn('[HomeScreen] all categories fetch failed:', e?.message);
@@ -102,8 +124,8 @@ export default function HomeScreen({ navigation }) {
           if (__DEV__) console.warn('[HomeScreen] top rated providers fetch failed:', e?.message);
           return { data: [] };
         }),
-        providerApi.getAll({ limit: 6 }).catch((e) => {
-          if (__DEV__) console.warn('[HomeScreen] all providers fetch failed:', e?.message);
+        providerApi.getAll(nearbyParams).catch((e) => {
+          if (__DEV__) console.warn('[HomeScreen] nearby providers fetch failed:', e?.message);
           return { data: [] };
         }),
         bannerApi && typeof bannerApi.getBanner === 'function'
@@ -139,7 +161,8 @@ export default function HomeScreen({ navigation }) {
           popularServicesCount: popList.length,
           servicesCount: servicesList.length,
           topRatedCount: topRatedList.length,
-          allProvidersCount: allProvidersList.length
+          allProvidersCount: allProvidersList.length,
+          activeLocation: location?.city || 'Default'
         });
       }
 
@@ -159,7 +182,7 @@ export default function HomeScreen({ navigation }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [location?.city, location?.latitude, location?.longitude]);
 
   useEffect(() => {
     fetchData();
@@ -179,6 +202,11 @@ export default function HomeScreen({ navigation }) {
 
   const nearbyProvider = nearbyProviders[0] || null;
 
+  // Resolve active display location string
+  const displayLocation = location
+    ? [location.city, location.state].filter(Boolean).join(', ')
+    : 'Select Location';
+
   return (
     <View style={styles.container}>
       {/* Top Header Row matching Figma: Avatar, Hello Name, Location subtitle, Notification & Search Icons */}
@@ -194,10 +222,18 @@ export default function HomeScreen({ navigation }) {
           />
           <View style={styles.userTextCol}>
             <Text style={styles.greetingText}>Hello, {user?.name?.split(' ')[0] || 'Harsh'}</Text>
-            <TouchableOpacity style={styles.locationRow} activeOpacity={0.8}>
-              <Ionicons name="location-sharp" size={11} color="#A78BFA" />
+            <TouchableOpacity
+              style={styles.locationRow}
+              activeOpacity={0.7}
+              onPress={() => promptLocationFlow(true)}
+            >
+              <Ionicons
+                name="location-sharp"
+                size={11}
+                color={permissionStatus === 'granted' ? '#34D399' : '#A78BFA'}
+              />
               <Text style={styles.locationText} numberOfLines={1}>
-                Prayagraj, Uttar Pradesh
+                {isLocationLoading ? 'Locating...' : displayLocation}
               </Text>
               <Ionicons name="chevron-forward" size={11} color="#9CA3AF" />
             </TouchableOpacity>
@@ -476,7 +512,7 @@ export default function HomeScreen({ navigation }) {
                   <Text style={styles.expText}>
                     {nearbyProvider.distance != null
                       ? `${typeof nearbyProvider.distance === 'number' ? nearbyProvider.distance.toFixed(1) : nearbyProvider.distance}km away`
-                      : 'Serving your city'}
+                      : location?.city ? `Serving ${location.city}` : 'Serving your city'}
                   </Text>
                 </View>
                 <Text style={styles.availableNowText}>Available now</Text>
@@ -490,9 +526,26 @@ export default function HomeScreen({ navigation }) {
                 <Text style={styles.requestBtnText}>Request</Text>
               </TouchableOpacity>
             </View>
+          ) : permissionStatus !== 'granted' ? (
+            <TouchableOpacity
+              style={styles.locationPromptCard}
+              onPress={() => promptLocationFlow(true)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.locationPromptIconBox}>
+                <Ionicons name="navigate-circle-outline" size={24} color="#A78BFA" />
+              </View>
+              <View style={styles.locationPromptTextCol}>
+                <Text style={styles.locationPromptTitle}>Enable location for nearby providers</Text>
+                <Text style={styles.locationPromptSubtitle}>
+                  Tap to discover vetted professionals right around you
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+            </TouchableOpacity>
           ) : (
             <View style={styles.emptySectionBox}>
-              <Text style={styles.emptySectionText}>No active providers currently nearby.</Text>
+              <Text style={styles.emptySectionText}>No active providers currently in this area.</Text>
             </View>
           )}
         </View>
@@ -1076,6 +1129,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF'
+  },
+  locationPromptCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161420',
+    borderWidth: 1,
+    borderColor: '#2F264A',
+    borderRadius: 14,
+    padding: 14,
+    gap: 12,
+    marginVertical: 4
+  },
+  locationPromptIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#261F3D',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  locationPromptTextCol: {
+    flex: 1
+  },
+  locationPromptTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 2
+  },
+  locationPromptSubtitle: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    lineHeight: 15
   }
 });
 

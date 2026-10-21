@@ -312,6 +312,7 @@ export default function ProviderDetailScreen({ route, navigation }) {
             });
           }}
           style={styles.actionBtn}
+          textStyle={styles.actionBtnText}
         />
       </View>
     </View>
@@ -454,14 +455,23 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: colors.white,
+    backgroundColor: colors.background, // Dark screen background '#0B0B0E'
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: colors.border, // Dark card border '#252136'
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     ...shadows.elevated
   },
   actionBtn: {
-    width: '100%'
+    width: '100%',
+    backgroundColor: colors.primary, // Mendroo purple '#7C3AED'
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.md + 2
+  },
+  actionBtnText: {
+    color: colors.white,
+    fontWeight: '700',
+    fontSize: 16
   }
 });
+
