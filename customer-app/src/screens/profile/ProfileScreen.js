@@ -153,6 +153,10 @@ export default function ProfileScreen({ navigation }) {
   const [savingAddress, setSavingAddress] = useState(false);
   const [addressError, setAddressError] = useState(null);
 
+  // Address Deletion State
+  const [addressToDelete, setAddressToDelete] = useState(null);
+  const [deletingAddressId, setDeletingAddressId] = useState(null);
+
   const fetchProfileAndAddresses = useCallback(async () => {
     setError(null);
     try {
@@ -283,31 +287,42 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  const handleDeleteAddress = (addressId) => {
-    Alert.alert('Delete Address', 'Are you sure you want to remove this saved address?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const res = await customerApi.deleteAddress(addressId);
-            if (res?.success) {
-              setAddresses(res.data || []);
-            }
-          } catch (err) {
-            Alert.alert('Error', err.userMessage || 'Failed to delete address.');
-          }
-        }
+  const handleDeleteAddress = (addr) => {
+    if (deletingAddressId) return; // Prevent double-taps
+    setAddressToDelete(addr);
+  };
+
+  const confirmDeleteAddress = async () => {
+    if (!addressToDelete || deletingAddressId) return;
+
+    const targetId = addressToDelete._id;
+    setDeletingAddressId(targetId);
+    try {
+      const res = await customerApi.deleteAddress(targetId);
+      if (res?.success) {
+        setAddresses(res.data || []);
+        // Also update customerData cache if present
+        setCustomerData((prev) => (prev ? { ...prev, addresses: res.data || [] } : prev));
+        setAddressToDelete(null);
+        Alert.alert('Success', 'Saved address deleted successfully.');
+      } else {
+        throw new Error(res?.message || 'Failed to delete address.');
       }
-    ]);
+    } catch (err) {
+      const msg = err.userMessage || err.message || 'Failed to delete address. Please try again.';
+      Alert.alert('Error', msg);
+    } finally {
+      setDeletingAddressId(null);
+    }
   };
 
   const handleSetDefaultAddress = async (addressId) => {
+    if (deletingAddressId) return;
     try {
       const res = await customerApi.setDefaultAddress(addressId);
       if (res?.success) {
         setAddresses(res.data || []);
+        setCustomerData((prev) => (prev ? { ...prev, addresses: res.data || [] } : prev));
       }
     } catch (err) {
       Alert.alert('Error', err.userMessage || 'Failed to set default address.');
@@ -532,10 +547,17 @@ export default function ProfileScreen({ navigation }) {
                       <Ionicons name="pencil-outline" size={18} color={colors.primary} />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => handleDeleteAddress(addr._id)}
-                      style={styles.actionIconBtn}
+                      onPress={() => handleDeleteAddress(addr)}
+                      style={[styles.actionIconBtn, deletingAddressId === addr._id && { opacity: 0.5 }]}
+                      disabled={Boolean(deletingAddressId)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      activeOpacity={0.7}
                     >
-                      <Ionicons name="trash-outline" size={18} color={colors.error || '#EF4444'} />
+                      {deletingAddressId === addr._id ? (
+                        <ActivityIndicator size="small" color={colors.error || '#EF4444'} />
+                      ) : (
+                        <Ionicons name="trash-outline" size={18} color={colors.error || '#EF4444'} />
+                      )}
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -730,6 +752,59 @@ export default function ProfileScreen({ navigation }) {
               />
             </View>
           </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Delete Address Confirmation Modal */}
+      <Modal visible={Boolean(addressToDelete)} animationType="fade" transparent onRequestClose={() => !deletingAddressId && setAddressToDelete(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.deleteModalContent}>
+            <View style={styles.deleteModalIconBox}>
+              <Ionicons name="trash-outline" size={28} color="#EF4444" />
+            </View>
+            <Text style={styles.deleteModalTitle}>Delete Saved Address</Text>
+            <Text style={styles.deleteModalMessage}>
+              Are you sure you want to remove <Text style={{ fontWeight: '700', color: '#FFFFFF' }}>{addressToDelete?.title || 'this address'}</Text>?
+            </Text>
+            {addressToDelete && (
+              <View style={styles.deleteAddressPreview}>
+                <Text style={styles.deleteAddressPreviewStreet} numberOfLines={1}>
+                  {addressToDelete.street}
+                </Text>
+                <Text style={styles.deleteAddressPreviewCity}>
+                  {addressToDelete.city}
+                  {addressToDelete.zipCode ? ` - ${addressToDelete.zipCode}` : ''}
+                </Text>
+                {addressToDelete.isDefault && (
+                  <Text style={styles.deleteAddressPreviewDefaultNote}>
+                    Note: This is currently your default address. Another saved address will become default.
+                  </Text>
+                )}
+              </View>
+            )}
+            <View style={styles.deleteModalBtnRow}>
+              <TouchableOpacity
+                style={styles.deleteCancelBtn}
+                onPress={() => setAddressToDelete(null)}
+                disabled={Boolean(deletingAddressId)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.deleteCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteConfirmBtn, deletingAddressId && { opacity: 0.7 }]}
+                onPress={confirmDeleteAddress}
+                disabled={Boolean(deletingAddressId)}
+                activeOpacity={0.8}
+              >
+                {deletingAddressId ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.deleteConfirmBtnText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
     </View>
@@ -1037,5 +1112,97 @@ const styles = StyleSheet.create({
   errorBannerText: {
     ...typography.bodySmall,
     color: '#B91C1C'
+  },
+  deleteModalContent: {
+    backgroundColor: '#161420',
+    borderRadius: 20,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#2F2942',
+    maxWidth: 420,
+    width: '100%',
+    alignSelf: 'center',
+    alignItems: 'center'
+  },
+  deleteModalIconBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md
+  },
+  deleteModalTitle: {
+    ...typography.titleMedium,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: spacing.xs
+  },
+  deleteModalMessage: {
+    ...typography.bodyMedium,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: spacing.md
+  },
+  deleteAddressPreview: {
+    width: '100%',
+    backgroundColor: '#1C1929',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: '#2D2742',
+    marginBottom: spacing.lg
+  },
+  deleteAddressPreviewStreet: {
+    ...typography.bodySmall,
+    color: '#E2E8F0',
+    fontWeight: '600'
+  },
+  deleteAddressPreviewCity: {
+    ...typography.caption,
+    color: '#9CA3AF',
+    marginTop: 2
+  },
+  deleteAddressPreviewDefaultNote: {
+    ...typography.caption,
+    color: '#F59E0B',
+    marginTop: 6,
+    fontStyle: 'italic'
+  },
+  deleteModalBtnRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    width: '100%'
+  },
+  deleteCancelBtn: {
+    flex: 1,
+    backgroundColor: '#241F36',
+    borderWidth: 1,
+    borderColor: '#36314D',
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm + 4,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  deleteCancelBtnText: {
+    ...typography.bodyMedium,
+    color: '#D1D5DB',
+    fontWeight: '600'
+  },
+  deleteConfirmBtn: {
+    flex: 1,
+    backgroundColor: '#DC2626',
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm + 4,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  deleteConfirmBtnText: {
+    ...typography.bodyMedium,
+    color: '#FFFFFF',
+    fontWeight: '700'
   }
 });

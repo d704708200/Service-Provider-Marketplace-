@@ -201,7 +201,10 @@ const deleteCustomerAddressByUserId = async (userId, addressId) => {
 
   // If deleted address was default and other addresses remain, designate the first remaining address as default
   if (wasDefault && customer.addresses.length > 0) {
-    customer.addresses[0].isDefault = true;
+    const hasDefault = customer.addresses.some((a) => a.isDefault);
+    if (!hasDefault) {
+      customer.addresses[0].isDefault = true;
+    }
   }
 
   await customer.save();

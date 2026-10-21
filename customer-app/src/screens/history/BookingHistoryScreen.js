@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { bookingApi } from '../../services/api';
+import { bookingApi, reviewApi } from '../../services/api';
 import { openRazorpayCheckout } from '../../services/razorpayService';
 
 const TABS = [
@@ -33,6 +33,16 @@ export default function BookingHistoryScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
+
+  // Review & Rating Modal States
+  const [ratingTargetBooking, setRatingTargetBooking] = useState(null);
+  const [selectedRating, setSelectedRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState(null);
+
+  // View Submitted Review Modal State
+  const [viewingReview, setViewingReview] = useState(null);
 
   const fetchBookings = useCallback(async () => {
     try {
@@ -124,6 +134,74 @@ export default function BookingHistoryScreen({ navigation }) {
         }
       ]
     );
+  };
+
+  const handleOpenReviewModal = (booking) => {
+    setRatingTargetBooking(booking);
+    setSelectedRating(5);
+    setReviewComment('');
+    setReviewError(null);
+  };
+
+  const handleSubmitReview = async () => {
+    if (!ratingTargetBooking) return;
+    if (selectedRating < 1 || selectedRating > 5) {
+      setReviewError('Please select a star rating between 1 and 5');
+      return;
+    }
+
+    setSubmittingReview(true);
+    setReviewError(null);
+
+    try {
+      const res = await reviewApi.submitReview({
+        bookingId: ratingTargetBooking._id,
+        rating: selectedRating,
+        comment: reviewComment.trim()
+      });
+
+      if (res?.success) {
+        Alert.alert('Review Submitted', 'Thank you for your valuable feedback!');
+        setRatingTargetBooking(null);
+        // Refresh bookings list so review is immediately attached
+        fetchBookings();
+      } else {
+        throw new Error(res?.message || 'Could not submit review');
+      }
+    } catch (err) {
+      setReviewError(err.userMessage || err.message || 'Failed to submit review. Please try again.');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const handleViewReview = async (booking) => {
+    if (booking.review) {
+      setViewingReview({
+        ...booking.review,
+        bookingRef: booking.bookingReference,
+        providerName: booking.provider?.businessName || booking.provider?.user?.name,
+        serviceName: booking.service?.name
+      });
+      return;
+    }
+
+    // Otherwise fetch from server
+    try {
+      const res = await reviewApi.getBookingReview(booking._id);
+      if (res?.success && res.data) {
+        setViewingReview({
+          ...res.data,
+          bookingRef: booking.bookingReference,
+          providerName: booking.provider?.businessName || booking.provider?.user?.name,
+          serviceName: booking.service?.name
+        });
+      } else {
+        Alert.alert('Notice', 'No review found for this booking.');
+      }
+    } catch (err) {
+      Alert.alert('Error', err.userMessage || 'Failed to load review.');
+    }
   };
 
   const [reviewBooking, setReviewBooking] = useState(null);
@@ -445,6 +523,29 @@ export default function BookingHistoryScreen({ navigation }) {
             >
               <Ionicons name="receipt-outline" size={14} color="#A78BFA" />
               <Text style={styles.reviewPartsActionText}>Spare Parts</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Review & Rating Action for Completed Bookings */}
+          {item.status === 'completed' && !item.review && (
+            <TouchableOpacity
+              style={styles.rateReviewActionBtn}
+              onPress={() => handleOpenReviewModal(item)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="star" size={14} color="#FBBF24" />
+              <Text style={styles.rateReviewActionText}>Rate & Review</Text>
+            </TouchableOpacity>
+          )}
+
+          {item.status === 'completed' && Boolean(item.review) && (
+            <TouchableOpacity
+              style={styles.viewReviewActionBtn}
+              onPress={() => handleViewReview(item)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="star-half-outline" size={14} color="#A78BFA" />
+              <Text style={styles.viewReviewActionText}>View Review ({item.review.rating}★)</Text>
             </TouchableOpacity>
           )}
 
@@ -910,6 +1011,227 @@ export default function BookingHistoryScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
             )}
+          </View>
+        </View>
+      )}
+
+      {/* Rate & Review Modal for Completed Booking */}
+      {ratingTargetBooking && (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Rate & Review Service</Text>
+                <Text style={styles.modalSubtitle}>
+                  Ref: {ratingTargetBooking.bookingReference}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => !submittingReview && setRatingTargetBooking(null)}
+                style={styles.modalCloseBtn}
+                disabled={submittingReview}
+              >
+                <Ionicons name="close" size={22} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {/* Target Service & Provider Card */}
+              <View style={styles.reviewTargetCard}>
+                <View style={styles.reviewTargetIconBox}>
+                  <Ionicons name="briefcase-outline" size={20} color="#8B5CF6" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reviewTargetService}>
+                    {ratingTargetBooking.service?.name || 'Service Completed'}
+                  </Text>
+                  <Text style={styles.reviewTargetProvider}>
+                    Provider: {ratingTargetBooking.provider?.businessName || ratingTargetBooking.provider?.user?.name || 'Service Partner'}
+                  </Text>
+                  <Text style={styles.reviewTargetDate}>
+                    Completed on {ratingTargetBooking.statusTimestamps?.completedAt
+                      ? new Date(ratingTargetBooking.statusTimestamps.completedAt).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })
+                      : 'Recently'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Star Rating Section */}
+              <View style={styles.starRatingSection}>
+                <Text style={styles.ratingSectionTitle}>How was your overall experience?</Text>
+                <View style={styles.starsRow}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <TouchableOpacity
+                      key={star}
+                      onPress={() => setSelectedRating(star)}
+                      style={styles.starBtn}
+                      activeOpacity={0.7}
+                      disabled={submittingReview}
+                    >
+                      <Ionicons
+                        name={star <= selectedRating ? 'star' : 'star-outline'}
+                        size={36}
+                        color={star <= selectedRating ? '#FBBF24' : '#4B5563'}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.starRatingLabel}>
+                  {selectedRating === 1 && 'Poor'}
+                  {selectedRating === 2 && 'Fair'}
+                  {selectedRating === 3 && 'Good'}
+                  {selectedRating === 4 && 'Very Good'}
+                  {selectedRating === 5 && 'Excellent!'}
+                </Text>
+              </View>
+
+              {/* Feedback Text Area */}
+              <View style={styles.feedbackSection}>
+                <View style={styles.feedbackLabelRow}>
+                  <Text style={styles.feedbackLabel}>Your Feedback / Comments</Text>
+                  <Text style={styles.feedbackCharCount}>{reviewComment.length}/500</Text>
+                </View>
+                <TextInput
+                  style={styles.feedbackInput}
+                  placeholder="Share details of your experience to help others (e.g. punctuality, quality of work, cleanliness)..."
+                  placeholderTextColor="#6B7280"
+                  multiline
+                  numberOfLines={4}
+                  maxLength={500}
+                  value={reviewComment}
+                  onChangeText={setReviewComment}
+                  editable={!submittingReview}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              {/* Error banner if validation/submission failed */}
+              {reviewError && (
+                <View style={styles.reviewErrorBanner}>
+                  <Ionicons name="alert-circle-outline" size={16} color="#EF4444" />
+                  <Text style={styles.reviewErrorText}>{reviewError}</Text>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Submit Action */}
+            <View style={styles.modalActionFooter}>
+              <TouchableOpacity
+                style={styles.reviewCancelBtn}
+                onPress={() => setRatingTargetBooking(null)}
+                disabled={submittingReview}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.reviewCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reviewSubmitBtn, submittingReview && { opacity: 0.7 }]}
+                onPress={handleSubmitReview}
+                disabled={submittingReview}
+                activeOpacity={0.8}
+              >
+                {submittingReview ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.reviewSubmitBtnText}>Submit Review</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* View Submitted Review Modal */}
+      {viewingReview && (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '80%' }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Your Submitted Review</Text>
+                <Text style={styles.modalSubtitle}>
+                  Ref: {viewingReview.bookingRef || viewingReview.booking?.bookingReference || 'N/A'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setViewingReview(null)}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={22} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <View style={styles.reviewTargetCard}>
+                <View style={styles.reviewTargetIconBox}>
+                  <Ionicons name="ribbon-outline" size={20} color="#10B981" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reviewTargetService}>
+                    {viewingReview.serviceName || viewingReview.service?.name || 'Service Review'}
+                  </Text>
+                  <Text style={styles.reviewTargetProvider}>
+                    Provider: {viewingReview.providerName || viewingReview.provider?.businessName || 'Verified Partner'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[styles.starRatingSection, { marginVertical: 14 }]}>
+                <View style={styles.starsRow}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Ionicons
+                      key={star}
+                      name={star <= viewingReview.rating ? 'star' : 'star-outline'}
+                      size={28}
+                      color={star <= viewingReview.rating ? '#FBBF24' : '#4B5563'}
+                      style={{ marginHorizontal: 2 }}
+                    />
+                  ))}
+                </View>
+                <Text style={[styles.starRatingLabel, { marginTop: 6 }]}>
+                  {viewingReview.rating} out of 5 Stars
+                </Text>
+              </View>
+
+              {viewingReview.comment ? (
+                <View style={styles.feedbackSection}>
+                  <Text style={styles.feedbackLabel}>Your Feedback</Text>
+                  <View style={styles.submittedCommentBox}>
+                    <Text style={styles.submittedCommentText}>{viewingReview.comment}</Text>
+                  </View>
+                </View>
+              ) : (
+                <Text style={{ fontStyle: 'italic', color: '#9CA3AF', textAlign: 'center', marginVertical: 10 }}>
+                  No written comment provided.
+                </Text>
+              )}
+
+              {viewingReview.createdAt && (
+                <Text style={{ fontSize: 11, color: '#6B7280', textAlign: 'center', marginTop: 12 }}>
+                  Submitted on {new Date(viewingReview.createdAt).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric'
+                  })}
+                </Text>
+              )}
+            </ScrollView>
+
+            <View style={styles.modalActionFooter}>
+              <TouchableOpacity
+                style={[styles.approveBtn, { width: '100%' }]}
+                onPress={() => setViewingReview(null)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.approveBtnText}>Close</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
@@ -1699,6 +2021,192 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
     paddingHorizontal: 24,
+    lineHeight: 18
+  },
+  rateReviewActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9
+  },
+  rateReviewActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FBBF24'
+  },
+  viewReviewActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#241F36',
+    borderWidth: 1,
+    borderColor: '#4C1D95',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9
+  },
+  viewReviewActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#DDD6FE'
+  },
+  reviewTargetCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#1C1929',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#2D2742',
+    marginBottom: 16
+  },
+  reviewTargetIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#2E1065',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#4C1D95'
+  },
+  reviewTargetService: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  reviewTargetProvider: {
+    fontSize: 12,
+    color: '#CBD5E1',
+    marginTop: 2
+  },
+  reviewTargetDate: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2
+  },
+  starRatingSection: {
+    alignItems: 'center',
+    backgroundColor: '#161420',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#252136',
+    marginBottom: 16
+  },
+  ratingSectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#E2E8F0',
+    marginBottom: 10
+  },
+  starsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10
+  },
+  starBtn: {
+    padding: 4
+  },
+  starRatingLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FBBF24',
+    marginTop: 8
+  },
+  feedbackSection: {
+    marginBottom: 16
+  },
+  feedbackLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6
+  },
+  feedbackLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#CBD5E1'
+  },
+  feedbackCharCount: {
+    fontSize: 11,
+    color: '#9CA3AF'
+  },
+  feedbackInput: {
+    backgroundColor: '#1C1929',
+    borderWidth: 1,
+    borderColor: '#2D2742',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 13,
+    color: '#FFFFFF',
+    minHeight: 90
+  },
+  reviewErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12
+  },
+  reviewErrorText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#F87171'
+  },
+  reviewCancelBtn: {
+    flex: 1,
+    backgroundColor: '#1C1929',
+    borderWidth: 1,
+    borderColor: '#2D2742',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  reviewCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#9CA3AF'
+  },
+  reviewSubmitBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#7C3AED',
+    borderRadius: 10,
+    paddingVertical: 12
+  },
+  reviewSubmitBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  submittedCommentBox: {
+    backgroundColor: '#1C1929',
+    borderWidth: 1,
+    borderColor: '#2D2742',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 4
+  },
+  submittedCommentText: {
+    fontSize: 13,
+    color: '#E2E8F0',
     lineHeight: 18
   }
 });

@@ -269,11 +269,23 @@ export const customerApi = {
 };
 
 // ==========================================
-// 7. Home Promotional Banner API
+// 8. Review & Rating API
 // ==========================================
-export const bannerApi = {
-  getBanner: async () => {
-    const response = await api.get('/banner');
+export const reviewApi = {
+  submitReview: async (reviewData) => {
+    const response = await api.post('/reviews', reviewData);
+    return response.data;
+  },
+  getMyReviews: async () => {
+    const response = await api.get('/reviews/my-reviews');
+    return response.data;
+  },
+  getBookingReview: async (bookingId) => {
+    const response = await api.get(`/reviews/booking/${bookingId}`);
+    return response.data;
+  },
+  getProviderReviews: async (providerId, params = {}) => {
+    const response = await api.get(`/reviews/provider/${providerId}`, { params });
     return response.data;
   }
 };

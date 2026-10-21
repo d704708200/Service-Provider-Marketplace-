@@ -30,4 +30,36 @@ router.delete(
   reviewController.deleteReviewByAdmin
 );
 
+// Customer: Submit review for a completed booking
+router.post(
+  '/',
+  authenticate,
+  requireRole('customer'),
+  reviewController.createCustomerReview
+);
+
+// Customer: Get authenticated customer's submitted reviews
+router.get(
+  '/my-reviews',
+  authenticate,
+  requireRole('customer'),
+  reviewController.getCustomerReviews
+);
+
+// Customer: Check review status for a specific booking
+router.get(
+  '/booking/:bookingId',
+  authenticate,
+  requireRole('customer'),
+  validateObjectId('bookingId'),
+  reviewController.getBookingReview
+);
+
+// Public: Get reviews for a provider
+router.get(
+  '/provider/:providerId',
+  validateObjectId('providerId'),
+  reviewController.getProviderPublicReviews
+);
+
 module.exports = router;

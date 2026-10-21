@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { providerApi } from '../../services/api';
+import { providerApi, reviewApi } from '../../services/api';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView } from '../../components/common';
 import { formatRating, formatReviewCount, formatExperience } from '../../utils/formatters';
 import colors from '../../theme/colors';
@@ -18,6 +18,7 @@ export default function ProviderDetailScreen({ route, navigation }) {
   const { providerId } = route.params || {};
 
   const [provider, setProvider] = useState(null);
+  const [providerReviews, setProviderReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -25,8 +26,14 @@ export default function ProviderDetailScreen({ route, navigation }) {
     if (!providerId) return;
     try {
       setError(null);
-      const res = await providerApi.getById(providerId);
+      const [res, reviewsRes] = await Promise.all([
+        providerApi.getById(providerId),
+        reviewApi.getProviderReviews(providerId, { limit: 10 }).catch(() => null)
+      ]);
       setProvider(res.data);
+      if (reviewsRes?.data) {
+        setProviderReviews(Array.isArray(reviewsRes.data) ? reviewsRes.data : []);
+      }
     } catch (err) {
       setError(err.message || 'Unable to load provider details');
     } finally {
@@ -199,6 +206,83 @@ export default function ProviderDetailScreen({ route, navigation }) {
             </View>
           </Card>
         )}
+
+        {/* Customer Reviews Section */}
+        <Card style={styles.sectionCard}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
+            <Text style={styles.sectionTitle}>Customer Reviews & Ratings</Text>
+            {providerReviews.length > 0 && (
+              <Badge
+                label={`${formatRating(provider.rating, '0.0')} ★ (${providerReviews.length})`}
+                variant="primary"
+                size="sm"
+              />
+            )}
+          </View>
+
+          {providerReviews.length === 0 ? (
+            <View style={{ paddingVertical: spacing.md, alignItems: 'center' }}>
+              <Ionicons name="chatbubbles-outline" size={28} color={colors.slate400} style={{ marginBottom: 6 }} />
+              <Text style={{ ...typography.bodyMedium, color: colors.slate500, fontWeight: '500' }}>
+                No reviews yet
+              </Text>
+              <Text style={{ ...typography.caption, color: colors.slate400, marginTop: 2 }}>
+                Be the first to hire and review this service provider!
+              </Text>
+            </View>
+          ) : (
+            <View style={{ gap: spacing.md }}>
+              {providerReviews.map((rev) => (
+                <View
+                  key={rev._id}
+                  style={{
+                    backgroundColor: colors.slate50 || '#F8FAFC',
+                    borderRadius: borderRadius.md,
+                    padding: spacing.md,
+                    borderWidth: 1,
+                    borderColor: colors.slate200 || '#E2E8F0'
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={{ ...typography.bodySmall, fontWeight: '700', color: colors.slate900 }}>
+                      {rev.customer?.user?.name || 'Customer'}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Ionicons
+                          key={star}
+                          name={star <= rev.rating ? 'star' : 'star-outline'}
+                          size={12}
+                          color={star <= rev.rating ? '#F59E0B' : '#9CA3AF'}
+                        />
+                      ))}
+                    </View>
+                  </View>
+
+                  {rev.service?.name && (
+                    <Text style={{ ...typography.caption, color: colors.primary, fontWeight: '600', marginBottom: 4 }}>
+                      Service: {rev.service.name}
+                    </Text>
+                  )}
+
+                  {rev.comment ? (
+                    <Text style={{ ...typography.bodySmall, color: colors.slate700, lineHeight: 18 }}>
+                      {rev.comment}
+                    </Text>
+                  ) : null}
+
+                  <Text style={{ ...typography.caption, color: colors.slate400, marginTop: 6, fontSize: 10 }}>
+                    {new Date(rev.createdAt).toLocaleDateString('en-IN', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric'
+                    })}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </Card>
 
         {/* Verification & Trust Banner */}
         <Card style={styles.trustCard}>

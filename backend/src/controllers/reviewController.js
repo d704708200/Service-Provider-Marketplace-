@@ -42,8 +42,65 @@ const deleteReviewByAdmin = async (req, res, next) => {
   }
 };
 
+const createCustomerReview = async (req, res, next) => {
+  try {
+    const review = await reviewService.createReviewByCustomer(req.user._id, req.body);
+    res.status(201).json({
+      success: true,
+      message: 'Review submitted successfully',
+      data: review
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getCustomerReviews = async (req, res, next) => {
+  try {
+    const reviews = await reviewService.getCustomerReviews(req.user._id);
+    res.status(200).json({
+      success: true,
+      message: 'Customer reviews retrieved successfully',
+      data: reviews
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getBookingReview = async (req, res, next) => {
+  try {
+    const review = await reviewService.getBookingReview(req.user._id, req.params.bookingId);
+    res.status(200).json({
+      success: true,
+      message: 'Booking review status retrieved successfully',
+      data: review
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getProviderPublicReviews = async (req, res, next) => {
+  try {
+    const result = await reviewService.getProviderPublicReviews(req.params.providerId, req.query);
+    res.status(200).json({
+      success: true,
+      message: 'Provider reviews retrieved successfully',
+      data: result.reviews,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getAdminReviews,
   updateReviewVisibility,
-  deleteReviewByAdmin
+  deleteReviewByAdmin,
+  createCustomerReview,
+  getCustomerReviews,
+  getBookingReview,
+  getProviderPublicReviews
 };

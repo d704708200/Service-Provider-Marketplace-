@@ -353,12 +353,32 @@ const getCustomerBookings = async (userId, query = {}) => {
       })
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     Booking.countDocuments(filter)
   ]);
 
+  // Find reviews for completed bookings to supply instant review status
+  const completedBookingIds = bookings
+    .filter((b) => b.status === 'completed')
+    .map((b) => b._id);
+
+  let reviewsMap = new Map();
+  if (completedBookingIds.length > 0) {
+    const Review = require('../models/Review');
+    const existingReviews = await Review.find({ booking: { $in: completedBookingIds } }).lean();
+    existingReviews.forEach((r) => {
+      reviewsMap.set(r.booking.toString(), r);
+    });
+  }
+
+  const enrichedBookings = bookings.map((b) => ({
+    ...b,
+    review: reviewsMap.get(b._id.toString()) || null
+  }));
+
   return {
-    bookings,
+    bookings: enrichedBookings,
     pagination: {
       total,
       page,

@@ -140,6 +140,11 @@ const updateReviewVisibilityByAdmin = async (reviewId, isPublic) => {
   review.isPublic = Boolean(isPublic);
   await review.save();
 
+  // Recalculate provider rating to exclude/include review
+  if (review.provider) {
+    await recalculateProviderRating(review.provider);
+  }
+
   return await Review.findById(review._id)
     .populate({
       path: 'customer',
@@ -170,11 +175,232 @@ const deleteReviewByAdmin = async (reviewId) => {
     throw err;
   }
 
+  // Recalculate provider rating
+  if (review.provider) {
+    await recalculateProviderRating(review.provider);
+  }
+
   return { success: true, deletedId: reviewId };
+};
+
+/**
+ * Recalculate Provider average rating and public review count
+ */
+const recalculateProviderRating = async (providerId) => {
+  if (!providerId || !mongoose.Types.ObjectId.isValid(providerId)) return;
+
+  const stats = await Review.aggregate([
+    { $match: { provider: new mongoose.Types.ObjectId(providerId), isPublic: true } },
+    {
+      $group: {
+        _id: '$provider',
+        count: { $sum: 1 },
+        avgRating: { $avg: '$rating' }
+      }
+    }
+  ]);
+
+  const count = stats.length > 0 ? stats[0].count : 0;
+  const avg = stats.length > 0 ? Math.round(stats[0].avgRating * 10) / 10 : 0;
+
+  await Provider.findByIdAndUpdate(providerId, {
+    'rating.average': avg,
+    'rating.count': count
+  });
+};
+
+/**
+ * Create a review by an authenticated customer
+ */
+const createReviewByCustomer = async (userId, reviewData) => {
+  const { bookingId, rating, comment } = reviewData;
+
+  if (!bookingId || !mongoose.Types.ObjectId.isValid(bookingId)) {
+    const err = new Error('A valid booking reference is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const numRating = parseInt(rating, 10);
+  if (isNaN(numRating) || numRating < 1 || numRating > 5) {
+    const err = new Error('Rating must be an integer between 1 and 5');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Find customer profile
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) {
+    const err = new Error('Customer profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Find booking
+  const booking = await Booking.findById(bookingId);
+  if (!booking) {
+    const err = new Error('Booking not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Check customer ownership
+  if (booking.customer.toString() !== customer._id.toString()) {
+    const err = new Error('You can only review bookings made by your account');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // Check completed status
+  if (booking.status !== 'completed') {
+    const err = new Error(`Only completed bookings can be reviewed. Current status: '${booking.status}'`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Check existing review
+  const existingReview = await Review.findOne({ booking: booking._id });
+  if (existingReview) {
+    const err = new Error('This booking has already been reviewed');
+    err.statusCode = 409;
+    throw err;
+  }
+
+  if (!booking.provider) {
+    const err = new Error('This booking has no assigned service provider to review');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const trimmedComment = typeof comment === 'string' ? comment.trim() : '';
+
+  const newReview = await Review.create({
+    booking: booking._id,
+    customer: customer._id,
+    provider: booking.provider,
+    service: booking.service,
+    rating: numRating,
+    comment: trimmedComment,
+    isPublic: true
+  });
+
+  // Update provider aggregate rating
+  await recalculateProviderRating(booking.provider);
+
+  return await Review.findById(newReview._id)
+    .populate({
+      path: 'customer',
+      populate: { path: 'user', select: 'name email phone avatar' }
+    })
+    .populate({
+      path: 'provider',
+      select: 'businessName rating',
+      populate: { path: 'user', select: 'name avatar' }
+    })
+    .populate('service', 'name price')
+    .populate('booking', 'bookingReference status scheduledDate')
+    .lean();
+};
+
+/**
+ * Get review for a specific booking
+ */
+const getBookingReview = async (userId, bookingId) => {
+  if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+    const err = new Error('Invalid booking ID');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) {
+    const err = new Error('Customer profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const review = await Review.findOne({ booking: bookingId, customer: customer._id })
+    .populate({
+      path: 'provider',
+      select: 'businessName rating',
+      populate: { path: 'user', select: 'name avatar' }
+    })
+    .populate('service', 'name price')
+    .populate('booking', 'bookingReference status scheduledDate')
+    .lean();
+
+  return review;
+};
+
+/**
+ * Get reviews created by authenticated customer
+ */
+const getCustomerReviews = async (userId) => {
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) {
+    return [];
+  }
+
+  return await Review.find({ customer: customer._id })
+    .populate({
+      path: 'provider',
+      select: 'businessName rating',
+      populate: { path: 'user', select: 'name avatar' }
+    })
+    .populate('service', 'name price')
+    .populate('booking', 'bookingReference status scheduledDate')
+    .sort({ createdAt: -1 })
+    .lean();
+};
+
+/**
+ * Get public reviews for a provider
+ */
+const getProviderPublicReviews = async (providerId, query = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(providerId)) {
+    const err = new Error('Invalid provider ID');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const limit = Math.max(1, Math.min(50, parseInt(query.limit, 10) || 10));
+  const skip = (page - 1) * limit;
+
+  const filter = { provider: providerId, isPublic: true };
+
+  const [reviews, total] = await Promise.all([
+    Review.find(filter)
+      .populate({
+        path: 'customer',
+        populate: { path: 'user', select: 'name avatar' }
+      })
+      .populate('service', 'name')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Review.countDocuments(filter)
+  ]);
+
+  return {
+    reviews,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1
+    }
+  };
 };
 
 module.exports = {
   getAdminReviews,
   updateReviewVisibilityByAdmin,
-  deleteReviewByAdmin
+  deleteReviewByAdmin,
+  recalculateProviderRating,
+  createReviewByCustomer,
+  getBookingReview,
+  getCustomerReviews,
+  getProviderPublicReviews
 };

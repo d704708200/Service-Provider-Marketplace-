@@ -908,7 +908,8 @@ const getPublicProviderById = async (providerId) => {
       createdAt: provider.user.createdAt
     },
     isAvailable: provider.isAvailable,
-    services
+    services,
+    reviewCount: provider.rating?.count || 0
   };
 };
 
