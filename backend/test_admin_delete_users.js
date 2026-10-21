@@ -299,10 +299,25 @@ async function runAdminDeleteTests() {
     );
     assert(delCustSuccessRes.status === 200, 'TEST 8.1: DELETE /api/customers/admin/:id returns HTTP 200');
     assert(delCustSuccessRes.body?.success === true, 'TEST 8.2: Response body confirms customer deletion');
+    assert(delCustSuccessRes.body?.data?.isDeleted === true, 'TEST 8.3: Response payload confirms isDeleted: true');
 
-    // Verify DB persistence of soft-delete
+    // Verify DB persistence of soft-delete in User and Customer
     const updatedCustomerUser = await User.findById(customerUser._id);
-    assert(updatedCustomerUser.isActive === false, 'TEST 8.3: Customer user.isActive set to false');
+    const updatedCustomerProfile = await Customer.findById(customerProfile._id);
+    assert(updatedCustomerUser.isActive === false, 'TEST 8.4: Customer user.isActive set to false');
+    assert(updatedCustomerUser.isDeleted === true, 'TEST 8.5: Customer user.isDeleted set to true in MongoDB');
+    assert(updatedCustomerUser.deletedAt instanceof Date, 'TEST 8.6: Customer user.deletedAt timestamp set in MongoDB');
+    assert(updatedCustomerProfile.isDeleted === true, 'TEST 8.7: Customer profile.isDeleted set to true in MongoDB');
+
+    // Verify customer is excluded from admin customer directory list by default
+    const getCustListAfterDelRes = await makeRequest(
+      testPort,
+      'GET',
+      `/api/customers/admin`,
+      { Authorization: `Bearer ${adminToken}` }
+    );
+    const foundCustAfterDel = getCustListAfterDelRes.body?.data?.some(c => c.email === customerUser.email);
+    assert(!foundCustAfterDel, 'TEST 8.8: Deleted customer is excluded from GET /api/customers/admin directory list');
 
     // --- TEST 9: Admin successfully deletes / deactivates provider ---
     const delProvSuccessRes = await makeRequest(
@@ -313,14 +328,27 @@ async function runAdminDeleteTests() {
     );
     assert(delProvSuccessRes.status === 200, 'TEST 9.1: DELETE /api/providers/admin/:id returns HTTP 200');
     assert(delProvSuccessRes.body?.success === true, 'TEST 9.2: Response body confirms provider deletion');
+    assert(delProvSuccessRes.body?.data?.isDeleted === true, 'TEST 9.3: Response payload confirms isDeleted: true');
 
     // Verify DB persistence of provider soft-delete
     const updatedProvUser = await User.findById(providerUser._id);
     const updatedProvProfile = await Provider.findById(providerProfile._id);
-    assert(updatedProvUser.isActive === false, 'TEST 9.3: Provider user.isActive set to false');
-    assert(updatedProvProfile.isAvailable === false, 'TEST 9.4: Provider profile.isAvailable set to false');
+    assert(updatedProvUser.isActive === false, 'TEST 9.4: Provider user.isActive set to false');
+    assert(updatedProvUser.isDeleted === true, 'TEST 9.5: Provider user.isDeleted set to true in MongoDB');
+    assert(updatedProvProfile.isDeleted === true, 'TEST 9.6: Provider profile.isDeleted set to true in MongoDB');
+    assert(updatedProvProfile.isAvailable === false, 'TEST 9.7: Provider profile.isAvailable set to false');
     assert(updatedProvProfile.verificationStatus === 'suspended',
-      'TEST 9.5: Provider verificationStatus changed to suspended');
+      'TEST 9.8: Provider verificationStatus changed to suspended');
+
+    // Verify provider is excluded from admin provider list by default
+    const getProvListAfterDelRes = await makeRequest(
+      testPort,
+      'GET',
+      `/api/providers/admin`,
+      { Authorization: `Bearer ${adminToken}` }
+    );
+    const foundProvAfterDel = getProvListAfterDelRes.body?.data?.providers?.some(p => p._id.toString() === providerProfile._id.toString());
+    assert(!foundProvAfterDel, 'TEST 9.9: Deleted provider is excluded from GET /api/providers/admin directory list');
 
     // --- TEST 10: Historical bookings and financial records remain intact ---
     const preservedBooking = await Booking.findById(booking._id);
@@ -334,7 +362,8 @@ async function runAdminDeleteTests() {
     // --- TEST 11: Deactivated provider cannot receive new bookings ---
     // Try creating a new booking with deactivated provider
     // Re-activate customer temporarily to test provider booking attempt
-    await User.findByIdAndUpdate(customerUser._id, { isActive: true });
+    await User.findByIdAndUpdate(customerUser._id, { isActive: true, isDeleted: false });
+    await Customer.findByIdAndUpdate(customerProfile._id, { isDeleted: false });
     const newBookingData = {
       serviceId: service._id.toString(),
       providerId: providerProfile._id.toString(),
@@ -350,10 +379,11 @@ async function runAdminDeleteTests() {
     );
     assert(blockBookingRes.status === 400, 'TEST 11.1: Booking against deactivated/suspended provider rejected with 400');
     assert(
+      blockBookingRes.body?.error?.message?.includes('deleted') ||
       blockBookingRes.body?.error?.message?.includes('not verified') ||
       blockBookingRes.body?.error?.message?.includes('unavailable') ||
       blockBookingRes.body?.error?.message?.includes('deactivated'),
-      'TEST 11.2: Error message clearly mentions provider status / unverified / unavailable'
+      'TEST 11.2: Error message clearly mentions provider status / unverified / unavailable / deleted'
     );
 
   } catch (err) {

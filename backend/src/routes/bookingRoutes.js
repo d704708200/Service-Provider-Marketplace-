@@ -244,6 +244,14 @@ router.get(
   bookingController.getAdminBookings
 );
 
+// Get platform booking live statistics
+router.get(
+  '/admin/stats',
+  authenticate,
+  requireRole('admin'),
+  bookingController.getAdminBookingStats
+);
+
 // View single booking details
 router.get(
   '/admin/:id',

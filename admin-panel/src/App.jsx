@@ -13,6 +13,7 @@ import ProvidersPage from './pages/providers/ProvidersPage';
 import ProviderVerificationPage from './pages/providers/ProviderVerificationPage';
 import CategoriesPage from './pages/categories/CategoriesPage';
 import ServicesPage from './pages/services/ServicesPage';
+import BookingsPage from './pages/bookings/BookingsPage';
 import RequestsPage from './pages/requests/RequestsPage';
 import ReviewsPage from './pages/reviews/ReviewsPage';
 import LocationsPage from './pages/locations/LocationsPage';
@@ -40,8 +41,8 @@ function App() {
               <Route path="/provider-verification" element={<ProviderVerificationPage />} />
               <Route path="/categories" element={<CategoriesPage />} />
               <Route path="/services" element={<ServicesPage />} />
+              <Route path="/bookings" element={<BookingsPage />} />
               <Route path="/requests" element={<RequestsPage />} />
-              <Route path="/bookings" element={<Navigate to="/requests" replace />} />
               <Route path="/reviews" element={<ReviewsPage />} />
               <Route path="/locations" element={<LocationsPage />} />
               <Route path="/reports" element={<ReportsPage />} />

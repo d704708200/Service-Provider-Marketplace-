@@ -252,16 +252,20 @@ const ProvidersPage = () => {
       onConfirm: async () => {
         setConfirmModal((prev) => ({ ...prev, isLoading: true }));
         try {
-          await providerApi.deleteProvider(provider._id);
-          setSuccessMessage(`Provider "${businessName}" deleted successfully.`);
-          setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
-          if (isDetailModalOpen && selectedProvider?._id === provider._id) {
-            setIsDetailModalOpen(false);
+          const res = await providerApi.deleteProvider(provider._id);
+          if (res?.success) {
+            setSuccessMessage(`Provider "${businessName}" deleted successfully.`);
+            setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+            if (isDetailModalOpen && selectedProvider?._id === provider._id) {
+              setIsDetailModalOpen(false);
+            }
+            await fetchProviders();
+          } else {
+            throw new Error(res?.message || 'Server did not confirm provider deletion.');
           }
-          fetchProviders();
         } catch (err) {
           setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
-          setApiError(err.userMessage || 'Failed to delete provider.');
+          setApiError(err.userMessage || err.message || 'Failed to delete provider.');
         }
       }
     });

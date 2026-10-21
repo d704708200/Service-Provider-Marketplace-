@@ -254,9 +254,16 @@ const getAdminCustomers = async (query = {}) => {
   if (query.status && query.status !== 'all') {
     if (query.status === 'active') {
       userFilter.isActive = true;
+      userFilter.isDeleted = { $ne: true };
     } else if (query.status === 'inactive' || query.status === 'suspended') {
       userFilter.isActive = false;
+      userFilter.isDeleted = { $ne: true };
+    } else if (query.status === 'deleted') {
+      userFilter.isDeleted = true;
     }
+  } else {
+    // Default 'all' view shows all non-deleted customers
+    userFilter.isDeleted = { $ne: true };
   }
 
   if (query.search && query.search.trim()) {
@@ -326,6 +333,8 @@ const getAdminCustomers = async (query = {}) => {
       role: u.role,
       isActive: u.isActive,
       isVerified: u.isVerified,
+      isDeleted: u.isDeleted || false,
+      deletedAt: u.deletedAt || null,
       createdAt: u.createdAt,
       totalBookings,
       addressesCount: profile?.addresses ? profile.addresses.length : 0,
@@ -387,14 +396,25 @@ const deleteCustomerByAdmin = async (identifier, adminUserId) => {
     throw err;
   }
 
-  // 2. Perform safe deactivation and sanitization
+  // 2. Perform safe deactivation and persist deletion flags
+  const now = new Date();
   user.isActive = false;
-  await user.save();
+  user.isDeleted = true;
+  user.deletedAt = now;
+  const userSaveResult = await user.save();
+
+  let customerSaveResult = null;
+  if (customer) {
+    customer.isDeleted = true;
+    customer.deletedAt = now;
+    customerSaveResult = await customer.save();
+  }
 
   // Cancel any active / pending bookings to avoid orphaned active dispatches
   const Booking = require('../models/Booking');
+  let cancelledBookingsCount = 0;
   if (customer) {
-    await Booking.updateMany(
+    const cancelResult = await Booking.updateMany(
       { customer: customer._id, status: { $in: ['pending', 'accepted'] } },
       {
         $set: {
@@ -404,15 +424,24 @@ const deleteCustomerByAdmin = async (identifier, adminUserId) => {
         }
       }
     );
+    cancelledBookingsCount = cancelResult.modifiedCount || 0;
   }
+
+  // Safe diagnostics log (no secrets or sensitive PII)
+  console.log(
+    `[ADMIN DELETE] Resource: Customer | TargetID: ${identifier} | UserID: ${user._id} | isDeleted: true | CancelledBookings: ${cancelledBookingsCount} | AdminID: ${adminUserId || 'system'}`
+  );
 
   return {
     success: true,
+    deleted: true,
     deletedId: customer ? customer._id : user._id,
     userId: user._id,
     name: user.name,
     email: user.email,
-    isActive: user.isActive
+    isActive: user.isActive,
+    isDeleted: user.isDeleted,
+    deletedAt: user.deletedAt
   };
 };
 

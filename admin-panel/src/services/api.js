@@ -236,6 +236,10 @@ export const bookingApi = {
     const response = await api.get('/bookings/admin', { params });
     return response.data;
   },
+  getAdminBookingStats: async () => {
+    const response = await api.get('/bookings/admin/stats');
+    return response.data;
+  },
   getAdminBookingById: async (id) => {
     const response = await api.get(`/bookings/admin/${id}`);
     return response.data;

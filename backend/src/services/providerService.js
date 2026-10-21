@@ -655,7 +655,8 @@ const deleteDocument = async (userId, documentId) => {
 const getPublicProviders = async (query = {}) => {
   const filter = {
     verificationStatus: 'verified',
-    isAvailable: true
+    isAvailable: true,
+    isDeleted: { $ne: true }
   };
 
   const isTopRatedOnly = query.topRated === 'true' || query.topRated === true;
@@ -924,7 +925,15 @@ const getAdminProviders = async (query = {}) => {
   const filter = {};
 
   if (query.verificationStatus && query.verificationStatus !== 'all') {
-    filter.verificationStatus = query.verificationStatus;
+    if (query.verificationStatus === 'deleted') {
+      filter.isDeleted = true;
+    } else {
+      filter.verificationStatus = query.verificationStatus;
+      filter.isDeleted = { $ne: true };
+    }
+  } else {
+    // Default: exclude soft-deleted providers from directory lists
+    filter.isDeleted = { $ne: true };
   }
 
   if (query.topRated !== undefined && query.topRated !== 'all') {
@@ -946,7 +955,7 @@ const getAdminProviders = async (query = {}) => {
 
   const [providers, total] = await Promise.all([
     Provider.find(filter)
-      .populate('user', 'name email phone avatar role isActive isVerified createdAt')
+      .populate('user', 'name email phone avatar role isActive isVerified isDeleted createdAt')
       .populate('categories', 'name slug icon isActive')
       .sort({ showInTopRated: -1, topRatedOrder: 1, createdAt: -1 })
       .skip(skip)
@@ -1156,12 +1165,17 @@ const deleteProviderByAdmin = async (identifier, adminUserId) => {
     throw err;
   }
 
-  // 1. Deactivate User account
+  // 1. Deactivate and mark User account as deleted
+  const now = new Date();
   user.isActive = false;
+  user.isDeleted = true;
+  user.deletedAt = now;
   await user.save();
 
   // 2. Deactivate Provider profile availability and suspend verification
   provider.isAvailable = false;
+  provider.isDeleted = true;
+  provider.deletedAt = now;
   provider.verificationStatus = 'suspended';
   provider.showInTopRated = false;
   await provider.save();
@@ -1170,7 +1184,7 @@ const deleteProviderByAdmin = async (identifier, adminUserId) => {
   await Service.updateMany({ provider: provider._id }, { $set: { isActive: false } });
 
   // 4. Cancel active/pending bookings to prevent orphaned dispatches
-  await Booking.updateMany(
+  const cancelResult = await Booking.updateMany(
     { provider: provider._id, status: { $in: ['pending', 'accepted'] } },
     {
       $set: {
@@ -1180,14 +1194,23 @@ const deleteProviderByAdmin = async (identifier, adminUserId) => {
       }
     }
   );
+  const cancelledBookingsCount = cancelResult.modifiedCount || 0;
+
+  // Safe diagnostics log (no secrets or sensitive PII)
+  console.log(
+    `[ADMIN DELETE] Resource: Provider | TargetID: ${identifier} | ProviderID: ${provider._id} | UserID: ${user._id} | isDeleted: true | CancelledBookings: ${cancelledBookingsCount} | AdminID: ${adminUserId || 'system'}`
+  );
 
   return {
     success: true,
+    deleted: true,
     deletedId: provider._id,
     userId: user._id,
     businessName: provider.businessName,
     email: user.email,
     isActive: user.isActive,
+    isDeleted: provider.isDeleted,
+    deletedAt: provider.deletedAt,
     verificationStatus: provider.verificationStatus
   };
 };

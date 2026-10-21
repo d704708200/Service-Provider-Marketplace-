@@ -167,6 +167,18 @@ const getAdminBookings = async (req, res, next) => {
   }
 };
 
+const getAdminBookingStats = async (req, res, next) => {
+  try {
+    const stats = await bookingService.getAdminBookingStats();
+    res.status(200).json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getAdminBookingById = async (req, res, next) => {
   try {
     const booking = await bookingService.getAdminBookingById(req.params.id);
@@ -407,6 +419,7 @@ module.exports = {
   startProviderService,
   completeProviderService,
   getAdminBookings,
+  getAdminBookingStats,
   getAdminBookingById,
   cancelAdminBooking,
   createPaymentOrder,

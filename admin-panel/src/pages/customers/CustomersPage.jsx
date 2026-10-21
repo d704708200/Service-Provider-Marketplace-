@@ -101,13 +101,17 @@ const CustomersPage = () => {
       onConfirm: async () => {
         setConfirmModal((prev) => ({ ...prev, isLoading: true }));
         try {
-          await customerApi.deleteCustomer(customer._id);
-          setSuccessMessage(`Customer "${customerName}" deleted successfully.`);
-          setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
-          fetchCustomers();
+          const res = await customerApi.deleteCustomer(customer._id);
+          if (res?.success) {
+            setSuccessMessage(`Customer "${customerName}" deleted successfully.`);
+            setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+            await fetchCustomers();
+          } else {
+            throw new Error(res?.message || 'Server did not confirm customer deletion.');
+          }
         } catch (err) {
           setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
-          setApiError(err.userMessage || 'Failed to delete customer.');
+          setApiError(err.userMessage || err.message || 'Failed to delete customer.');
         }
       }
     });

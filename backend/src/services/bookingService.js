@@ -25,8 +25,8 @@ const generateBookingReference = () => {
 const createBooking = async (userId, bookingData) => {
   // 1. Verify active customer profile
   const user = await User.findById(userId);
-  if (!user || user.role !== 'customer' || !user.isActive) {
-    const err = new Error('Authenticated customer account is inactive or not found');
+  if (!user || user.role !== 'customer' || !user.isActive || user.isDeleted) {
+    const err = new Error('Authenticated customer account is inactive, deleted, or not found');
     err.statusCode = 403;
     throw err;
   }
@@ -35,6 +35,10 @@ const createBooking = async (userId, bookingData) => {
   if (!customer) {
     // Gracefully initialize customer profile if not yet created
     customer = await Customer.create({ user: userId, addresses: [] });
+  } else if (customer.isDeleted) {
+    const err = new Error('Customer profile has been terminated');
+    err.statusCode = 403;
+    throw err;
   }
 
   // 2. Validate Service
@@ -67,6 +71,12 @@ const createBooking = async (userId, bookingData) => {
     if (!provider) {
       const err = new Error(`Provider with ID '${bookingData.providerId}' not found`);
       err.statusCode = 404;
+      throw err;
+    }
+
+    if (provider.isDeleted || provider.user?.isDeleted) {
+      const err = new Error(`Provider '${provider.businessName || 'Selected'}' has been deleted`);
+      err.statusCode = 400;
       throw err;
     }
 
@@ -892,22 +902,76 @@ const completeServiceByProvider = async (userId, bookingId) => {
 };
 
 /**
- * Admin lists all bookings with filters, search, and pagination
+/**
+ * Admin lists all bookings with filters, search, date range, and pagination
  */
 const getAdminBookings = async (query = {}) => {
   const filter = {};
+
   if (query.status && query.status !== 'all') {
     filter.status = query.status;
+  }
+  if (query.paymentStatus && query.paymentStatus !== 'all') {
+    filter.paymentStatus = query.paymentStatus;
   }
   if (query.bookingMode && query.bookingMode !== 'all') {
     filter.bookingMode = query.bookingMode;
   }
+
+  // Date range filters (by scheduledDate or createdAt)
+  if (query.startDate || query.endDate) {
+    filter.createdAt = {};
+    if (query.startDate) {
+      const start = new Date(query.startDate);
+      start.setHours(0, 0, 0, 0);
+      filter.createdAt.$gte = start;
+    }
+    if (query.endDate) {
+      const end = new Date(query.endDate);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt.$lte = end;
+    }
+  }
+
+  // Multi-entity search
   if (query.search && query.search.trim()) {
-    const searchRegex = new RegExp(query.search.trim(), 'i');
+    const rawSearch = query.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = new RegExp(rawSearch, 'i');
+
+    // Find matching users (customers or providers)
+    const matchingUsers = await User.find({
+      $or: [{ name: searchRegex }, { email: searchRegex }, { phone: searchRegex }]
+    }).select('_id').lean();
+    const matchedUserIds = matchingUsers.map((u) => u._id);
+
+    // Find matching customer profiles
+    const matchingCustomers = await Customer.find({
+      user: { $in: matchedUserIds }
+    }).select('_id').lean();
+    const matchedCustomerIds = matchingCustomers.map((c) => c._id);
+
+    // Find matching provider profiles by businessName or user
+    const matchingProviders = await Provider.find({
+      $or: [
+        { businessName: searchRegex },
+        { user: { $in: matchedUserIds } }
+      ]
+    }).select('_id').lean();
+    const matchedProviderIds = matchingProviders.map((p) => p._id);
+
+    // Find matching services
+    const matchingServices = await Service.find({
+      name: searchRegex
+    }).select('_id').lean();
+    const matchedServiceIds = matchingServices.map((s) => s._id);
+
     filter.$or = [
       { bookingReference: searchRegex },
       { 'address.city': searchRegex },
-      { 'address.street': searchRegex }
+      { 'address.street': searchRegex },
+      { customer: { $in: matchedCustomerIds } },
+      { provider: { $in: matchedProviderIds } },
+      { service: { $in: matchedServiceIds } }
     ];
   }
 
@@ -917,19 +981,24 @@ const getAdminBookings = async (query = {}) => {
 
   const [bookings, total] = await Promise.all([
     Booking.find(filter)
-      .populate('service', 'name price priceType')
+      .populate({
+        path: 'service',
+        select: 'name price priceType category',
+        populate: { path: 'category', select: 'name slug icon' }
+      })
       .populate({
         path: 'provider',
-        select: 'businessName rating',
-        populate: { path: 'user', select: 'name email phone' }
+        select: 'businessName rating user',
+        populate: { path: 'user', select: 'name email phone avatar' }
       })
       .populate({
         path: 'customer',
-        populate: { path: 'user', select: 'name email phone' }
+        populate: { path: 'user', select: 'name email phone avatar' }
       })
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     Booking.countDocuments(filter)
   ]);
 
@@ -939,9 +1008,89 @@ const getAdminBookings = async (query = {}) => {
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.ceil(total / limit) || 1
     }
   };
+};
+
+/**
+ * Admin live aggregation statistics for Bookings dashboard
+ */
+const getAdminBookingStats = async () => {
+  const [statusCounts, revenueAgg, paymentStatusCounts] = await Promise.all([
+    Booking.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]),
+    Booking.aggregate([
+      {
+        $match: {
+          paymentStatus: 'paid'
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$pricing.totalAmount' },
+          totalSparePartsRevenue: {
+            $sum: {
+              $cond: [
+                { $eq: ['$spareParts.paymentStatus', 'paid'] },
+                '$spareParts.totalAdditionalAmount',
+                0
+              ]
+            }
+          }
+        }
+      }
+    ]),
+    Booking.aggregate([
+      {
+        $group: {
+          _id: '$paymentStatus',
+          count: { $sum: 1 }
+        }
+      }
+    ])
+  ]);
+
+  const stats = {
+    total: 0,
+    pending: 0,
+    accepted: 0,
+    in_progress: 0,
+    completed: 0,
+    cancelled: 0,
+    rejected: 0,
+    failedPayments: 0,
+    paidPayments: 0,
+    pendingPayments: 0,
+    totalRevenue: 0
+  };
+
+  statusCounts.forEach((item) => {
+    stats.total += item.count;
+    if (item._id && stats.hasOwnProperty(item._id)) {
+      stats[item._id] = item.count;
+    }
+  });
+
+  paymentStatusCounts.forEach((item) => {
+    if (item._id === 'failed') stats.failedPayments = item.count;
+    if (item._id === 'paid') stats.paidPayments = item.count;
+    if (item._id === 'pending') stats.pendingPayments = item.count;
+  });
+
+  if (revenueAgg.length > 0) {
+    const rev = revenueAgg[0];
+    stats.totalRevenue = (rev.totalRevenue || 0) + (rev.totalSparePartsRevenue || 0);
+  }
+
+  return stats;
 };
 
 /**
@@ -949,21 +1098,30 @@ const getAdminBookings = async (query = {}) => {
  */
 const getAdminBookingById = async (bookingId) => {
   const booking = await Booking.findById(bookingId)
-    .populate('service')
+    .populate({
+      path: 'service',
+      populate: { path: 'category', select: 'name slug icon' }
+    })
     .populate({
       path: 'provider',
-      populate: { path: 'user', select: 'name email phone' }
+      populate: { path: 'user', select: 'name email phone avatar' }
     })
     .populate({
       path: 'customer',
-      populate: { path: 'user', select: 'name email phone' }
-    });
+      populate: { path: 'user', select: 'name email phone avatar' }
+    })
+    .lean();
 
   if (!booking) {
     const err = new Error(`Booking with ID '${bookingId}' not found`);
     err.statusCode = 404;
     throw err;
   }
+
+  // Load review if completed
+  const Review = require('../models/Review');
+  const review = await Review.findOne({ booking: booking._id }).lean();
+  booking.review = review || null;
 
   return booking;
 };
@@ -1864,6 +2022,7 @@ module.exports = {
   startServiceByProvider,
   completeServiceByProvider,
   getAdminBookings,
+  getAdminBookingStats,
   getAdminBookingById,
   cancelBookingByAdmin,
   createPaymentOrder,

@@ -61,6 +61,14 @@ const customerSchema = new mongoose.Schema(
     emergencyContact: {
       name: { type: String, trim: true },
       phone: { type: String, trim: true }
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false
+    },
+    deletedAt: {
+      type: Date,
+      default: null
     }
   },
   {

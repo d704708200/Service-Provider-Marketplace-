@@ -167,6 +167,14 @@ const providerSchema = new mongoose.Schema(
     topRatedOrder: {
       type: Number,
       default: 0
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false
+    },
+    deletedAt: {
+      type: Date,
+      default: null
     }
   },
   {
@@ -177,6 +185,7 @@ const providerSchema = new mongoose.Schema(
 providerSchema.index({ verificationStatus: 1 });
 providerSchema.index({ isAvailable: 1 });
 providerSchema.index({ categories: 1 });
+providerSchema.index({ isDeleted: 1 });
 providerSchema.index({ 'rating.average': -1 });
 providerSchema.index({ showInTopRated: 1, topRatedOrder: 1 });
 
