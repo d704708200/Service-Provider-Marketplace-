@@ -29,6 +29,68 @@ const TIME_SLOTS = [
   { startTime: '18:00', endTime: '20:00', label: '06:00 PM - 08:00 PM (Night)' }
 ];
 
+// Helpers for Booking Confirmed view
+const formatScheduledDate = (rawDate) => {
+  if (!rawDate) return '';
+  const d = new Date(rawDate);
+  if (isNaN(d.getTime())) return String(rawDate);
+  return d.toLocaleDateString('en-IN', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+};
+
+const formatAddress = (addr) => {
+  if (!addr) return 'Address not provided';
+  if (typeof addr === 'string') return addr;
+  const parts = [addr.street, addr.city, addr.state, addr.zipCode].filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : 'Address on file';
+};
+
+const getPaymentMethodDisplay = (method) => {
+  const m = String(method || '').toLowerCase();
+  if (m === 'cash') return { label: 'Cash on Service', icon: 'cash-outline' };
+  if (m === 'online') return { label: 'Online Payment', icon: 'card-outline' };
+  if (m === 'upi') return { label: 'UPI Payment', icon: 'phone-portrait-outline' };
+  return { label: (method || 'Cash').toUpperCase(), icon: 'wallet-outline' };
+};
+
+const getPaymentStatusBadge = (status) => {
+  const s = String(status || '').toLowerCase();
+  switch (s) {
+    case 'paid':
+      return { label: 'PAID', variant: 'success' };
+    case 'failed':
+      return { label: 'FAILED', variant: 'danger' };
+    case 'refunded':
+      return { label: 'REFUNDED', variant: 'secondary' };
+    case 'pending':
+    default:
+      return { label: (s || 'PENDING').toUpperCase(), variant: 'warning' };
+  }
+};
+
+const getBookingStatusBadge = (status) => {
+  const s = String(status || '').toLowerCase();
+  switch (s) {
+    case 'confirmed':
+    case 'completed':
+      return { label: s.toUpperCase(), variant: 'success' };
+    case 'in_progress':
+      return { label: 'IN PROGRESS', variant: 'secondary' };
+    case 'accepted':
+      return { label: 'ACCEPTED', variant: 'primary' };
+    case 'cancelled':
+    case 'rejected':
+      return { label: s.toUpperCase(), variant: 'danger' };
+    case 'pending':
+    default:
+      return { label: (s || 'PENDING').toUpperCase(), variant: 'warning' };
+  }
+};
+
 export default function RequestServiceScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -78,7 +140,7 @@ export default function RequestServiceScreen({ route, navigation }) {
   const [startTime, setStartTime] = useState(TIME_SLOTS[0].startTime);
   const [endTime, setEndTime] = useState(TIME_SLOTS[0].endTime);
 
-  // Load service & provider data if missing
+  // Load service & provider data if missing or ensure provider services are loaded
   React.useEffect(() => {
     let isMounted = true;
 
@@ -90,6 +152,7 @@ export default function RequestServiceScreen({ route, navigation }) {
           const res = await serviceApi.getById(serviceId);
           if (isMounted && res?.data) {
             setCurrentService(res.data);
+            setServiceLoadError(null);
           }
         } catch (err) {
           if (isMounted) setServiceLoadError('Unable to load service information');
@@ -99,17 +162,72 @@ export default function RequestServiceScreen({ route, navigation }) {
       }
 
       // Case 2: Provider passed or providerId passed
-      const targetProviderId = initialProvider?._id || providerId;
+      const rawTargetProviderId = initialProvider?._id || providerId || initialService?.provider?._id || (typeof initialService?.provider === 'string' ? initialService.provider : null);
+      const targetProviderId = rawTargetProviderId && String(rawTargetProviderId) !== 'undefined' && String(rawTargetProviderId) !== 'null' ? String(rawTargetProviderId) : null;
+
       if (targetProviderId) {
         try {
           const pRes = await providerApi.getById(targetProviderId);
           if (isMounted && pRes?.data) {
-            if (!currentProvider) setCurrentProvider(pRes.data);
-            if (Array.isArray(pRes.data.services) && pRes.data.services.length > 0) {
-              setProviderServices(pRes.data.services);
-              // Auto-select first service if none selected
-              if (!currentService) {
-                setCurrentService(pRes.data.services[0]);
+            const providerData = pRes.data;
+            if (!currentProvider) setCurrentProvider(providerData);
+
+            // Display ONLY the selected provider's real services from their saved service catalog
+            const allServices = Array.isArray(providerData.services) ? providerData.services : [];
+            const providerUserId = providerData.user?._id || providerData.user;
+            const ownServices = allServices.filter(
+              (s) => s && s.provider && (
+                String(s.provider._id || s.provider) === String(targetProviderId) ||
+                (providerUserId && String(s.provider._id || s.provider) === String(providerUserId))
+              )
+            );
+
+            // If provider has configured custom services, use strictly their real services.
+            // If provider has zero custom services, fallback to the provider's active catalog services.
+            const realServices = (ownServices.length > 0 ? ownServices : allServices)
+              .filter((s) => s && s._id && s.isActive !== false);
+
+            setProviderServices(realServices);
+
+            // Safe diagnostic log (no secrets/tokens)
+            console.log('[Diagnostic: RequestServiceScreen]', {
+              providerId: targetProviderId,
+              providerBusinessName: providerData.businessName,
+              servicesCount: realServices.length,
+              services: realServices.map((s) => ({
+                id: s._id,
+                name: s.name,
+                category: s.category?.name || s.category,
+                price: s.price !== undefined ? s.price : s.basePrice
+              }))
+            });
+
+            // If we still don't have a service selected:
+            if (!currentService && !serviceId) {
+              if (realServices.length === 1) {
+                setCurrentService(realServices[0]);
+                setServiceLoadError(null);
+              } else if (realServices.length === 0) {
+                setServiceLoadError('This provider currently has no available services.');
+              }
+            } else if (currentService) {
+              // If the customer came with a pre-selected service, check if it's in this provider's catalog
+              const matchedService = realServices.find(s => String(s._id) === String(currentService._id));
+              if (matchedService) {
+                // Ensure we use the provider's exact configured service data (pricing, duration, etc.)
+                setCurrentService(matchedService);
+                setServiceLoadError(null);
+              } else if (realServices.length === 1) {
+                // If only 1 service is offered by this provider, select it
+                setCurrentService(realServices[0]);
+                setServiceLoadError(null);
+              } else if (realServices.length > 1) {
+                // Provider offers multiple services; customer must choose from the provider's real services
+                setCurrentService(null);
+                setServiceLoadError('Please select one of the provider’s services below.');
+              } else if (realServices.length === 0) {
+                setCurrentService(null);
+                setServiceLoadError('This provider currently has no available services.');
               }
             }
           }
@@ -126,7 +244,8 @@ export default function RequestServiceScreen({ route, navigation }) {
   }, [serviceId, providerId, initialProvider]);
 
   // Pricing calculations
-  const effectiveBasePrice = Number(currentService?.basePrice || currentService?.price || 0);
+  const rawBase = Number(currentService?.price !== undefined ? currentService.price : currentService?.basePrice);
+  const effectiveBasePrice = !isNaN(rawBase) && rawBase >= 0 ? rawBase : 0;
   const effectiveTotal = effectiveBasePrice;
 
   // Details
@@ -142,6 +261,76 @@ export default function RequestServiceScreen({ route, navigation }) {
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState(null);
   const [paymentFailedNotice, setPaymentFailedNotice] = useState(null);
+  const [copiedRef, setCopiedRef] = useState(false);
+
+  const handleCopyReference = async (ref) => {
+    if (!ref) return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(ref);
+      }
+    } catch (e) {
+      // ignore
+    }
+    setCopiedRef(true);
+    setTimeout(() => setCopiedRef(false), 2000);
+  };
+
+  // Busy worker detection & alternative worker suggestions state
+  const [availabilityStatus, setAvailabilityStatus] = useState(null); // 'available' | 'busy' | 'unavailable' | null
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [busyReason, setBusyReason] = useState(null);
+  const [alternativeProviders, setAlternativeProviders] = useState([]);
+
+  // Check provider slot availability whenever selectedDate, startTime, endTime, or provider changes
+  React.useEffect(() => {
+    let isMounted = true;
+    const rawTargetProviderId = currentProvider?._id || providerId || currentService?.provider?._id || (typeof currentService?.provider === 'string' ? currentService.provider : null);
+    const targetProviderId = rawTargetProviderId && String(rawTargetProviderId).trim() !== '' && String(rawTargetProviderId) !== 'undefined' && String(rawTargetProviderId) !== 'null' ? String(rawTargetProviderId) : null;
+
+    if (!targetProviderId || bookingMode !== 'scheduled' || !selectedDate || !startTime || !endTime) {
+      setAvailabilityStatus(null);
+      setAlternativeProviders([]);
+      setBusyReason(null);
+      setCheckingAvailability(false);
+      return;
+    }
+
+    async function checkSlot() {
+      setCheckingAvailability(true);
+      try {
+        const res = await providerApi.checkSlotAvailability(targetProviderId, {
+          date: selectedDate,
+          startTime,
+          endTime,
+          serviceId: currentService?._id || serviceId
+        });
+        if (isMounted && res?.data) {
+          const { isAvailable, status, reason, alternativeProviders: alts } = res.data;
+          setAvailabilityStatus(status || (isAvailable ? 'available' : 'busy'));
+          setBusyReason(reason || null);
+          setAlternativeProviders(Array.isArray(alts) ? alts : []);
+        }
+      } catch (err) {
+        console.warn('Slot availability check failed:', err.message);
+        if (isMounted) {
+          setAvailabilityStatus('unavailable');
+          setBusyReason('Availability could not be verified. Please check your network connection or try another slot.');
+          setAlternativeProviders([]);
+        }
+      } finally {
+        if (isMounted) {
+          setCheckingAvailability(false);
+        }
+      }
+    }
+
+    checkSlot();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentProvider?._id, providerId, bookingMode, selectedDate, startTime, endTime, currentService?._id, serviceId]);
 
   // Load saved addresses on screen mount
   React.useEffect(() => {
@@ -252,6 +441,14 @@ export default function RequestServiceScreen({ route, navigation }) {
       return;
     }
 
+    if (bookingMode === 'scheduled' && availabilityStatus === 'busy') {
+      Alert.alert(
+        'Provider Busy / Not Available',
+        busyReason || 'The selected provider already has a booking during this time. Please select another time or an alternative provider.'
+      );
+      return;
+    }
+
     if (!validate()) {
       Alert.alert('Incomplete Form', 'Please fix the errors highlighted below.');
       return;
@@ -263,7 +460,7 @@ export default function RequestServiceScreen({ route, navigation }) {
     try {
       const payload = {
         serviceId: currentService._id,
-        providerId: currentProvider?._id || undefined,
+        providerId: currentProvider?._id || providerId || currentService?.provider?._id || (typeof currentService?.provider === 'string' ? currentService.provider : undefined),
         bookingMode,
         paymentMethod,
         address: {
@@ -399,125 +596,266 @@ export default function RequestServiceScreen({ route, navigation }) {
     }
   };
 
-  // If booking is successfully confirmed, show the Confirmation View
+  // If booking is successfully confirmed, show the Redesigned Confirmation View
   if (confirmedBooking) {
+    const bookingRef = confirmedBooking.bookingReference || 'N/A';
+    const serviceName = confirmedBooking.service?.name || currentService?.name || 'Selected Service';
+    const providerName =
+      confirmedBooking.provider?.businessName ||
+      confirmedBooking.provider?.user?.name ||
+      currentProvider?.businessName ||
+      'Service Provider';
+    const isInstant = confirmedBooking.bookingMode === 'instant';
+    const totalAmount = Number(confirmedBooking.pricing?.totalAmount ?? effectiveTotal ?? 0);
+    const paymentStatusBadge = getPaymentStatusBadge(confirmedBooking.paymentStatus);
+    const bookingStatusBadge = getBookingStatusBadge(confirmedBooking.status);
+    const paymentMethodInfo = getPaymentMethodDisplay(confirmedBooking.paymentMethod || paymentMethod);
+    const formattedAddress = formatAddress(confirmedBooking.address || { street, city, state, zipCode: postalCode });
+    const formattedDate = formatScheduledDate(confirmedBooking.scheduledDate || selectedDate);
+    const slotTimes = confirmedBooking.scheduledTimeSlot || (startTime && endTime ? { startTime, endTime } : null);
+
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.confirmContainer, { paddingTop: insets.top }]}>
         <ScrollView
           contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: insets.bottom + spacing.xxl }
+            styles.confirmScrollContent,
+            { paddingBottom: insets.bottom + spacing.xl }
           ]}
           showsVerticalScrollIndicator={false}
         >
+          {/* Centered Success Header with glowing halo */}
           <View style={styles.successHeader}>
-            <View style={styles.successIconCircle}>
-              <Ionicons name="checkmark-circle" size={56} color={colors.success} />
+            <View style={styles.successIconHalo}>
+              <View style={styles.successIconCircle}>
+                <Ionicons name="checkmark-sharp" size={44} color="#10B981" />
+              </View>
             </View>
             <Text style={styles.successTitle}>Booking Confirmed!</Text>
             <Text style={styles.successSubtitle}>
-              Your service request has been successfully created on the marketplace.
+              Your service request has been successfully placed with {providerName}.
             </Text>
           </View>
 
-          <Card style={styles.confirmCard}>
-            <View style={styles.confirmRefRow}>
-              <Text style={styles.confirmRefLabel}>Booking Reference</Text>
-              <Text style={styles.confirmRefValue}>{confirmedBooking.bookingReference}</Text>
+          {/* Dedicated Booking Reference Row with Copy Action */}
+          <View style={styles.refBanner}>
+            <View style={styles.refInfoCol}>
+              <Text style={styles.refLabelText}>BOOKING REFERENCE</Text>
+              <Text style={styles.refCodeText} selectable numberOfLines={1}>
+                {bookingRef}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.copyButton, copiedRef && styles.copyButtonActive]}
+              onPress={() => handleCopyReference(bookingRef)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons
+                name={copiedRef ? 'checkmark-circle' : 'copy-outline'}
+                size={16}
+                color={copiedRef ? '#34D399' : '#A78BFA'}
+              />
+              <Text style={[styles.copyButtonText, copiedRef && styles.copyButtonTextActive]}>
+                {copiedRef ? 'Copied' : 'Copy'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Main Details Card */}
+          <Card style={styles.confirmCard} bordered={true}>
+            <Text style={styles.confirmCardSectionHeader}>Booking Details</Text>
+
+            {/* Service */}
+            <View style={styles.confirmRow}>
+              <View style={styles.confirmLabelGroup}>
+                <Ionicons name="briefcase-outline" size={15} color="#A78BFA" />
+                <Text style={styles.confirmLabel}>Service</Text>
+              </View>
+              <View style={styles.confirmValueWrap}>
+                <Text style={styles.confirmValueBold}>{serviceName}</Text>
+              </View>
             </View>
 
-            <View style={styles.divider} />
-
+            {/* Provider */}
             <View style={styles.confirmRow}>
-              <Text style={styles.confirmKey}>Service</Text>
-              <Text style={styles.confirmVal}>{confirmedBooking.service?.name || currentService?.name}</Text>
+              <View style={styles.confirmLabelGroup}>
+                <Ionicons name="person-outline" size={15} color="#A78BFA" />
+                <Text style={styles.confirmLabel}>Provider</Text>
+              </View>
+              <View style={styles.confirmValueWrap}>
+                <Text style={styles.confirmValue}>{providerName}</Text>
+              </View>
             </View>
 
+            {/* Booking Mode */}
             <View style={styles.confirmRow}>
-              <Text style={styles.confirmKey}>Booking Mode</Text>
+              <View style={styles.confirmLabelGroup}>
+                <Ionicons name="flash-outline" size={15} color="#A78BFA" />
+                <Text style={styles.confirmLabel}>Mode</Text>
+              </View>
               <Badge
-                label={confirmedBooking.bookingMode === 'instant' ? 'Instant (ASAP)' : 'Scheduled'}
-                variant={confirmedBooking.bookingMode === 'instant' ? 'warning' : 'primary'}
+                label={isInstant ? 'Instant (ASAP)' : 'Scheduled'}
+                variant={isInstant ? 'warning' : 'primary'}
                 size="sm"
               />
             </View>
 
-            {confirmedBooking.bookingMode === 'scheduled' && (
+            {/* Scheduled Date & Time Slot */}
+            {!isInstant && (
               <View style={styles.confirmRow}>
-                <Text style={styles.confirmKey}>Scheduled Time</Text>
-                <Text style={styles.confirmVal}>
-                  {new Date(confirmedBooking.scheduledDate).toLocaleDateString('en-IN', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric'
-                  })}{' '}
-                  ({confirmedBooking.scheduledTimeSlot?.startTime} - {confirmedBooking.scheduledTimeSlot?.endTime})
-                </Text>
+                <View style={styles.confirmLabelGroup}>
+                  <Ionicons name="calendar-outline" size={15} color="#A78BFA" />
+                  <Text style={styles.confirmLabel}>Schedule</Text>
+                </View>
+                <View style={styles.confirmValueWrap}>
+                  <Text style={styles.confirmValue}>
+                    {formattedDate}
+                    {slotTimes ? ` • ${slotTimes.startTime} - ${slotTimes.endTime}` : ''}
+                  </Text>
+                </View>
               </View>
             )}
 
+            {/* Payment Method */}
             <View style={styles.confirmRow}>
-              <Text style={styles.confirmKey}>Payment Method</Text>
-              <Text style={[styles.confirmVal, { textTransform: 'uppercase', fontWeight: '700' }]}>
-                {confirmedBooking.paymentMethod || paymentMethod}
-              </Text>
+              <View style={styles.confirmLabelGroup}>
+                <Ionicons name={paymentMethodInfo.icon} size={15} color="#A78BFA" />
+                <Text style={styles.confirmLabel}>Payment Method</Text>
+              </View>
+              <View style={styles.confirmValueWrap}>
+                <Text style={styles.confirmValue}>{paymentMethodInfo.label}</Text>
+              </View>
             </View>
 
+            {/* Payment Status */}
             <View style={styles.confirmRow}>
-              <Text style={styles.confirmKey}>Payment Status</Text>
+              <View style={styles.confirmLabelGroup}>
+                <Ionicons name="shield-checkmark-outline" size={15} color="#A78BFA" />
+                <Text style={styles.confirmLabel}>Payment Status</Text>
+              </View>
               <Badge
-                label={confirmedBooking.paymentStatus?.toUpperCase() || 'PENDING'}
-                variant={confirmedBooking.paymentStatus === 'paid' ? 'success' : 'warning'}
+                label={paymentStatusBadge.label}
+                variant={paymentStatusBadge.variant}
                 size="sm"
               />
             </View>
 
+            {/* Razorpay Transaction ID (if available) */}
             {confirmedBooking.paymentDetails?.razorpayPaymentId && (
               <View style={styles.confirmRow}>
-                <Text style={styles.confirmKey}>Payment ID</Text>
-                <Text style={[styles.confirmVal, { fontFamily: 'monospace', fontSize: 11 }]}>
-                  {confirmedBooking.paymentDetails.razorpayPaymentId}
-                </Text>
+                <View style={styles.confirmLabelGroup}>
+                  <Ionicons name="receipt-outline" size={15} color="#A78BFA" />
+                  <Text style={styles.confirmLabel}>Transaction ID</Text>
+                </View>
+                <View style={styles.confirmValueWrap}>
+                  <Text style={styles.confirmMonoValue}>
+                    {confirmedBooking.paymentDetails.razorpayPaymentId}
+                  </Text>
+                </View>
               </View>
             )}
 
+            {/* Request Status */}
             <View style={styles.confirmRow}>
-              <Text style={styles.confirmKey}>Status</Text>
-              <Badge label={confirmedBooking.status.toUpperCase()} variant="warning" size="sm" />
+              <View style={styles.confirmLabelGroup}>
+                <Ionicons name="information-circle-outline" size={15} color="#A78BFA" />
+                <Text style={styles.confirmLabel}>Request Status</Text>
+              </View>
+              <Badge
+                label={bookingStatusBadge.label}
+                variant={bookingStatusBadge.variant}
+                size="sm"
+              />
             </View>
 
-            <View style={styles.confirmRow}>
-              <Text style={styles.confirmKey}>Order Total</Text>
-              <Text style={styles.confirmValPrice}>
-                ₹{(confirmedBooking.pricing?.totalAmount || effectiveTotal).toLocaleString('en-IN')}
-              </Text>
+            {/* Service Address */}
+            <View style={[styles.confirmRow, { alignItems: 'flex-start' }]}>
+              <View style={[styles.confirmLabelGroup, { marginTop: 2 }]}>
+                <Ionicons name="location-outline" size={15} color="#A78BFA" />
+                <Text style={styles.confirmLabel}>Address</Text>
+              </View>
+              <View style={styles.confirmValueWrap}>
+                <Text style={styles.confirmValue}>{formattedAddress}</Text>
+              </View>
             </View>
 
-            <View style={styles.confirmRow}>
-              <Text style={styles.confirmKey}>Service Address</Text>
-              <Text style={styles.confirmVal} numberOfLines={2}>
-                {confirmedBooking.address?.street}, {confirmedBooking.address?.city}
-              </Text>
+            {/* Order Total Box */}
+            <View style={styles.confirmTotalBox}>
+              <View>
+                <Text style={styles.confirmTotalLabel}>Total Amount</Text>
+                <Text style={styles.confirmTotalSub}>Inclusive of taxes & charges</Text>
+              </View>
+              <Text style={styles.confirmTotalAmount}>₹{totalAmount.toLocaleString('en-IN')}</Text>
+            </View>
+
+            {/* Service Team Section */}
+            <View style={styles.confirmTeamSection}>
+              <View style={styles.confirmTeamHeader}>
+                <View style={styles.confirmTeamHeaderLeft}>
+                  <Ionicons name="people" size={16} color="#A78BFA" />
+                  <Text style={styles.confirmTeamTitle}>Service Team Allocation</Text>
+                </View>
+                <Badge
+                  label={confirmedBooking.serviceTeam?.isConfirmed ? 'CONFIRMED' : 'AWAITING CONFIRMATION'}
+                  variant={confirmedBooking.serviceTeam?.isConfirmed ? 'success' : 'warning'}
+                  size="sm"
+                />
+              </View>
+
+              {confirmedBooking.serviceTeam?.isConfirmed && confirmedBooking.serviceTeam?.totalCount ? (
+                <View style={styles.teamConfirmedBox}>
+                  <Text style={styles.teamConfirmedTitle}>
+                    {confirmedBooking.serviceTeam.totalCount === 1
+                      ? '1 Dedicated Specialist Assigned'
+                      : `${confirmedBooking.serviceTeam.totalCount} Dedicated Specialists Assigned`}
+                  </Text>
+                  {Array.isArray(confirmedBooking.serviceTeam.roles) && confirmedBooking.serviceTeam.roles.length > 0 && (
+                    <View style={styles.teamRolesWrap}>
+                      {confirmedBooking.serviceTeam.roles.map((r, idx) => (
+                        <View key={idx} style={styles.teamRolePill}>
+                          <Text style={styles.teamRolePillText}>
+                            {r.role}: {r.count}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.teamPendingBox}>
+                  <Ionicons name="time-outline" size={15} color="#FBBF24" style={{ marginTop: 1 }} />
+                  <Text style={styles.teamPendingText}>
+                    The service provider will confirm their crew size and assigned specialists before commencing service.
+                  </Text>
+                </View>
+              )}
             </View>
           </Card>
 
-          <Button
-            title="View in My Bookings"
-            onPress={() => {
-              navigation.navigate('MainTabs', { screen: 'BookingsTab' });
-            }}
-            variant="primary"
-            style={styles.actionBtn}
-          />
+          {/* Action Buttons */}
+          <View style={styles.confirmActions}>
+            <Button
+              title="View in My Bookings"
+              onPress={() => {
+                navigation.navigate('MainTabs', { screen: 'BookingsTab' });
+              }}
+              variant="primary"
+              size="lg"
+              leftIcon="calendar-outline"
+              style={styles.confirmPrimaryBtn}
+            />
 
-          <Button
-            title="Back to Home"
-            onPress={() => {
-              navigation.navigate('MainTabs', { screen: 'HomeTab' });
-            }}
-            variant="outline"
-            style={[styles.actionBtn, { marginTop: spacing.sm }]}
-          />
+            <Button
+              title="Back to Home"
+              onPress={() => {
+                navigation.navigate('MainTabs', { screen: 'HomeTab' });
+              }}
+              variant="outline"
+              size="lg"
+              leftIcon="home-outline"
+              style={styles.confirmSecondaryBtn}
+            />
+          </View>
         </ScrollView>
       </View>
     );
@@ -590,31 +928,69 @@ export default function RequestServiceScreen({ route, navigation }) {
           </View>
         </Card>
 
-        {/* Provider Services Selection (if provider has multiple services or no service chosen yet) */}
+        {/* Provider Services Selection (if provider has services to pick from) */}
         {providerServices.length > 0 && (
           <Card style={styles.summaryCard}>
-            <Text style={styles.sectionTitle}>Select Service from Provider</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: 4 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={styles.sectionTitleNoMargin}>Select Service from Provider</Text>
+              <Badge
+                label={currentService ? 'Selected' : 'Required'}
+                variant={currentService ? 'success' : 'warning'}
+                size="sm"
+              />
+            </View>
+            <Text style={{ ...typography.caption, color: colors.slate500, marginBottom: 10 }}>
+              Pick the specific service you need this provider to perform:
+            </Text>
+            <View style={{ gap: 8 }}>
               {providerServices.map((ps) => {
-                const isSelected = currentService?._id === ps._id;
-                const psPrice = Number(ps.basePrice || ps.price || 0);
+                const isSelected = String(currentService?._id) === String(ps._id);
+                const rawPrice = Number(ps.price !== undefined ? ps.price : ps.basePrice);
+                const psPrice = !isNaN(rawPrice) && rawPrice >= 0 ? rawPrice : 0;
+                const categoryName = ps.category?.name || (typeof ps.category === 'string' && ps.category.trim() ? ps.category : 'General Service');
+                const duration = ps.estimatedDurationMinutes || ps.duration;
                 return (
                   <TouchableOpacity
                     key={ps._id}
-                    style={[styles.savedAddressChip, isSelected && styles.savedAddressChipSelected]}
-                    onPress={() => setCurrentService(ps)}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: 12,
+                      borderRadius: 10,
+                      backgroundColor: isSelected ? 'rgba(124, 58, 237, 0.08)' : colors.card,
+                      borderWidth: 1.5,
+                      borderColor: isSelected ? colors.primary : colors.slate200
+                    }}
+                    onPress={() => {
+                      setCurrentService(ps);
+                      setServiceLoadError(null);
+                    }}
                     activeOpacity={0.8}
                   >
-                    <Text style={[styles.savedAddressChipTitle, isSelected && styles.savedAddressChipTitleSelected]}>
-                      {ps.name}
-                    </Text>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: isSelected ? colors.primaryDark : colors.slate700, marginTop: 2 }}>
-                      ₹{psPrice.toLocaleString('en-IN')}
-                    </Text>
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text style={{ ...typography.bodyMedium, fontWeight: isSelected ? '700' : '600', color: isSelected ? colors.primaryDark : colors.slate900 }}>
+                        {ps.name}
+                      </Text>
+                      <Text style={{ ...typography.caption, color: colors.slate500, marginTop: 2 }}>
+                        {categoryName}{duration ? ` • ${duration} mins` : ''}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: isSelected ? colors.primaryDark : colors.slate900 }}>
+                        ₹{psPrice.toLocaleString('en-IN')}
+                      </Text>
+                      {isSelected && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                          <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Selected</Text>
+                        </View>
+                      )}
+                    </View>
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
+            </View>
           </Card>
         )}
 
@@ -625,14 +1001,16 @@ export default function RequestServiceScreen({ route, navigation }) {
             <View style={styles.summaryRow}>
               <View style={styles.summaryInfo}>
                 <Text style={styles.summaryTitle}>{currentService.name}</Text>
-                <Text style={styles.summarySub}>{currentService.category?.name || 'General'}</Text>
+                <Text style={styles.summarySub}>
+                  {currentService.category?.name || (typeof currentService.category === 'string' && currentService.category.trim() ? currentService.category : 'General')}
+                </Text>
               </View>
               <View style={styles.summaryPriceCol}>
                 <Text style={styles.summaryPrice}>
                   ₹{effectiveBasePrice.toLocaleString('en-IN')}
                 </Text>
                 <Badge
-                  label={PRICING_LABELS[currentService.pricingType] || currentService.pricingType || 'Fixed'}
+                  label={PRICING_LABELS[currentService.pricingType || currentService.priceType] || currentService.pricingType || currentService.priceType || 'Fixed'}
                   variant="slate"
                   size="sm"
                 />
@@ -643,8 +1021,10 @@ export default function RequestServiceScreen({ route, navigation }) {
           <Card style={[styles.summaryCard, { borderColor: '#FECACA', backgroundColor: '#FEF2F2' }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Ionicons name="alert-circle" size={20} color="#DC2626" />
-              <Text style={{ ...typography.bodyMedium, color: '#B91C1C', fontWeight: '600' }}>
-                {loadingService ? 'Loading service details...' : serviceLoadError || 'No service selected. Please pick a service to proceed.'}
+              <Text style={{ ...typography.bodyMedium, color: '#B91C1C', fontWeight: '600', flex: 1 }}>
+                {loadingService
+                  ? 'Loading service details...'
+                  : serviceLoadError || (providerServices.length > 0 ? 'Please choose one of the provider services above to proceed.' : 'No service selected. Please pick a service to proceed.')}
               </Text>
             </View>
           </Card>
@@ -754,6 +1134,105 @@ export default function RequestServiceScreen({ route, navigation }) {
                 );
               })}
             </View>
+
+            {/* Provider Slot Availability Status Banner */}
+            {(currentProvider || providerId) && (
+              <View style={styles.slotAvailabilityBox}>
+                {checkingAvailability ? (
+                  <View style={styles.availabilityLoadingRow}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.availabilityLoadingText}>Checking provider schedule for this time...</Text>
+                  </View>
+                ) : availabilityStatus === 'available' ? (
+                  <View style={styles.availableBanner}>
+                    <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.availableBannerTitle}>Available at selected time</Text>
+                      <Text style={styles.availableBannerSub}>
+                        {currentProvider?.businessName || 'Provider'} is free and ready to accept your booking for this time window.
+                      </Text>
+                    </View>
+                  </View>
+                ) : availabilityStatus === 'busy' ? (
+                  <View style={styles.busyBanner}>
+                    <Ionicons name="time" size={18} color="#EF4444" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.busyBannerTitle}>Busy / Not Available</Text>
+                      <Text style={styles.busyBannerSub}>
+                        {busyReason || `${currentProvider?.businessName || 'The selected provider'} already has a booking during this time.`}
+                      </Text>
+                    </View>
+                  </View>
+                ) : availabilityStatus === 'unavailable' ? (
+                  <View style={styles.unavailableBanner}>
+                    <Ionicons name="information-circle" size={18} color="#6B7280" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.unavailableBannerTitle}>Availability could not be verified</Text>
+                      <Text style={styles.unavailableBannerSub}>{busyReason || 'Availability could not be verified.'}</Text>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+            )}
+
+            {/* Same-Category Alternative Providers Suggestion Box */}
+            {availabilityStatus === 'busy' && (
+              <View style={styles.alternativesSection}>
+                <View style={styles.alternativesHeaderRow}>
+                  <Ionicons name="people" size={16} color="#7C3AED" />
+                  <Text style={styles.alternativesHeaderTitle}>
+                    Available {currentProvider?.categories?.[0]?.name || currentService?.category?.name || 'Category'} Specialists at this Time
+                  </Text>
+                </View>
+
+                {alternativeProviders.length > 0 ? (
+                  <View style={{ gap: spacing.sm, marginTop: spacing.xs }}>
+                    <Text style={styles.alternativesIntroText}>
+                      We found other verified professionals in the exact same category who are free right now:
+                    </Text>
+                    {alternativeProviders.map((alt) => (
+                      <View key={alt._id} style={styles.altCard}>
+                        <View style={{ flex: 1, marginRight: spacing.sm }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={styles.altName} numberOfLines={1}>
+                              {alt.businessName}
+                            </Text>
+                            <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                          </View>
+                          <Text style={styles.altSub} numberOfLines={1}>
+                            ⭐ {alt.rating?.average?.toFixed(1) || '5.0'} • {alt.experienceYears || 1} yrs exp
+                            {alt.startingPrice ? ` • Starts ₹${alt.startingPrice}` : ''}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.switchWorkerBtn}
+                          onPress={() => {
+                            // Switch selected provider to this alternative
+                            setCurrentProvider(alt);
+                            Alert.alert(
+                              'Provider Selected',
+                              `Switched provider to ${alt.businessName}. You can now proceed with your booking at this time slot!`
+                            );
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.switchWorkerBtnText}>Select</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.noAlternativesBox}>
+                    <Text style={styles.noAlternativesText}>
+                      No other verified {currentProvider?.categories?.[0]?.name || 'category'} providers are available for this specific slot.
+                    </Text>
+                    <Text style={styles.noAlternativesSubText}>
+                      Tip: Please try selecting another date or another convenient time window above!
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
           </Card>
         )}
 
@@ -954,18 +1433,18 @@ export default function RequestServiceScreen({ route, navigation }) {
 
         {/* Pricing Summary */}
         <Card style={styles.summaryCard}>
-          <Text style={styles.sectionTitle}>Price Summary</Text>
-          <View style={styles.confirmRow}>
+          <Text style={styles.priceSummaryTitle}>Price Summary</Text>
+          <View style={styles.priceSummaryRow}>
             <Text style={styles.confirmKey}>Base Service Price</Text>
             <Text style={styles.confirmVal}>₹{effectiveBasePrice.toLocaleString('en-IN')}</Text>
           </View>
-          <View style={styles.confirmRow}>
+          <View style={styles.priceSummaryRow}>
             <Text style={styles.confirmKey}>Platform Convenience Fee</Text>
-            <Text style={styles.confirmVal}>FREE</Text>
+            <Text style={styles.confirmValFree}>FREE</Text>
           </View>
           <View style={styles.divider} />
-          <View style={styles.confirmRow}>
-            <Text style={[styles.confirmKey, { fontWeight: '700', color: colors.slate900 }]}>Total Payable</Text>
+          <View style={styles.priceSummaryRow}>
+            <Text style={styles.totalPayableLabel}>Total Payable</Text>
             <Text style={styles.confirmValPrice}>
               ₹{effectiveTotal.toLocaleString('en-IN')}
             </Text>
@@ -1039,7 +1518,57 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   summaryCard: {
+    backgroundColor: '#1E1A2E',
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#362E4F',
+    padding: spacing.lg,
     marginBottom: spacing.md
+  },
+  priceSummaryTitle: {
+    ...typography.titleSmall,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    marginBottom: spacing.sm
+  },
+  priceSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 7
+  },
+  confirmKey: {
+    fontSize: 14,
+    color: '#A7A4BC',
+    fontWeight: '500'
+  },
+  confirmVal: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    textAlign: 'right'
+  },
+  confirmValFree: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#34D399',
+    textAlign: 'right'
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#312845',
+    marginVertical: spacing.sm
+  },
+  totalPayableLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  confirmValPrice: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#A855F7',
+    textAlign: 'right'
   },
   formCard: {
     marginBottom: spacing.md
@@ -1165,35 +1694,35 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: borderRadius.md,
     borderWidth: 1.5,
-    borderColor: colors.slate200,
-    backgroundColor: colors.slate50
+    borderColor: '#2D2845',
+    backgroundColor: '#161420'
   },
   paymentOptionCardActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySubtle
+    borderColor: '#7C3AED',
+    backgroundColor: 'rgba(124, 58, 237, 0.12)'
   },
   paymentOptionIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.white,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#201A36',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: colors.slate200
+    borderColor: '#3D2F66'
   },
   paymentOptionTitle: {
     ...typography.bodyMedium,
     fontWeight: '600',
-    color: colors.slate800
+    color: '#E2E8F0'
   },
   paymentOptionTitleActive: {
-    color: colors.primaryDark,
+    color: '#FFFFFF',
     fontWeight: '700'
   },
   paymentOptionSub: {
     ...typography.caption,
-    color: colors.slate500,
+    color: '#9CA3AF',
     marginTop: 2
   },
   paymentNoticeBox: {
@@ -1282,77 +1811,432 @@ const styles = StyleSheet.create({
   submitBtn: {
     marginTop: spacing.sm
   },
+  confirmContainer: {
+    flex: 1,
+    backgroundColor: '#0B0B0E'
+  },
+  confirmScrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    alignItems: 'center'
+  },
   successHeader: {
     alignItems: 'center',
-    marginBottom: spacing.xl,
-    paddingTop: spacing.lg
+    marginBottom: spacing.lg,
+    width: '100%'
   },
-  successIconCircle: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: colors.successSubtle,
+  successIconHalo: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.25)'
+  },
+  successIconCircle: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: 'rgba(16, 185, 129, 0.22)',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   successTitle: {
     ...typography.titleLarge,
-    color: colors.slate900,
-    marginBottom: spacing.xs
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: spacing.xs,
+    textAlign: 'center'
   },
   successSubtitle: {
     ...typography.bodyMedium,
-    color: colors.slate600,
+    color: '#9CA3AF',
     textAlign: 'center',
-    maxWidth: 290
+    maxWidth: 320,
+    lineHeight: 20
+  },
+  refBanner: {
+    width: '100%',
+    maxWidth: 580,
+    backgroundColor: '#161420',
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#252136',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md
+  },
+  refInfoCol: {
+    flex: 1,
+    marginRight: spacing.sm
+  },
+  refLabelText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: '#A78BFA',
+    marginBottom: 2
+  },
+  refCodeText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.5
+  },
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.35)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: borderRadius.md
+  },
+  copyButtonActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: 'rgba(16, 185, 129, 0.35)'
+  },
+  copyButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#A78BFA'
+  },
+  copyButtonTextActive: {
+    color: '#34D399'
   },
   confirmCard: {
-    marginBottom: spacing.xl
+    width: '100%',
+    maxWidth: 580,
+    backgroundColor: '#161420',
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#252136',
+    padding: spacing.lg,
+    marginBottom: spacing.lg
   },
-  confirmRefRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  confirmRefLabel: {
-    ...typography.caption,
-    color: colors.slate500,
-    textTransform: 'uppercase'
-  },
-  confirmRefValue: {
-    ...typography.titleSmall,
-    color: colors.primary,
-    fontWeight: '700'
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.slate100,
-    marginVertical: spacing.md
+  confirmCardSectionHeader: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    color: '#A78BFA',
+    marginBottom: spacing.md
   },
   confirmRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#201D2D'
   },
-  confirmKey: {
-    ...typography.bodyMedium,
-    color: colors.slate500
+  confirmLabelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0
   },
-  confirmVal: {
-    ...typography.bodyMedium,
-    fontWeight: '600',
-    color: colors.slate800,
+  confirmLabel: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    fontWeight: '500'
+  },
+  confirmValueWrap: {
+    flex: 1,
+    alignItems: 'flex-end',
+    marginLeft: spacing.md
+  },
+  confirmValue: {
+    fontSize: 13,
+    color: '#FFFFFF',
+    fontWeight: '500',
     textAlign: 'right',
-    maxWidth: '60%'
+    lineHeight: 18
   },
-  confirmValPrice: {
-    ...typography.titleSmall,
-    color: colors.slate900,
-    fontWeight: '700'
+  confirmValueBold: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    textAlign: 'right',
+    lineHeight: 19
+  },
+  confirmMonoValue: {
+    fontSize: 11,
+    color: '#DDD6FE',
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    textAlign: 'right'
+  },
+  confirmTotalBox: {
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    backgroundColor: 'rgba(124, 58, 237, 0.08)',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.25)',
+    padding: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  confirmTotalLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  confirmTotalSub: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2
+  },
+  confirmTotalAmount: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#34D399'
+  },
+  confirmTeamSection: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: '#252136'
+  },
+  confirmTeamHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm
+  },
+  confirmTeamHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  confirmTeamTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  teamConfirmedBox: {
+    backgroundColor: 'rgba(124, 58, 237, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.25)',
+    padding: spacing.md,
+    borderRadius: borderRadius.md
+  },
+  teamConfirmedTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#DDD6FE'
+  },
+  teamRolesWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: spacing.xs
+  },
+  teamRolePill: {
+    backgroundColor: '#2D1B69',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: '#7C3AED'
+  },
+  teamRolePillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#EDE9FE'
+  },
+  teamPendingBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.25)',
+    padding: spacing.md,
+    borderRadius: borderRadius.md
+  },
+  teamPendingText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#FCD34D',
+    lineHeight: 17
+  },
+  confirmActions: {
+    width: '100%',
+    maxWidth: 580,
+    gap: spacing.sm
+  },
+  confirmPrimaryBtn: {
+    width: '100%',
+    minHeight: 48,
+    borderRadius: borderRadius.md
+  },
+  confirmSecondaryBtn: {
+    width: '100%',
+    minHeight: 48,
+    borderRadius: borderRadius.md,
+    borderColor: 'rgba(124, 58, 237, 0.5)'
   },
   actionBtn: {
     width: '100%'
+  },
+  slotAvailabilityBox: {
+    marginTop: spacing.sm
+  },
+  availabilityLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs
+  },
+  availabilityLoadingText: {
+    ...typography.caption,
+    color: colors.slate500,
+    fontSize: 12
+  },
+  availableBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm
+  },
+  availableBannerTitle: {
+    ...typography.bodySmall,
+    fontWeight: '700',
+    color: '#065F46'
+  },
+  availableBannerSub: {
+    ...typography.caption,
+    color: '#047857',
+    marginTop: 2,
+    lineHeight: 16
+  },
+  busyBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm
+  },
+  busyBannerTitle: {
+    ...typography.bodySmall,
+    fontWeight: '700',
+    color: '#991B1B'
+  },
+  busyBannerSub: {
+    ...typography.caption,
+    color: '#B91C1C',
+    marginTop: 2,
+    lineHeight: 16
+  },
+  unavailableBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm
+  },
+  unavailableBannerTitle: {
+    ...typography.bodySmall,
+    fontWeight: '700',
+    color: '#374151'
+  },
+  unavailableBannerSub: {
+    ...typography.caption,
+    color: '#4B5563',
+    marginTop: 2,
+    lineHeight: 16
+  },
+  alternativesSection: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.slate100
+  },
+  alternativesHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: spacing.xs
+  },
+  alternativesHeaderTitle: {
+    ...typography.bodyMedium,
+    fontWeight: '700',
+    color: '#6D28D9'
+  },
+  alternativesIntroText: {
+    ...typography.caption,
+    color: colors.slate600,
+    marginBottom: 4
+  },
+  altCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F5F3FF',
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm
+  },
+  altName: {
+    ...typography.bodySmall,
+    fontWeight: '700',
+    color: colors.slate900
+  },
+  altSub: {
+    ...typography.caption,
+    color: colors.slate600,
+    marginTop: 2
+  },
+  switchWorkerBtn: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm
+  },
+  switchWorkerBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12
+  },
+  noAlternativesBox: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginTop: spacing.xs,
+    borderWidth: 1,
+    borderColor: '#E5E7EB'
+  },
+  noAlternativesText: {
+    ...typography.bodySmall,
+    fontWeight: '600',
+    color: colors.slate700
+  },
+  noAlternativesSubText: {
+    ...typography.caption,
+    color: colors.slate500,
+    marginTop: 4
   }
 });

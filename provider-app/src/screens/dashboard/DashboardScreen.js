@@ -7,13 +7,18 @@ import {
   RefreshControl,
   TouchableOpacity,
   Switch,
-  ActivityIndicator
+  ActivityIndicator,
+  Image,
+  Alert,
+  Platform
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { bookingApi, providerApi } from '../../services/api';
+import { getApiBaseUrl } from '../../config/env';
 import { Card, Badge, Button } from '../../components/common';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -31,6 +36,101 @@ export default function DashboardScreen({ navigation }) {
   const [toggleLoading, setToggleLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [cacheBuster, setCacheBuster] = useState(Date.now());
+
+  // Helper to format avatar URL with full backend base URL for relative paths
+  const getFullAvatarUrl = useCallback((avatarPath) => {
+    if (!avatarPath || typeof avatarPath !== 'string') return null;
+    const trimmed = avatarPath.trim();
+    if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return null;
+    let url = trimmed;
+    if (url.startsWith('/')) {
+      const baseUrl = getApiBaseUrl().replace(/\/api\/?$/, '');
+      url = `${baseUrl}${url}`;
+    }
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}v=${cacheBuster}`;
+  }, [cacheBuster]);
+
+  const handlePickAndUploadPhoto = async () => {
+    if (uploadingPhoto) return;
+
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Photo library access is required to update your profile photo. Please enable it in system settings.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      if (!asset.uri) {
+        Alert.alert('Upload Error', 'Selected image could not be loaded.');
+        return;
+      }
+
+      setUploadingPhoto(true);
+      setImageError(false);
+
+      const formData = new FormData();
+      const uri = asset.uri;
+      const cleanExt = (asset.mimeType?.includes('png') || uri.endsWith('.png')) ? 'png' : 'jpg';
+      const safeFilename = `provider_avatar_${Date.now()}.${cleanExt}`;
+      const safeMimeType = asset.mimeType || (cleanExt === 'png' ? 'image/png' : 'image/jpeg');
+
+      if (Platform.OS === 'web') {
+        if (asset.file instanceof Blob) {
+          formData.append('avatar', asset.file, safeFilename);
+        } else {
+          const fetchRes = await fetch(uri);
+          const blob = await fetchRes.blob();
+          const file = new File([blob], safeFilename, { type: safeMimeType });
+          formData.append('avatar', file, safeFilename);
+        }
+      } else {
+        formData.append('avatar', {
+          uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
+          name: safeFilename,
+          type: safeMimeType
+        });
+      }
+
+      const res = await providerApi.uploadAvatar(formData);
+      if (res?.success && res.data) {
+        setProfile(res.data);
+        setCacheBuster(Date.now());
+        setImageError(false);
+        await checkAuthSession();
+        Alert.alert('Success', 'Profile photo updated successfully!');
+      } else {
+        Alert.alert('Upload Failed', res?.message || 'Could not update profile photo.');
+      }
+    } catch (err) {
+      console.error('Dashboard photo upload error:', err);
+      Alert.alert(
+        'Upload Failed',
+        err.userMessage || err.message || 'An error occurred while uploading your profile photo.'
+      );
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -46,6 +146,8 @@ export default function DashboardScreen({ navigation }) {
       if (profileRes?.data) {
         setProfile(profileRes.data);
         setIsAvailable(Boolean(profileRes.data.isAvailable));
+        setImageError(false);
+        setCacheBuster(Date.now());
       }
 
       const pendingList = pendingRes?.data || [];
@@ -97,16 +199,58 @@ export default function DashboardScreen({ navigation }) {
   };
 
   const verificationStatus = profile?.verificationStatus || 'pending';
-  const providerDisplayName = profile?.businessName || user?.name || 'Service Partner';
+  const providerDisplayName = profile?.businessName || profile?.user?.name || user?.name || 'Service Provider';
+  const rawAvatarPath = profile?.user?.avatar || user?.avatar || profile?.avatar;
+  const avatarUrl = !imageError ? getFullAvatarUrl(rawAvatarPath) : null;
+  // Reset error flag when avatar source changes to allow reloading
+  useEffect(() => {
+    if (rawAvatarPath) {
+      setImageError(false);
+    }
+  }, [rawAvatarPath]);
 
   return (
     <View style={styles.container}>
       {/* Top Header Row matching Customer App styling */}
       <View style={[styles.headerContainer, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerLeft}>
-          <View style={styles.providerAvatarCircle}>
-            <Ionicons name="business" size={20} color="#A78BFA" />
-          </View>
+          <TouchableOpacity
+            style={styles.providerAvatarCircle}
+            onPress={handlePickAndUploadPhoto}
+            activeOpacity={0.8}
+            disabled={uploadingPhoto}
+            accessibilityLabel="Update Profile Photo"
+          >
+            {avatarUrl ? (
+              <Image
+                source={{ uri: avatarUrl }}
+                style={styles.avatarImage}
+                onLoadStart={() => setImageLoading(true)}
+                onLoadEnd={() => setImageLoading(false)}
+                onError={() => {
+                  setImageLoading(false);
+                  setImageError(true);
+                }}
+              />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Ionicons name="business" size={20} color="#A78BFA" />
+              </View>
+            )}
+
+            {/* Loading Indicator Overlay */}
+            {(imageLoading || uploadingPhoto) && (
+              <View style={styles.avatarLoadingOverlay}>
+                <ActivityIndicator size="small" color="#A78BFA" />
+              </View>
+            )}
+
+            {/* Small camera edit badge */}
+            <View style={styles.cameraIconBadge}>
+              <Ionicons name="camera" size={10} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+
           <View style={styles.userTextCol}>
             <Text style={styles.greetingText}>Hello, {providerDisplayName.split(' ')[0]}</Text>
             <View style={styles.statusIndicatorRow}>
@@ -285,7 +429,7 @@ export default function DashboardScreen({ navigation }) {
               <View style={styles.quickIconCircle}>
                 <Ionicons name="pricetag-outline" size={20} color="#A78BFA" />
               </View>
-              <Text style={styles.quickActionTitle}>Services</Text>
+              <Text style={styles.quickActionTitle}>My Services</Text>
               <Text style={styles.quickActionSub}>Rates & catalog</Text>
             </TouchableOpacity>
 
@@ -440,6 +584,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E1B2E',
     borderWidth: 1.5,
     borderColor: '#36314D',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    overflow: 'hidden'
+  },
+  avatarImage: {
+    width: 41,
+    height: 41,
+    borderRadius: 20.5
+  },
+  avatarFallback: {
+    width: 41,
+    height: 41,
+    borderRadius: 20.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1E1B2E'
+  },
+  avatarLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 22,
+    backgroundColor: 'rgba(11, 11, 14, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  cameraIconBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#7C3AED',
+    borderWidth: 1.5,
+    borderColor: '#0B0B0E',
     alignItems: 'center',
     justifyContent: 'center'
   },

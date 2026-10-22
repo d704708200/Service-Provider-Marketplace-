@@ -352,7 +352,7 @@ export default function HomeScreen({ navigation }) {
                   key={item._id || item.id}
                   style={styles.quickServiceCard}
                   onPress={() => {
-                    navigation.navigate('CategoryServices', {
+                    navigation.navigate('Providers', {
                       categoryId: item._id,
                       categoryName: item.name,
                       categoryDescription: item.description
@@ -377,35 +377,41 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Popular Services</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('SearchTab')}>
+            <TouchableOpacity onPress={() => navigation.navigate('ServicesTab')}>
               <Text style={styles.seeAllText}>View all</Text>
             </TouchableOpacity>
           </View>
 
-          {popularServices.length === 0 ? (
+          {popularServices.length === 0 && featuredServices.length === 0 ? (
             <View style={styles.emptySectionBox}>
               <Text style={styles.emptySectionText}>No popular services currently featured.</Text>
             </View>
           ) : (
             <View style={styles.popularRow}>
-              {popularServices.slice(0, 3).map((item, index) => {
+              {(featuredServices.length > 0 ? featuredServices : popularServices).slice(0, 3).map((item, index) => {
                 const defaultPrices = [299, 499, 599];
                 const displayPrice = item.basePrice || item.price || defaultPrices[index % defaultPrices.length];
+                const categoryObj = typeof item.category === 'object' ? item.category : null;
+                const categoryId = categoryObj?._id || item.category || item._id;
+                const categoryName = categoryObj?.name || item.name;
+
                 return (
                   <TouchableOpacity
                     key={item._id || item.id}
                     style={styles.popularServiceCard}
                     onPress={() => {
-                      navigation.navigate('CategoryServices', {
-                        categoryId: item._id,
-                        categoryName: item.name,
-                        categoryDescription: item.description
+                      // Navigate to Providers list matching this specific service and its category
+                      navigation.navigate('Providers', {
+                        serviceId: item._id,
+                        serviceName: item.name,
+                        categoryId,
+                        categoryName
                       });
                     }}
                     activeOpacity={0.7}
                   >
                     <View style={styles.popularIconCircle}>
-                      <Ionicons name={resolveIconName(item.icon, item.name)} size={18} color="#A78BFA" />
+                      <Ionicons name={resolveIconName(item.icon || categoryObj?.icon, item.name)} size={18} color="#A78BFA" />
                     </View>
                     <Text style={styles.popularCardTitle} numberOfLines={1}>{item.name}</Text>
                     <Text style={styles.popularPriceFrom}>
@@ -609,7 +615,7 @@ export default function HomeScreen({ navigation }) {
                 style={styles.allServiceCard}
                 onPress={() => {
                   if (item._id && !item._id.startsWith('as')) {
-                    navigation.navigate('CategoryServices', {
+                    navigation.navigate('Providers', {
                       categoryId: item._id,
                       categoryName: item.name,
                       categoryDescription: item.description

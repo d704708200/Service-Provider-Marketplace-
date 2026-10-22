@@ -1328,15 +1328,20 @@ const validateSubmitSpareParts = (req, res, next) => {
   const { items } = req.body;
   const errors = [];
 
-  if (!items || !Array.isArray(items) || items.length === 0) {
+  if (!items || !Array.isArray(items)) {
     return res.status(400).json({
       success: false,
       error: {
-        message: 'Validation failed: At least one spare part or material item is required',
+        message: 'Validation failed: Items must be provided as an array',
         statusCode: 400,
         timestamp: new Date().toISOString()
       }
     });
+  }
+
+  // Spare parts and materials are optional: an empty items array indicates no extra materials
+  if (items.length === 0) {
+    return next();
   }
 
   items.forEach((item, index) => {

@@ -163,6 +163,13 @@ export const providerApi = {
   getProviderById: async (id) => {
     const response = await api.get(`/providers/${id}`);
     return response.data;
+  },
+  checkSlotAvailability: async (providerId, params = {}) => {
+    if (!providerId || String(providerId) === 'undefined' || String(providerId) === 'null') {
+      return { success: false, data: { isAvailable: false, status: 'unavailable' } };
+    }
+    const response = await api.get(`/providers/${providerId}/availability-check`, { params });
+    return response.data;
   }
 };
 

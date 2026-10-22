@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { providerApi, reviewApi } from '../../services/api';
+import { providerApi, reviewApi, serviceApi } from '../../services/api';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView } from '../../components/common';
 import { formatRating, formatReviewCount, formatExperience } from '../../utils/formatters';
 import colors from '../../theme/colors';
@@ -15,7 +15,8 @@ import { spacing, typography, borderRadius, shadows } from '../../theme';
 
 export default function ProviderDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
-  const { providerId } = route.params || {};
+  const { providerId, selectedServiceId, serviceId } = route.params || {};
+  const targetServiceId = selectedServiceId || serviceId;
 
   const [provider, setProvider] = useState(null);
   const [providerReviews, setProviderReviews] = useState([]);
@@ -30,7 +31,80 @@ export default function ProviderDetailScreen({ route, navigation }) {
         providerApi.getById(providerId),
         reviewApi.getProviderReviews(providerId, { limit: 10 }).catch(() => null)
       ]);
-      setProvider(res.data);
+      const providerData = res?.data;
+      const providerSpecificServices = Array.isArray(providerData?.services) ? providerData.services : [];
+
+      // Extract all unique category IDs registered to this provider
+      const rawCategories = Array.isArray(providerData?.categories)
+        ? providerData.categories
+        : Array.isArray(providerData?.serviceCategories)
+        ? providerData.serviceCategories
+        : [];
+
+      const categoryIds = [
+        ...new Set(
+          rawCategories
+            .map((c) => (c && typeof c === 'object' ? c._id || c.id : c))
+            .filter((id) => typeof id === 'string' && id.trim().length > 0)
+        )
+      ];
+
+      // Prioritize provider's own saved services from their catalog
+      const providerUserId = providerData?.user?._id || providerData?.user;
+      const ownServices = providerSpecificServices.filter(
+        (s) => s && s.provider && (
+          String(s.provider._id || s.provider) === String(providerId) ||
+          (providerUserId && String(s.provider._id || s.provider) === String(providerUserId))
+        )
+      );
+
+      let combinedServices = ownServices.length > 0 ? ownServices : providerSpecificServices;
+
+      // Only fetch catalog template services if provider has zero services configured
+      if (combinedServices.length === 0 && categoryIds.length > 0) {
+        try {
+          const catalogResponses = await Promise.all(
+            categoryIds.map((catId) =>
+              serviceApi.getAll({ category: catId }).catch((catErr) => {
+                console.warn(`Could not fetch catalog services for category ${catId}:`, catErr.message);
+                return null;
+              })
+            )
+          );
+
+          const catalogServices = [];
+          catalogResponses.forEach((srvRes) => {
+            const list = Array.isArray(srvRes?.data)
+              ? srvRes.data
+              : Array.isArray(srvRes?.data?.services)
+              ? srvRes.data.services
+              : [];
+            catalogServices.push(...list);
+          });
+
+          const seenServiceIds = new Set();
+          for (const srv of catalogServices) {
+            if (!srv || !srv._id) continue;
+            const sid = String(srv._id);
+            if (!seenServiceIds.has(sid)) {
+              seenServiceIds.add(sid);
+              combinedServices.push(srv);
+            }
+          }
+        } catch (catErr) {
+          console.warn('Could not fetch catalog services for provider categories:', catErr.message);
+        }
+      }
+
+      const enrichedProvider = { ...providerData, services: combinedServices };
+      setProvider(enrichedProvider);
+
+      console.log('[Diagnostic: ProviderDetailScreen]', {
+        providerId,
+        businessName: enrichedProvider?.businessName,
+        servicesCount: combinedServices.length,
+        services: combinedServices.map((s) => ({ id: s._id, name: s.name }))
+      });
       if (reviewsRes?.data) {
         setProviderReviews(Array.isArray(reviewsRes.data) ? reviewsRes.data : []);
       }
@@ -169,40 +243,53 @@ export default function ProviderDetailScreen({ route, navigation }) {
           <Card style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Services Offered</Text>
             <View style={{ gap: spacing.sm }}>
-              {provider.services.map((srv) => (
-                <View
-                  key={srv._id}
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    paddingVertical: spacing.sm,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.slate100
-                  }}
-                >
-                  <View style={{ flex: 1, marginRight: spacing.sm }}>
-                    <Text style={{ ...typography.bodyMedium, fontWeight: '700', color: colors.slate900 }}>
-                      {srv.name}
-                    </Text>
-                    <Text style={{ ...typography.caption, color: colors.slate500 }}>
-                      ₹{Number(srv.basePrice || srv.price || 0).toLocaleString('en-IN')} • {srv.estimatedDurationMinutes || 60} mins
-                    </Text>
+              {provider.services.map((srv) => {
+                const isSelected = targetServiceId && String(srv._id) === String(targetServiceId);
+                return (
+                  <View
+                    key={srv._id}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      paddingVertical: spacing.sm,
+                      paddingHorizontal: isSelected ? spacing.sm : 0,
+                      backgroundColor: isSelected ? '#F5F3FF' : 'transparent',
+                      borderRadius: isSelected ? borderRadius.sm : 0,
+                      borderWidth: isSelected ? 1 : 0,
+                      borderColor: isSelected ? '#DDD6FE' : 'transparent',
+                      borderBottomWidth: isSelected ? 1 : 1,
+                      borderBottomColor: isSelected ? '#DDD6FE' : colors.slate100
+                    }}
+                  >
+                    <View style={{ flex: 1, marginRight: spacing.sm }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={{ ...typography.bodyMedium, fontWeight: '700', color: colors.slate900 }}>
+                          {srv.name}
+                        </Text>
+                        {isSelected && (
+                          <Badge label="Selected" variant="primary" size="sm" />
+                        )}
+                      </View>
+                      <Text style={{ ...typography.caption, color: colors.slate500 }}>
+                        ₹{Number(srv.basePrice || srv.price || 0).toLocaleString('en-IN')} • {srv.estimatedDurationMinutes || 60} mins
+                      </Text>
+                    </View>
+                    <Button
+                      title="Book"
+                      size="sm"
+                      onPress={() =>
+                        navigation.navigate('RequestService', {
+                          providerId: provider._id,
+                          provider,
+                          serviceId: srv._id,
+                          service: srv
+                        })
+                      }
+                    />
                   </View>
-                  <Button
-                    title="Book"
-                    size="sm"
-                    onPress={() =>
-                      navigation.navigate('RequestService', {
-                        providerId: provider._id,
-                        provider,
-                        serviceId: srv._id,
-                        service: srv
-                      })
-                    }
-                  />
-                </View>
-              ))}
+                );
+              })}
             </View>
           </Card>
         )}
@@ -303,12 +390,18 @@ export default function ProviderDetailScreen({ route, navigation }) {
         <Button
           title="Request Service with this Provider"
           onPress={() => {
-            const defaultService = Array.isArray(provider.services) && provider.services.length > 0 ? provider.services[0] : undefined;
+            const hasServices = Array.isArray(provider.services) && provider.services.length > 0;
+            // Prefer the targeted service from route navigation if present
+            const matchedTargetService = targetServiceId && hasServices
+              ? provider.services.find((s) => String(s._id) === String(targetServiceId))
+              : null;
+            // Only auto-select if target service was matched or if there is exactly 1 service; otherwise leave undefined
+            const preselectedService = matchedTargetService || (hasServices && provider.services.length === 1 ? provider.services[0] : undefined);
             navigation.navigate('RequestService', {
               providerId: provider._id,
               provider,
-              serviceId: defaultService?._id,
-              service: defaultService
+              serviceId: preselectedService?._id,
+              service: preselectedService
             });
           }}
           style={styles.actionBtn}

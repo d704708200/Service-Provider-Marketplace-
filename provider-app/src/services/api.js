@@ -229,7 +229,11 @@ export const providerServicesApi = {
     return response.data;
   },
   updateService: async (id, data) => {
-    const response = await api.put(`/providers/me/services/${id}`, data);
+    const response = await api.patch(`/providers/me/services/${id}`, data);
+    return response.data;
+  },
+  updateStatus: async (id, isActive) => {
+    const response = await api.patch(`/providers/me/services/${id}/status`, { isActive });
     return response.data;
   },
   deleteService: async (id) => {

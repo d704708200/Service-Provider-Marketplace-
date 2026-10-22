@@ -44,6 +44,9 @@ export default function BookingHistoryScreen({ navigation }) {
   // View Submitted Review Modal State
   const [viewingReview, setViewingReview] = useState(null);
 
+  // Service Team Details Modal State
+  const [teamModalBooking, setTeamModalBooking] = useState(null);
+
   const fetchBookings = useCallback(async () => {
     try {
       setFetchError(null);
@@ -442,6 +445,50 @@ export default function BookingHistoryScreen({ navigation }) {
           </Text>
         </View>
 
+        {/* Service Team Size Section Banner */}
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: item.serviceTeam?.isConfirmed ? 'rgba(124, 58, 237, 0.12)' : 'rgba(245, 158, 11, 0.08)',
+            borderWidth: 1,
+            borderColor: item.serviceTeam?.isConfirmed ? 'rgba(167, 139, 250, 0.25)' : 'rgba(245, 158, 11, 0.2)',
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            paddingVertical: 9,
+            marginBottom: 10
+          }}
+          onPress={() => setTeamModalBooking(item)}
+          activeOpacity={0.8}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+            <Ionicons
+              name="people"
+              size={17}
+              color={item.serviceTeam?.isConfirmed ? '#A78BFA' : '#F59E0B'}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#F3F4F6', fontSize: 13, fontWeight: '700' }}>
+                Service Team:{' '}
+                <Text style={{ color: item.serviceTeam?.isConfirmed ? '#A78BFA' : '#FBBF24', fontWeight: '700' }}>
+                  {item.serviceTeam?.isConfirmed && item.serviceTeam?.totalCount
+                    ? item.serviceTeam.totalCount === 1
+                      ? '1 person'
+                      : `${item.serviceTeam.totalCount} people`
+                    : 'Awaiting Provider Confirmation'}
+                </Text>
+              </Text>
+              {item.serviceTeam?.isConfirmed && Array.isArray(item.serviceTeam?.roles) && item.serviceTeam.roles.length > 0 && (
+                <Text style={{ color: '#9CA3AF', fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                  {item.serviceTeam.roles.map((r) => `${r.role} (${r.count})`).join(', ')}
+                </Text>
+              )}
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={14} color="#9CA3AF" />
+        </TouchableOpacity>
+
         {/* Spare Parts Review Banner */}
         {hasSpareParts && (
           <TouchableOpacity
@@ -552,9 +599,7 @@ export default function BookingHistoryScreen({ navigation }) {
           <TouchableOpacity
             style={styles.viewDetailsActionBtn}
             onPress={() => {
-              if (item.service?._id) {
-                navigation.navigate('ServiceDetail', { serviceId: item.service._id });
-              }
+              navigation.navigate('BookingDetail', { bookingId: item._id, booking: item });
             }}
             activeOpacity={0.8}
           >
@@ -1230,6 +1275,140 @@ export default function BookingHistoryScreen({ navigation }) {
                 activeOpacity={0.8}
               >
                 <Text style={styles.approveBtnText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Service Team Details Modal */}
+      {teamModalBooking && (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Service Team Details</Text>
+                <Text style={styles.modalSubtitle}>
+                  Ref: {teamModalBooking.bookingReference}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setTeamModalBooking(null)}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={22} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {/* Status Header Badge */}
+              <View
+                style={{
+                  backgroundColor: teamModalBooking.serviceTeam?.isConfirmed ? 'rgba(124, 58, 237, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                  borderWidth: 1,
+                  borderColor: teamModalBooking.serviceTeam?.isConfirmed ? '#7C3AED' : '#F59E0B',
+                  borderRadius: 10,
+                  padding: 14,
+                  marginBottom: 16
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons
+                    name={teamModalBooking.serviceTeam?.isConfirmed ? 'checkmark-circle' : 'time-outline'}
+                    size={22}
+                    color={teamModalBooking.serviceTeam?.isConfirmed ? '#10B981' : '#F59E0B'}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>
+                      {teamModalBooking.serviceTeam?.isConfirmed
+                        ? `Team Confirmed: ${
+                            teamModalBooking.serviceTeam.totalCount === 1
+                              ? '1 person'
+                              : `${teamModalBooking.serviceTeam.totalCount} people`
+                          }`
+                        : 'Awaiting Provider Confirmation'}
+                    </Text>
+                    <Text style={{ color: '#D1D5DB', fontSize: 12, marginTop: 2 }}>
+                      {teamModalBooking.serviceTeam?.isConfirmed
+                        ? `Confirmed by service provider${teamModalBooking.serviceTeam.confirmedAt ? ` on ${new Date(teamModalBooking.serviceTeam.confirmedAt).toLocaleDateString('en-IN')}` : ''}.`
+                        : 'The service provider will confirm the number of people attending before arriving.'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Roles Breakdown */}
+              {teamModalBooking.serviceTeam?.isConfirmed && Array.isArray(teamModalBooking.serviceTeam.roles) && teamModalBooking.serviceTeam.roles.length > 0 ? (
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={{ color: '#9CA3AF', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>
+                    Role Breakdown
+                  </Text>
+                  <View style={{ gap: 8 }}>
+                    {teamModalBooking.serviceTeam.roles.map((item, idx) => (
+                      <View
+                        key={idx}
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          backgroundColor: '#161420',
+                          borderWidth: 1,
+                          borderColor: '#252136',
+                          borderRadius: 8,
+                          paddingHorizontal: 14,
+                          paddingVertical: 10
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Ionicons name="person-circle-outline" size={18} color="#A78BFA" />
+                          <Text style={{ color: '#F3F4F6', fontSize: 14, fontWeight: '600' }}>
+                            {item.role}
+                          </Text>
+                        </View>
+                        <View style={{ backgroundColor: '#2D1B69', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 }}>
+                          <Text style={{ color: '#DDD6FE', fontSize: 13, fontWeight: '700' }}>
+                            {item.count} {item.count === 1 ? 'member' : 'members'}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Provider Notes if any */}
+              {teamModalBooking.serviceTeam?.notes ? (
+                <View style={{ marginBottom: 16, backgroundColor: '#161420', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#252136' }}>
+                  <Text style={{ color: '#9CA3AF', fontSize: 12, fontWeight: '600', marginBottom: 4 }}>
+                    Provider Team Notes
+                  </Text>
+                  <Text style={{ color: '#E5E7EB', fontSize: 13 }}>
+                    {teamModalBooking.serviceTeam.notes}
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Important Consumer Safety & Billing Note */}
+              <View style={{ backgroundColor: 'rgba(31, 41, 55, 0.6)', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#374151' }}>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <Ionicons name="shield-checkmark-outline" size={16} color="#10B981" />
+                  <Text style={{ color: '#10B981', fontSize: 12, fontWeight: '700' }}>
+                    Transparent & Fair Pricing
+                  </Text>
+                </View>
+                <Text style={{ color: '#9CA3AF', fontSize: 11, marginTop: 4, lineHeight: 16 }}>
+                  Team size does not increase your booking total. Any extra materials or specialized labour must follow the standard platform proposal and customer approval process.
+                </Text>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActionFooter}>
+              <TouchableOpacity
+                style={[styles.approveBtn, { width: '100%' }]}
+                onPress={() => setTeamModalBooking(null)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.approveBtnText}>Got it</Text>
               </TouchableOpacity>
             </View>
           </View>

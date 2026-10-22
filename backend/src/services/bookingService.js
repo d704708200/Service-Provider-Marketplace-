@@ -19,6 +19,26 @@ const generateBookingReference = () => {
   return `BK-${dateStr}-${randomChars}`;
 };
 
+// Concurrency mutex lock per provider slot to prevent race conditions on simultaneous booking requests
+const bookingLocks = new Map();
+
+const acquireBookingLock = async (lockKey) => {
+  while (bookingLocks.has(lockKey)) {
+    try {
+      await bookingLocks.get(lockKey);
+    } catch (_) {}
+  }
+  let release;
+  const promise = new Promise((resolve) => {
+    release = resolve;
+  });
+  bookingLocks.set(lockKey, promise);
+  return () => {
+    bookingLocks.delete(lockKey);
+    release();
+  };
+};
+
 /**
  * Customer creates a new booking (instant or scheduled)
  */
@@ -65,9 +85,12 @@ const createBooking = async (userId, bookingData) => {
   // 4. Validate Provider (if specified by customer)
   let assignedProvider = null;
   let candidateProviders = [];
+  let releaseLock = null;
+  let newBooking = null;
+  let provider = null;
 
   if (bookingData.providerId) {
-    const provider = await Provider.findById(bookingData.providerId).populate('user');
+    provider = await Provider.findById(bookingData.providerId).populate('user');
     if (!provider) {
       const err = new Error(`Provider with ID '${bookingData.providerId}' not found`);
       err.statusCode = 404;
@@ -114,57 +137,204 @@ const createBooking = async (userId, bookingData) => {
       throw err;
     }
 
-    // Verify Provider Weekly Availability for scheduled booking
+    // Concurrency lock per provider slot to prevent race conditions on simultaneous booking requests
     if ((bookingData.bookingMode || 'scheduled') === 'scheduled' && bookingData.scheduledDate) {
       const targetDate = new Date(bookingData.scheduledDate);
-      const dayOfWeek = targetDate.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+      const targetDateStr = !isNaN(targetDate.getTime()) ? targetDate.toISOString().slice(0, 10) : 'scheduled';
+      const lockKey = `provider:${provider._id}:${targetDateStr}`;
+      releaseLock = await acquireBookingLock(lockKey);
+    }
+  }
 
-      const availabilityDoc = await Availability.findOne({
-        provider: provider._id,
-        dayOfWeek
-      });
+  try {
+    if (provider) {
+      // Verify Provider Weekly Availability for scheduled booking
+      if ((bookingData.bookingMode || 'scheduled') === 'scheduled' && bookingData.scheduledDate) {
+        const targetDate = new Date(bookingData.scheduledDate);
+        const dayOfWeek = targetDate.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
-      if (availabilityDoc && !availabilityDoc.isAvailable) {
-        const err = new Error(
-          `Provider '${provider.businessName || 'Selected'}' is not available on this day of the week`
-        );
-        err.statusCode = 400;
-        throw err;
-      }
+        const availabilityDoc = await Availability.findOne({
+          provider: provider._id,
+          dayOfWeek
+        });
 
-      if (
-        availabilityDoc &&
-        availabilityDoc.isAvailable &&
-        availabilityDoc.slots &&
-        availabilityDoc.slots.length > 0 &&
-        bookingData.scheduledTimeSlot?.startTime
-      ) {
-        const slotMatch = availabilityDoc.slots.some(
-          (slot) =>
-            bookingData.scheduledTimeSlot.startTime >= slot.startTime &&
-            bookingData.scheduledTimeSlot.startTime < slot.endTime
-        );
-        if (!slotMatch) {
+        if (availabilityDoc && !availabilityDoc.isAvailable) {
           const err = new Error(
-            `The requested time slot '${bookingData.scheduledTimeSlot.startTime}' is outside the provider's available working hours for this day`
+            `Provider '${provider.businessName || 'Selected'}' is not available on this day of the week`
           );
           err.statusCode = 400;
           throw err;
         }
+
+        if (
+          availabilityDoc &&
+          availabilityDoc.isAvailable &&
+          availabilityDoc.slots &&
+          availabilityDoc.slots.length > 0 &&
+          bookingData.scheduledTimeSlot?.startTime
+        ) {
+          const slotMatch = availabilityDoc.slots.some(
+            (slot) =>
+              bookingData.scheduledTimeSlot.startTime >= slot.startTime &&
+              bookingData.scheduledTimeSlot.startTime < slot.endTime
+          );
+          if (!slotMatch) {
+            const err = new Error(
+              `The requested time slot '${bookingData.scheduledTimeSlot.startTime}' is outside the provider's available working hours for this day`
+            );
+            err.statusCode = 400;
+            throw err;
+          }
+        }
+
+        // Check for overlapping confirmed or in-progress bookings for this provider
+        const startOfDay = new Date(targetDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(targetDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const reqStart = (bookingData.scheduledTimeSlot?.startTime || '').trim();
+        const reqEnd = (bookingData.scheduledTimeSlot?.endTime || '').trim();
+
+        if (reqStart && reqEnd) {
+          const overlappingBooking = await Booking.findOne({
+            provider: provider._id,
+            status: { $in: ['pending', 'accepted', 'in_progress'] },
+            bookingMode: 'scheduled',
+            scheduledDate: { $gte: startOfDay, $lte: endOfDay },
+            'scheduledTimeSlot.startTime': { $lt: reqEnd },
+            'scheduledTimeSlot.endTime': { $gt: reqStart }
+          });
+
+          if (overlappingBooking) {
+            const err = new Error(
+              `The selected provider is already booked for this time slot (${overlappingBooking.scheduledTimeSlot.startTime} - ${overlappingBooking.scheduledTimeSlot.endTime}). Please select another time or an alternative provider.`
+            );
+            err.statusCode = 409;
+            throw err;
+          }
+        }
       }
 
-      // Check for overlapping confirmed or in-progress bookings for this provider
-      const startOfDay = new Date(targetDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(targetDate);
-      endOfDay.setHours(23, 59, 59, 999);
+      // Verify Provider Service Area if provider has designated service areas
+      if (provider.serviceAreas && provider.serviceAreas.length > 0 && bookingData.address) {
+        const providerAreas = await ServiceArea.find({
+          _id: { $in: provider.serviceAreas },
+          isActive: true
+        });
 
-      const reqStart = (bookingData.scheduledTimeSlot?.startTime || '').trim();
-      const reqEnd = (bookingData.scheduledTimeSlot?.endTime || '').trim();
+        if (providerAreas.length > 0) {
+          const bookingCity = (bookingData.address.city || '').trim().toLowerCase();
+          const bookingZip = (bookingData.address.zipCode || '').trim();
+
+          const matchesArea = providerAreas.some((area) => {
+            const cityMatches = area.city && area.city.trim().toLowerCase() === bookingCity;
+            const zipMatches =
+              bookingZip &&
+              Array.isArray(area.zipCodes) &&
+              area.zipCodes.some((z) => z.trim() === bookingZip);
+            return cityMatches || zipMatches;
+          });
+
+          if (!matchesArea) {
+            const err = new Error(
+              `Selected provider does not service this location (${bookingData.address.city || ''} ${bookingZip})`
+            );
+            err.statusCode = 400;
+            throw err;
+          }
+        }
+      }
+
+      assignedProvider = provider._id;
+    } else {
+      // Instant or unassigned broadcast: find candidate eligible providers
+      const eligibleProviders = await Provider.find({
+        verificationStatus: 'verified',
+        isAvailable: true,
+        categories: service.category._id
+      }).populate('user');
+
+      candidateProviders = eligibleProviders
+        .filter((p) => p.user && p.user.isActive)
+        .map((p) => p._id);
+    }
+
+    // 5. Pricing calculation from trusted database values
+    const basePrice = Number(service.price);
+    const tax = 0;
+    const discount = 0;
+    const totalAmount = basePrice + tax - discount;
+
+    // 6. Schedule setup
+    const bookingMode = bookingData.bookingMode || 'scheduled';
+    let scheduledDate;
+    let scheduledTimeSlot;
+
+    if (bookingMode === 'instant') {
+      scheduledDate = new Date();
+      scheduledTimeSlot = {
+        startTime: 'ASAP',
+        endTime: 'ASAP'
+      };
+    } else {
+      scheduledDate = new Date(bookingData.scheduledDate);
+      scheduledTimeSlot = {
+        startTime: bookingData.scheduledTimeSlot.startTime.trim(),
+        endTime: bookingData.scheduledTimeSlot.endTime.trim()
+      };
+    }
+
+    // 7. Generate reference and persist
+    let bookingReference = generateBookingReference();
+    let exists = await Booking.findOne({ bookingReference });
+    while (exists) {
+      bookingReference = generateBookingReference();
+      exists = await Booking.findOne({ bookingReference });
+    }
+
+    const effectiveNotes = (bookingData.notes || bookingData.problemDescription || '').trim();
+
+    newBooking = await Booking.create({
+      bookingReference,
+      customer: customer._id,
+      provider: assignedProvider,
+      service: service._id,
+      bookingMode,
+      status: 'pending',
+      scheduledDate,
+      scheduledTimeSlot,
+      address: {
+        street: bookingData.address.street.trim(),
+        city: bookingData.address.city.trim(),
+        state: bookingData.address.state ? bookingData.address.state.trim() : '',
+        zipCode: bookingData.address.zipCode ? bookingData.address.zipCode.trim() : '',
+        location: bookingData.address.location || { type: 'Point', coordinates: [0, 0] }
+      },
+      pricing: {
+        basePrice,
+        tax,
+        discount,
+        totalAmount
+      },
+      paymentStatus: 'pending',
+      paymentMethod: bookingData.paymentMethod || 'cash',
+      candidateProviders,
+      notes: effectiveNotes
+    });
+
+    // Concurrency safety net: verify no simultaneous overlapping booking was persisted
+    if (assignedProvider && (bookingMode || 'scheduled') === 'scheduled' && scheduledDate && scheduledTimeSlot) {
+      const startOfDay = new Date(scheduledDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(scheduledDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      const reqStart = (scheduledTimeSlot.startTime || '').trim();
+      const reqEnd = (scheduledTimeSlot.endTime || '').trim();
 
       if (reqStart && reqEnd) {
-        const overlappingBooking = await Booking.findOne({
-          provider: provider._id,
+        const conflictingCount = await Booking.countDocuments({
+          provider: assignedProvider,
           status: { $in: ['pending', 'accepted', 'in_progress'] },
           bookingMode: 'scheduled',
           scheduledDate: { $gte: startOfDay, $lte: endOfDay },
@@ -172,122 +342,19 @@ const createBooking = async (userId, bookingData) => {
           'scheduledTimeSlot.endTime': { $gt: reqStart }
         });
 
-        if (overlappingBooking) {
+        if (conflictingCount > 1) {
+          await Booking.findByIdAndDelete(newBooking._id);
           const err = new Error(
-            `The selected provider is already booked for this time slot (${overlappingBooking.scheduledTimeSlot.startTime} - ${overlappingBooking.scheduledTimeSlot.endTime}). Please select another time or an alternative provider.`
+            `The selected provider is already booked for this time slot (${reqStart} - ${reqEnd}). Please select another time or an alternative provider.`
           );
           err.statusCode = 409;
           throw err;
         }
       }
     }
-
-    // Verify Provider Service Area if provider has designated service areas
-    if (provider.serviceAreas && provider.serviceAreas.length > 0 && bookingData.address) {
-      const providerAreas = await ServiceArea.find({
-        _id: { $in: provider.serviceAreas },
-        isActive: true
-      });
-
-      if (providerAreas.length > 0) {
-        const bookingCity = (bookingData.address.city || '').trim().toLowerCase();
-        const bookingZip = (bookingData.address.zipCode || '').trim();
-
-        const matchesArea = providerAreas.some((area) => {
-          const cityMatches = area.city && area.city.trim().toLowerCase() === bookingCity;
-          const zipMatches =
-            bookingZip &&
-            Array.isArray(area.zipCodes) &&
-            area.zipCodes.some((z) => z.trim() === bookingZip);
-          return cityMatches || zipMatches;
-        });
-
-        if (!matchesArea) {
-          const err = new Error(
-            `Selected provider does not service this location (${bookingData.address.city || ''} ${bookingZip})`
-          );
-          err.statusCode = 400;
-          throw err;
-        }
-      }
-    }
-
-    assignedProvider = provider._id;
-  } else {
-    // Instant or unassigned broadcast: find candidate eligible providers
-    const eligibleProviders = await Provider.find({
-      verificationStatus: 'verified',
-      isAvailable: true,
-      categories: service.category._id
-    }).populate('user');
-
-    candidateProviders = eligibleProviders
-      .filter((p) => p.user && p.user.isActive)
-      .map((p) => p._id);
+  } finally {
+    if (releaseLock) releaseLock();
   }
-
-  // 5. Pricing calculation from trusted database values
-  const basePrice = Number(service.price);
-  const tax = 0;
-  const discount = 0;
-  const totalAmount = basePrice + tax - discount;
-
-  // 6. Schedule setup
-  const bookingMode = bookingData.bookingMode || 'scheduled';
-  let scheduledDate;
-  let scheduledTimeSlot;
-
-  if (bookingMode === 'instant') {
-    scheduledDate = new Date();
-    scheduledTimeSlot = {
-      startTime: 'ASAP',
-      endTime: 'ASAP'
-    };
-  } else {
-    scheduledDate = new Date(bookingData.scheduledDate);
-    scheduledTimeSlot = {
-      startTime: bookingData.scheduledTimeSlot.startTime.trim(),
-      endTime: bookingData.scheduledTimeSlot.endTime.trim()
-    };
-  }
-
-  // 7. Generate reference and persist
-  let bookingReference = generateBookingReference();
-  let exists = await Booking.findOne({ bookingReference });
-  while (exists) {
-    bookingReference = generateBookingReference();
-    exists = await Booking.findOne({ bookingReference });
-  }
-
-  const effectiveNotes = (bookingData.notes || bookingData.problemDescription || '').trim();
-
-  const newBooking = await Booking.create({
-    bookingReference,
-    customer: customer._id,
-    provider: assignedProvider,
-    service: service._id,
-    bookingMode,
-    status: 'pending',
-    scheduledDate,
-    scheduledTimeSlot,
-    address: {
-      street: bookingData.address.street.trim(),
-      city: bookingData.address.city.trim(),
-      state: bookingData.address.state ? bookingData.address.state.trim() : '',
-      zipCode: bookingData.address.zipCode ? bookingData.address.zipCode.trim() : '',
-      location: bookingData.address.location || { type: 'Point', coordinates: [0, 0] }
-    },
-    pricing: {
-      basePrice,
-      tax,
-      discount,
-      totalAmount
-    },
-    paymentStatus: 'pending',
-    paymentMethod: bookingData.paymentMethod || 'cash',
-    candidateProviders,
-    notes: effectiveNotes
-  });
 
   const createdDoc = await Booking.findById(newBooking._id)
     .populate('service', 'name price priceType estimatedDurationMinutes description')
@@ -654,6 +721,58 @@ const acceptBookingByProvider = async (userId, bookingId, teamData = null) => {
     const err = new Error('Provider is not verified and cannot accept bookings');
     err.statusCode = 403;
     throw err;
+  }
+
+  const targetBooking = await Booking.findById(bookingId);
+  if (!targetBooking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (targetBooking.status !== 'pending') {
+    const err = new Error(`Booking is no longer pending (current status: '${targetBooking.status}'). Already claimed or cancelled.`);
+    err.statusCode = 409;
+    err.data = { currentStatus: targetBooking.status };
+    throw err;
+  }
+
+  if (targetBooking.provider && targetBooking.provider.toString() !== provider._id.toString()) {
+    const err = new Error('This booking is assigned to another service provider');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // Acceptance-time validation: provider cannot accept a conflicting second booking if they already have an active booking
+  if (targetBooking.bookingMode === 'scheduled' && targetBooking.scheduledDate && targetBooking.scheduledTimeSlot) {
+    const targetDate = new Date(targetBooking.scheduledDate);
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const reqStart = (targetBooking.scheduledTimeSlot.startTime || '').trim();
+    const reqEnd = (targetBooking.scheduledTimeSlot.endTime || '').trim();
+
+    if (reqStart && reqEnd) {
+      const activeConflict = await Booking.findOne({
+        _id: { $ne: targetBooking._id },
+        provider: provider._id,
+        status: { $in: ['accepted', 'in_progress'] },
+        bookingMode: 'scheduled',
+        scheduledDate: { $gte: startOfDay, $lte: endOfDay },
+        'scheduledTimeSlot.startTime': { $lt: reqEnd },
+        'scheduledTimeSlot.endTime': { $gt: reqStart }
+      });
+
+      if (activeConflict) {
+        const err = new Error(
+          `Cannot accept booking: You already have an active booking (${activeConflict.bookingReference}) during this time slot (${activeConflict.scheduledTimeSlot.startTime} - ${activeConflict.scheduledTimeSlot.endTime}).`
+        );
+        err.statusCode = 409;
+        throw err;
+      }
+    }
   }
 
   const now = new Date();
@@ -1492,26 +1611,35 @@ const submitSpareParts = async (userId, bookingId, { items }) => {
 
   // Preserve original service amount
   const originalServiceAmount = booking.spareParts?.originalServiceAmount || booking.pricing.totalAmount;
+  const hasItems = sanitizedItems.length > 0;
 
   booking.spareParts = {
     items: sanitizedItems,
     partsSubtotal,
     labourSubtotal,
     totalAdditionalAmount,
-    status: 'pending_approval',
-    submittedBy: provider._id,
-    submittedAt: new Date(),
+    status: hasItems ? 'pending_approval' : 'none',
+    submittedBy: hasItems ? provider._id : null,
+    submittedAt: hasItems ? new Date() : null,
     reviewedAt: null,
     rejectionReason: null,
     originalServiceAmount,
-    paymentStatus: booking.paymentMethod === 'cash' ? 'not_applicable' : 'pending',
+    paymentStatus: hasItems
+      ? (booking.paymentMethod === 'cash' ? 'not_applicable' : 'pending')
+      : 'not_applicable',
+    paymentMethod: null,
     paymentDetails: {
-      razorpayOrderId: booking.spareParts?.paymentDetails?.razorpayOrderId || null,
-      razorpayPaymentId: booking.spareParts?.paymentDetails?.razorpayPaymentId || null,
-      razorpaySignature: booking.spareParts?.paymentDetails?.razorpaySignature || null,
-      paidAt: booking.spareParts?.paymentDetails?.paidAt || null
+      razorpayOrderId: null,
+      razorpayPaymentId: null,
+      razorpaySignature: null,
+      paidAt: null
     }
   };
+
+  // If no materials are added, ensure final pricing remains the original base service amount
+  if (!hasItems && originalServiceAmount) {
+    booking.pricing.totalAmount = originalServiceAmount;
+  }
 
   await booking.save();
 

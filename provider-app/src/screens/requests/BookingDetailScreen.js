@@ -6,7 +6,8 @@ import {
   ScrollView,
   Alert,
   TouchableOpacity,
-  TextInput
+  TextInput,
+  Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -154,28 +155,65 @@ export default function BookingDetailScreen({ route, navigation }) {
       return;
     }
 
-    const payableAmount = booking.pricing?.totalAmount || 0;
+    const isExtraCashOnly =
+      booking.paymentMethod === 'online' &&
+      booking.spareParts?.status === 'approved' &&
+      booking.spareParts?.paymentMethod === 'cash';
+
+    const payableAmount = isExtraCashOnly
+      ? Number(booking.spareParts?.totalAdditionalAmount || 0)
+      : Number(booking.pricing?.totalAmount || 0);
+
+    const alertTitle = isExtraCashOnly ? 'Confirm Extra Cash Collection' : 'Confirm Cash Payment';
+    const alertMessage = isExtraCashOnly
+      ? `Have you collected ₹${payableAmount} in cash from the customer for the approved extra materials?`
+      : `Have you collected the full amount of ₹${payableAmount} in cash from the customer?`;
+
+    const executeMarkCashReceived = async () => {
+      setActionLoading(true);
+      try {
+        const res = await bookingApi.confirmCashPayment(booking._id);
+        if (res?.success) {
+          const successMsg = isExtraCashOnly
+            ? `Extra cash of ₹${payableAmount} recorded successfully. Remaining balance: ₹0.`
+            : `Cash payment of ₹${payableAmount} recorded successfully. Remaining balance: ₹0.`;
+          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+            window.alert(`[Payment Recorded] ${successMsg}`);
+          } else {
+            Alert.alert('Payment Recorded', successMsg);
+          }
+          setBooking(res.data);
+        }
+      } catch (err) {
+        const errMsg = err.userMessage || 'Could not record cash payment';
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+          window.alert(`[Error] ${errMsg}`);
+        } else {
+          Alert.alert('Error', errMsg);
+        }
+      } finally {
+        setActionLoading(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm
+        ? window.confirm(`${alertTitle}\n\n${alertMessage}`)
+        : true;
+      if (confirmed) {
+        executeMarkCashReceived();
+      }
+      return;
+    }
+
     Alert.alert(
-      'Confirm Cash Payment',
-      `Have you collected the full amount of ₹${payableAmount} in cash from the customer?`,
+      alertTitle,
+      alertMessage,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Confirm Cash Received',
-          onPress: async () => {
-            setActionLoading(true);
-            try {
-              const res = await bookingApi.confirmCashPayment(booking._id);
-              if (res?.success) {
-                Alert.alert('Payment Recorded', `Cash payment of ₹${payableAmount} recorded successfully.`);
-                setBooking(res.data);
-              }
-            } catch (err) {
-              Alert.alert('Error', err.userMessage || 'Could not record cash payment');
-            } finally {
-              setActionLoading(false);
-            }
-          }
+          text: isExtraCashOnly ? 'Confirm Extra Cash' : 'Confirm Cash Received',
+          onPress: executeMarkCashReceived
         }
       ]
     );
@@ -187,19 +225,23 @@ export default function BookingDetailScreen({ route, navigation }) {
       booking.spareParts &&
       ['pending_approval', 'pending_customer_approval'].includes(booking.spareParts.status)
     ) {
-      Alert.alert(
-        'Action Required',
-        'Your extra materials proposal is awaiting customer approval. The customer must approve or reject the proposal before this job can be completed.'
-      );
+      const msg = 'Your extra materials proposal is awaiting customer approval. The customer must approve or reject the proposal before this job can be completed.';
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+        window.alert(`[Action Required] ${msg}`);
+      } else {
+        Alert.alert('Action Required', msg);
+      }
       return;
     }
 
     // 2. Check if cash for booking or spare parts is unpaid
     if (booking.paymentMethod === 'cash' && booking.paymentStatus !== 'paid') {
-      Alert.alert(
-        'Cash Collection Required',
-        `Please collect cash (₹${booking.pricing?.totalAmount || 0}) from the customer and tap "Mark Cash Received" before completing the service.`
-      );
+      const msg = `Please collect cash (₹${booking.pricing?.totalAmount || 0}) from the customer and tap "Mark Cash Received" before completing the service.`;
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+        window.alert(`[Cash Collection Required] ${msg}`);
+      } else {
+        Alert.alert('Cash Collection Required', msg);
+      }
       return;
     }
 
@@ -211,10 +253,12 @@ export default function BookingDetailScreen({ route, navigation }) {
       booking.spareParts.paymentStatus !== 'paid' &&
       booking.spareParts.totalAdditionalAmount > 0
     ) {
-      Alert.alert(
-        'Cash Collection Required',
-        `The customer selected Cash on Service for approved extra materials (₹${booking.spareParts.totalAdditionalAmount}). Please collect cash and tap "Collect Extra Cash" before completing the service.`
-      );
+      const msg = `The customer selected Cash on Service for approved extra materials (₹${booking.spareParts.totalAdditionalAmount}). Please collect cash and tap "Collect Extra Cash" before completing the service.`;
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+        window.alert(`[Cash Collection Required] ${msg}`);
+      } else {
+        Alert.alert('Cash Collection Required', msg);
+      }
       return;
     }
 
@@ -226,14 +270,83 @@ export default function BookingDetailScreen({ route, navigation }) {
       booking.spareParts.paymentStatus !== 'paid' &&
       booking.spareParts.totalAdditionalAmount > 0
     ) {
-      Alert.alert(
-        'Payment Pending',
-        `The customer has approved extra materials (+₹${booking.spareParts.totalAdditionalAmount}) but has not completed payment yet. Please ask the customer to pay via their Customer App before completing.`
-      );
+      const msg = `The customer has approved extra materials (+₹${booking.spareParts.totalAdditionalAmount}) but has not completed payment yet. Please ask the customer to pay via their Customer App before completing.`;
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+        window.alert(`[Payment Pending] ${msg}`);
+      } else {
+        Alert.alert('Payment Pending', msg);
+      }
       return;
     }
 
     if (actionLoading) return;
+
+    const executeCompleteService = async () => {
+      if (actionLoading) return;
+      setActionLoading(true);
+      try {
+        const res = await bookingApi.completeService(booking._id);
+        if (res?.success && res.data) {
+          setBooking(res.data);
+          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+            window.alert('[Service Completed] Job completed successfully! Order recorded.');
+          } else {
+            Alert.alert(
+              'Service Completed',
+              'Job completed successfully! Order recorded.',
+              [
+                {
+                  text: 'View Details',
+                  onPress: () => fetchDetail()
+                },
+                {
+                  text: 'Go to Bookings',
+                  onPress: () => navigation.navigate('HistoryTab')
+                }
+              ]
+            );
+          }
+        }
+      } catch (err) {
+        const isConflict =
+          err.response?.status === 409 ||
+          /concurrent|already completed|state conflict|not found/i.test(err.message || '');
+        const errorMsg =
+          err.response?.data?.error?.message ||
+          err.response?.data?.message ||
+          err.userMessage ||
+          err.message ||
+          'Could not complete service';
+
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+          window.alert(`[${isConflict ? 'Status Updated' : 'Cannot Complete Service'}] ${errorMsg}`);
+        } else {
+          Alert.alert(
+            isConflict ? 'Status Updated' : 'Cannot Complete Service',
+            errorMsg,
+            [
+              {
+                text: 'Refresh',
+                onPress: () => fetchDetail()
+              }
+            ]
+          );
+        }
+        fetchDetail();
+      } finally {
+        setActionLoading(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm
+        ? window.confirm('Complete Service\n\nAre you sure you want to mark this job as completed?')
+        : true;
+      if (confirmed) {
+        executeCompleteService();
+      }
+      return;
+    }
 
     Alert.alert(
       'Complete Service',
@@ -242,54 +355,7 @@ export default function BookingDetailScreen({ route, navigation }) {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Mark Completed',
-          onPress: async () => {
-            if (actionLoading) return;
-            setActionLoading(true);
-            try {
-              const res = await bookingApi.completeService(booking._id);
-              if (res?.success && res.data) {
-                setBooking(res.data);
-                Alert.alert(
-                  'Service Completed',
-                  'Job completed successfully! Order recorded.',
-                  [
-                    {
-                      text: 'View Details',
-                      onPress: () => fetchDetail()
-                    },
-                    {
-                      text: 'Go to Bookings',
-                      onPress: () => navigation.navigate('HistoryTab')
-                    }
-                  ]
-                );
-              }
-            } catch (err) {
-              const isConflict =
-                err.response?.status === 409 ||
-                /concurrent|already completed|state conflict|not found/i.test(err.message || '');
-              const errorMsg =
-                err.response?.data?.error?.message ||
-                err.response?.data?.message ||
-                err.userMessage ||
-                err.message ||
-                'Could not complete service';
-
-              Alert.alert(
-                isConflict ? 'Status Updated' : 'Cannot Complete Service',
-                errorMsg,
-                [
-                  {
-                    text: 'Refresh',
-                    onPress: () => fetchDetail()
-                  }
-                ]
-              );
-              fetchDetail();
-            } finally {
-              setActionLoading(false);
-            }
-          }
+          onPress: executeCompleteService
         }
       ]
     );
@@ -353,16 +419,8 @@ export default function BookingDetailScreen({ route, navigation }) {
         }))
       );
     } else {
-      setPartsList([
-        {
-          name: '',
-          description: '',
-          quantity: '1',
-          unitPrice: '',
-          labourCharge: '0',
-          notes: ''
-        }
-      ]);
+      // Spare parts are optional: start with an empty list
+      setPartsList([]);
     }
     setShowPartsModal(true);
   };
@@ -414,31 +472,33 @@ export default function BookingDetailScreen({ route, navigation }) {
   };
 
   const handleSubmitParts = async () => {
-    if (!partsList.length) {
-      Alert.alert('Validation Error', 'Please add at least one spare part or material.');
-      return;
-    }
-
-    for (let i = 0; i < partsList.length; i++) {
-      const p = partsList[i];
-      if (!p.name || !p.name.trim()) {
-        Alert.alert('Validation Error', `Part #${i + 1} is missing a name.`);
-        return;
-      }
-      const q = parseInt(p.quantity, 10);
-      if (isNaN(q) || q < 1) {
-        Alert.alert('Validation Error', `Part #${i + 1} must have a quantity of at least 1.`);
-        return;
-      }
-      const u = parseFloat(p.unitPrice);
-      if (isNaN(u) || u < 0) {
-        Alert.alert('Validation Error', `Part #${i + 1} must have a valid non-negative unit price.`);
-        return;
-      }
-      const l = parseFloat(p.labourCharge || 0);
-      if (isNaN(l) || l < 0) {
-        Alert.alert('Validation Error', `Part #${i + 1} labour charge cannot be negative.`);
-        return;
+    // Spare parts are optional: only validate rows if provider added materials
+    if (partsList.length > 0) {
+      for (let i = 0; i < partsList.length; i++) {
+        const p = partsList[i];
+        if (!p.name || !p.name.trim()) {
+          const msg = `Part #${i + 1} is missing a name.`;
+          Platform.OS === 'web' && typeof window !== 'undefined' && window.alert ? window.alert(msg) : Alert.alert('Validation Error', msg);
+          return;
+        }
+        const q = parseInt(p.quantity, 10);
+        if (isNaN(q) || q < 1) {
+          const msg = `Part #${i + 1} must have a quantity of at least 1.`;
+          Platform.OS === 'web' && typeof window !== 'undefined' && window.alert ? window.alert(msg) : Alert.alert('Validation Error', msg);
+          return;
+        }
+        const u = parseFloat(p.unitPrice);
+        if (isNaN(u) || u < 0) {
+          const msg = `Part #${i + 1} must have a valid non-negative unit price.`;
+          Platform.OS === 'web' && typeof window !== 'undefined' && window.alert ? window.alert(msg) : Alert.alert('Validation Error', msg);
+          return;
+        }
+        const l = parseFloat(p.labourCharge || 0);
+        if (isNaN(l) || l < 0) {
+          const msg = `Part #${i + 1} labour charge cannot be negative.`;
+          Platform.OS === 'web' && typeof window !== 'undefined' && window.alert ? window.alert(msg) : Alert.alert('Validation Error', msg);
+          return;
+        }
       }
     }
 
@@ -455,12 +515,24 @@ export default function BookingDetailScreen({ route, navigation }) {
 
       const res = await bookingApi.submitSpareParts(booking._id, { items: itemsPayload });
       if (res?.success) {
-        Alert.alert('Success', 'Spare parts bill submitted for customer approval.');
+        const successMsg = itemsPayload.length > 0
+          ? 'Spare parts bill submitted for customer approval.'
+          : 'No extra materials recorded. Final total remains base service price.';
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+          window.alert(successMsg);
+        } else {
+          Alert.alert('Success', successMsg);
+        }
         setBooking(res.data);
         setShowPartsModal(false);
       }
     } catch (err) {
-      Alert.alert('Submission Failed', err.userMessage || 'Could not submit spare parts');
+      const errMsg = err.userMessage || err.message || 'Could not submit spare parts';
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+        window.alert(`[Submission Failed] ${errMsg}`);
+      } else {
+        Alert.alert('Submission Failed', errMsg);
+      }
     } finally {
       setPartsSubmitting(false);
     }
@@ -635,7 +707,7 @@ export default function BookingDetailScreen({ route, navigation }) {
             <View>
               <Text style={styles.sectionTitle}>Spare Parts & Materials</Text>
               <Text style={styles.sectionSubtitle}>
-                Add replacement components & installation fees
+                Add replacement components & installation fees (Optional)
               </Text>
             </View>
             {booking.spareParts?.status && booking.spareParts.status !== 'none' && (
@@ -737,7 +809,15 @@ export default function BookingDetailScreen({ route, navigation }) {
                     </Text>
                     <Text style={[styles.approvedText, { marginTop: 3, fontWeight: '700' }]}>
                       {booking.spareParts.paymentStatus === 'paid' ? (
-                        <Text style={{ color: '#10B981' }}>✓ Additional charges (₹{booking.spareParts.totalAdditionalAmount}) PAID</Text>
+                        booking.spareParts.paymentMethod === 'cash' ? (
+                          <Text style={{ color: '#10B981' }}>
+                            ✓ Extra cash collected (₹{booking.spareParts.totalAdditionalAmount}) • Remaining balance: ₹0
+                          </Text>
+                        ) : (
+                          <Text style={{ color: '#10B981' }}>
+                            ✓ Additional charges (₹{booking.spareParts.totalAdditionalAmount}) paid online • Remaining balance: ₹0
+                          </Text>
+                        )
                       ) : booking.spareParts.paymentMethod === 'cash' ? (
                         <Text style={{ color: '#FBBF24' }}>
                           💵 Customer selected Cash on Service: Collect ₹{booking.spareParts.totalAdditionalAmount} in cash from customer.
@@ -753,7 +833,7 @@ export default function BookingDetailScreen({ route, navigation }) {
               )}
             </View>
           ) : (
-            <Text style={styles.noPartsText}>No spare parts added to this booking yet.</Text>
+            <Text style={styles.noPartsText}>No spare parts added to this booking yet (Optional).</Text>
           )}
 
           {canAddParts && (
@@ -783,7 +863,7 @@ export default function BookingDetailScreen({ route, navigation }) {
                   ? 'Revise & Resubmit Proposal'
                   : booking.spareParts?.items?.length
                   ? 'Edit Spare Parts Bill'
-                  : '+ Add Spare Parts & Labour'}
+                  : '+ Add Spare Parts & Labour (Optional)'}
               </Text>
             </TouchableOpacity>
           )}
@@ -927,7 +1007,7 @@ export default function BookingDetailScreen({ route, navigation }) {
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>Spare Parts & Materials</Text>
-                <Text style={styles.modalSubtitle}>Bill items used for this job</Text>
+                <Text style={styles.modalSubtitle}>Optional • Bill items used for this job</Text>
               </View>
               <TouchableOpacity
                 onPress={() => setShowPartsModal(false)}
@@ -938,96 +1018,105 @@ export default function BookingDetailScreen({ route, navigation }) {
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {partsList.map((item, index) => {
-                const q = Math.max(1, parseInt(item.quantity, 10) || 1);
-                const u = Math.max(0, parseFloat(item.unitPrice) || 0);
-                const l = Math.max(0, parseFloat(item.labourCharge) || 0);
-                const lineTotal = Math.round((q * u + l) * 100) / 100;
+              {partsList.length === 0 ? (
+                <View style={styles.emptyPartsModalBox}>
+                  <Ionicons name="construct-outline" size={26} color="#A78BFA" />
+                  <Text style={styles.emptyPartsModalTitle}>Spare Parts & Materials are Optional</Text>
+                  <Text style={styles.emptyPartsModalText}>
+                    No materials added yet. If you did not use any replacement parts or materials for this service, you can confirm no extra materials below or tap cancel to return.
+                  </Text>
+                </View>
+              ) : (
+                partsList.map((item, index) => {
+                  const q = Math.max(1, parseInt(item.quantity, 10) || 1);
+                  const u = Math.max(0, parseFloat(item.unitPrice) || 0);
+                  const l = Math.max(0, parseFloat(item.labourCharge) || 0);
+                  const lineTotal = Math.round((q * u + l) * 100) / 100;
 
-                return (
-                  <View key={index} style={styles.partCardInput}>
-                    <View style={styles.partCardInputHeader}>
-                      <Text style={styles.partCardIndexText}>Part / Material #{index + 1}</Text>
-                      {partsList.length > 1 && (
+                  return (
+                    <View key={index} style={styles.partCardInput}>
+                      <View style={styles.partCardInputHeader}>
+                        <Text style={styles.partCardIndexText}>Part / Material #{index + 1}</Text>
                         <TouchableOpacity
                           onPress={() => handleRemovePartRow(index)}
                           style={styles.removePartBtn}
+                          accessibilityLabel={`Remove Part #${index + 1}`}
                         >
                           <Ionicons name="trash-outline" size={16} color="#F43F5E" />
                         </TouchableOpacity>
-                      )}
-                    </View>
-
-                    <Text style={styles.inputLabel}>Item Name *</Text>
-                    <TextInput
-                      style={styles.inputField}
-                      placeholder="e.g. Copper Pipe, Motor Capacitor, MCB"
-                      placeholderTextColor="#6B7280"
-                      value={item.name}
-                      onChangeText={(val) => handleUpdatePartRow(index, 'name', val)}
-                    />
-
-                    <Text style={styles.inputLabel}>Description / Model (Optional)</Text>
-                    <TextInput
-                      style={styles.inputField}
-                      placeholder="e.g. Havells 25A 10kA C-Curve"
-                      placeholderTextColor="#6B7280"
-                      value={item.description}
-                      onChangeText={(val) => handleUpdatePartRow(index, 'description', val)}
-                    />
-
-                    <View style={styles.inputRow}>
-                      <View style={{ flex: 1, marginRight: 8 }}>
-                        <Text style={styles.inputLabel}>Qty *</Text>
-                        <TextInput
-                          style={styles.inputField}
-                          keyboardType="numeric"
-                          placeholder="1"
-                          placeholderTextColor="#6B7280"
-                          value={item.quantity}
-                          onChangeText={(val) => handleUpdatePartRow(index, 'quantity', val)}
-                        />
                       </View>
-                      <View style={{ flex: 1.5, marginRight: 8 }}>
-                        <Text style={styles.inputLabel}>Unit Price (₹) *</Text>
-                        <TextInput
-                          style={styles.inputField}
-                          keyboardType="numeric"
-                          placeholder="0"
-                          placeholderTextColor="#6B7280"
-                          value={item.unitPrice}
-                          onChangeText={(val) => handleUpdatePartRow(index, 'unitPrice', val)}
-                        />
+
+                      <Text style={styles.inputLabel}>Item Name *</Text>
+                      <TextInput
+                        style={styles.inputField}
+                        placeholder="e.g. Copper Pipe, Motor Capacitor, MCB"
+                        placeholderTextColor="#6B7280"
+                        value={item.name}
+                        onChangeText={(val) => handleUpdatePartRow(index, 'name', val)}
+                      />
+
+                      <Text style={styles.inputLabel}>Description / Model (Optional)</Text>
+                      <TextInput
+                        style={styles.inputField}
+                        placeholder="e.g. Havells 25A 10kA C-Curve"
+                        placeholderTextColor="#6B7280"
+                        value={item.description}
+                        onChangeText={(val) => handleUpdatePartRow(index, 'description', val)}
+                      />
+
+                      <View style={styles.inputRow}>
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={styles.inputLabel}>Qty *</Text>
+                          <TextInput
+                            style={styles.inputField}
+                            keyboardType="numeric"
+                            placeholder="1"
+                            placeholderTextColor="#6B7280"
+                            value={item.quantity}
+                            onChangeText={(val) => handleUpdatePartRow(index, 'quantity', val)}
+                          />
+                        </View>
+                        <View style={{ flex: 1.5, marginRight: 8 }}>
+                          <Text style={styles.inputLabel}>Unit Price (₹) *</Text>
+                          <TextInput
+                            style={styles.inputField}
+                            keyboardType="numeric"
+                            placeholder="0"
+                            placeholderTextColor="#6B7280"
+                            value={item.unitPrice}
+                            onChangeText={(val) => handleUpdatePartRow(index, 'unitPrice', val)}
+                          />
+                        </View>
+                        <View style={{ flex: 1.5 }}>
+                          <Text style={styles.inputLabel}>Labour (₹)</Text>
+                          <TextInput
+                            style={styles.inputField}
+                            keyboardType="numeric"
+                            placeholder="0"
+                            placeholderTextColor="#6B7280"
+                            value={item.labourCharge}
+                            onChangeText={(val) => handleUpdatePartRow(index, 'labourCharge', val)}
+                          />
+                        </View>
                       </View>
-                      <View style={{ flex: 1.5 }}>
-                        <Text style={styles.inputLabel}>Labour (₹)</Text>
-                        <TextInput
-                          style={styles.inputField}
-                          keyboardType="numeric"
-                          placeholder="0"
-                          placeholderTextColor="#6B7280"
-                          value={item.labourCharge}
-                          onChangeText={(val) => handleUpdatePartRow(index, 'labourCharge', val)}
-                        />
+
+                      <Text style={styles.inputLabel}>Notes (Optional)</Text>
+                      <TextInput
+                        style={styles.inputField}
+                        placeholder="e.g. Original Havells box provided to customer"
+                        placeholderTextColor="#6B7280"
+                        value={item.notes}
+                        onChangeText={(val) => handleUpdatePartRow(index, 'notes', val)}
+                      />
+
+                      <View style={styles.lineTotalRow}>
+                        <Text style={styles.lineTotalLabel}>Line Total:</Text>
+                        <Text style={styles.lineTotalVal}>₹{lineTotal.toFixed(2)}</Text>
                       </View>
                     </View>
-
-                    <Text style={styles.inputLabel}>Notes (Optional)</Text>
-                    <TextInput
-                      style={styles.inputField}
-                      placeholder="e.g. Original Havells box provided to customer"
-                      placeholderTextColor="#6B7280"
-                      value={item.notes}
-                      onChangeText={(val) => handleUpdatePartRow(index, 'notes', val)}
-                    />
-
-                    <View style={styles.lineTotalRow}>
-                      <Text style={styles.lineTotalLabel}>Line Total:</Text>
-                      <Text style={styles.lineTotalVal}>₹{lineTotal.toFixed(2)}</Text>
-                    </View>
-                  </View>
-                );
-              })}
+                  );
+                })
+              )}
 
               <TouchableOpacity
                 style={styles.addAnotherBtn}
@@ -1035,7 +1124,9 @@ export default function BookingDetailScreen({ route, navigation }) {
                 activeOpacity={0.8}
               >
                 <Ionicons name="add-circle-outline" size={18} color="#A78BFA" />
-                <Text style={styles.addAnotherText}>+ Add Another Part / Item</Text>
+                <Text style={styles.addAnotherText}>
+                  {partsList.length === 0 ? '+ Add Spare Part or Material' : '+ Add Another Part / Item'}
+                </Text>
               </TouchableOpacity>
 
               {/* Estimate Summary Box */}
@@ -1074,8 +1165,13 @@ export default function BookingDetailScreen({ route, navigation }) {
                 )}
                 <View style={styles.estimateRow}>
                   <Text style={styles.estimateLabel}>Total Extra Proposed:</Text>
-                  <Text style={[styles.estimateVal, { color: '#F59E0B' }]}>
-                    +₹{modalTotals.totalAdditional}
+                  <Text
+                    style={[
+                      styles.estimateVal,
+                      { color: modalTotals.totalAdditional > 0 ? '#F59E0B' : '#9CA3AF' }
+                    ]}
+                  >
+                    {modalTotals.totalAdditional > 0 ? `+₹${modalTotals.totalAdditional}` : '₹0'}
                   </Text>
                 </View>
                 <View style={styles.estimateDivider} />
@@ -1097,6 +1193,8 @@ export default function BookingDetailScreen({ route, navigation }) {
                 title={
                   partsSubmitting
                     ? 'Submitting...'
+                    : partsList.length === 0
+                    ? 'Confirm (No Extra Materials)'
                     : booking.spareParts?.status === 'rejected'
                     ? 'Resubmit Revised Proposal'
                     : 'Submit for Approval'
@@ -1676,6 +1774,29 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: spacing.md
+  },
+  emptyPartsModalBox: {
+    backgroundColor: 'rgba(124, 58, 237, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.25)',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    alignItems: 'center',
+    marginBottom: spacing.md
+  },
+  emptyPartsModalTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#EDE9FE',
+    marginTop: 6,
+    marginBottom: 4,
+    textAlign: 'center'
+  },
+  emptyPartsModalText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    lineHeight: 18,
+    textAlign: 'center'
   },
   partCardInput: {
     backgroundColor: '#1C1929',

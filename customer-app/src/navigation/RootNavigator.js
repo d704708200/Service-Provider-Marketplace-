@@ -6,8 +6,10 @@ import AuthNavigator from './AuthNavigator';
 import TabNavigator from './TabNavigator';
 import CategoryServicesScreen from '../screens/home/CategoryServicesScreen';
 import ServiceDetailScreen from '../screens/services/ServiceDetailScreen';
+import ProvidersScreen from '../screens/providers/ProvidersScreen';
 import ProviderDetailScreen from '../screens/providers/ProviderDetailScreen';
 import RequestServiceScreen from '../screens/booking/RequestServiceScreen';
+import BookingDetailScreen from '../screens/booking/BookingDetailScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 
 const Stack = createNativeStackNavigator();
@@ -28,8 +30,10 @@ export default function RootNavigator() {
           <Stack.Screen name="MainTabs" component={TabNavigator} />
           <Stack.Screen name="CategoryServices" component={CategoryServicesScreen} />
           <Stack.Screen name="ServiceDetail" component={ServiceDetailScreen} />
+          <Stack.Screen name="Providers" component={ProvidersScreen} />
           <Stack.Screen name="ProviderDetail" component={ProviderDetailScreen} />
           <Stack.Screen name="RequestService" component={RequestServiceScreen} />
+          <Stack.Screen name="BookingDetail" component={BookingDetailScreen} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
         </>
       )}

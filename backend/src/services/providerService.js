@@ -1251,7 +1251,7 @@ const getProviderSlotAvailability = async ({ providerId, date, startTime, endTim
   } else if (!isWorkingHours) {
     busyReason = workingHoursReason || 'Outside working hours';
   } else if (hasBookingConflict) {
-    busyReason = `Provider has an existing booking at the selected time (${conflictingBookings[0].scheduledTimeSlot.startTime} - ${conflictingBookings[0].scheduledTimeSlot.endTime})`;
+    busyReason = `The selected provider already has a booking during this time (${conflictingBookings[0].scheduledTimeSlot.startTime} - ${conflictingBookings[0].scheduledTimeSlot.endTime}).`;
   }
 
   // 3. If busy/unavailable, find alternatives from the EXACT SAME category

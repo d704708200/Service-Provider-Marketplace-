@@ -166,16 +166,31 @@ export default function ServiceDetailScreen({ route, navigation }) {
             ₹{service.basePrice?.toLocaleString('en-IN') || 0}
           </Text>
         </View>
-        <Button
-          title="Book / Request Service"
-          onPress={() =>
-            navigation.navigate('RequestService', {
-              serviceId: service._id,
-              service
-            })
-          }
-          style={styles.actionBtn}
-        />
+        <View style={styles.actionButtonsCol}>
+          <Button
+            title="Find Providers"
+            variant="outline"
+            onPress={() =>
+              navigation.navigate('Providers', {
+                serviceId: service._id,
+                serviceName: service.name,
+                categoryId: service.category?._id || service.category,
+                categoryName: service.category?.name
+              })
+            }
+            style={styles.findProvidersBtn}
+          />
+          <Button
+            title="Book Service"
+            onPress={() =>
+              navigation.navigate('RequestService', {
+                serviceId: service._id,
+                service
+              })
+            }
+            style={styles.actionBtn}
+          />
+        </View>
       </View>
     </View>
   );
@@ -297,6 +312,16 @@ const styles = StyleSheet.create({
     ...typography.titleSmall,
     color: colors.slate900,
     fontWeight: '700'
+  },
+  actionButtonsCol: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'flex-end'
+  },
+  findProvidersBtn: {
+    paddingHorizontal: spacing.sm,
+    minWidth: 100
   },
   actionBtn: {
     flex: 1
