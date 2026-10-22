@@ -17,7 +17,8 @@ const {
   validateProviderServiceArea,
   validateUpdateProviderServiceArea,
   validateCreateService,
-  validateUpdateService
+  validateUpdateService,
+  validateUpdateServiceStatus
 } = require('../middleware/validation');
 
 // =========================================================
@@ -62,19 +63,37 @@ router.post(
 );
 
 router.put(
-  '/me/services/:id',
+  ['/me/services/:id', '/me/services/:serviceId'],
   authenticate,
   requireRole('provider'),
-  validateObjectId('id'),
+  validateObjectId('id', 'serviceId'),
   validateUpdateService,
   providerController.updateProviderService
 );
 
-router.delete(
-  '/me/services/:id',
+router.patch(
+  ['/me/services/:id', '/me/services/:serviceId'],
   authenticate,
   requireRole('provider'),
-  validateObjectId('id'),
+  validateObjectId('id', 'serviceId'),
+  validateUpdateService,
+  providerController.updateProviderService
+);
+
+router.patch(
+  ['/me/services/:id/status', '/me/services/:serviceId/status'],
+  authenticate,
+  requireRole('provider'),
+  validateObjectId('id', 'serviceId'),
+  validateUpdateServiceStatus,
+  providerController.updateProviderServiceStatus
+);
+
+router.delete(
+  ['/me/services/:id', '/me/services/:serviceId'],
+  authenticate,
+  requireRole('provider'),
+  validateObjectId('id', 'serviceId'),
   providerController.deleteProviderService
 );
 
@@ -239,6 +258,12 @@ router.delete(
 // 3. PUBLIC DISCOVERY ROUTES (Customers / Unauthenticated)
 // =========================================================
 router.get('/', providerController.getPublicProviders);
+
+router.get(
+  ['/:id/availability-check', '/:providerId/availability-check'],
+  validateObjectId('id', 'providerId'),
+  providerController.checkProviderSlotAvailability
+);
 
 router.get('/:id', validateObjectId('id'), providerController.getPublicProviderById);
 

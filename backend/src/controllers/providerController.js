@@ -216,14 +216,15 @@ const addProviderService = async (req, res, next) => {
 };
 
 /**
- * PUT /api/providers/me/services/:id
+ * PUT/PATCH /api/providers/me/services/:serviceId (or :id)
  * Authenticated provider updates a provider service offering
  */
 const updateProviderService = async (req, res, next) => {
   try {
+    const serviceId = req.params.serviceId || req.params.id;
     const service = await providerService.updateProviderServiceByUserId(
       req.user._id,
-      req.params.id,
+      serviceId,
       req.body
     );
     res.status(200).json({
@@ -237,14 +238,37 @@ const updateProviderService = async (req, res, next) => {
 };
 
 /**
- * DELETE /api/providers/me/services/:id
- * Authenticated provider deletes or deactivates a provider service offering
+ * PATCH /api/providers/me/services/:serviceId/status (or :id/status)
+ * Authenticated provider toggles or sets status of their service offering
+ */
+const updateProviderServiceStatus = async (req, res, next) => {
+  try {
+    const serviceId = req.params.serviceId || req.params.id;
+    const service = await providerService.updateProviderServiceStatusByUserId(
+      req.user._id,
+      serviceId,
+      req.body.isActive
+    );
+    res.status(200).json({
+      success: true,
+      message: `Service ${service.isActive ? 'activated' : 'deactivated'} successfully`,
+      data: service
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/providers/me/services/:serviceId (or :id)
+ * Authenticated provider deletes an owned provider service offering (if no bookings)
  */
 const deleteProviderService = async (req, res, next) => {
   try {
+    const serviceId = req.params.serviceId || req.params.id;
     const result = await providerService.deleteProviderServiceByUserId(
       req.user._id,
-      req.params.id
+      serviceId
     );
     res.status(200).json({
       success: true,
@@ -414,6 +438,30 @@ const getPublicProviderById = async (req, res, next) => {
 };
 
 /**
+ * GET /api/providers/:id/availability-check
+ * Public check of provider slot availability and category alternatives
+ */
+const checkProviderSlotAvailability = async (req, res, next) => {
+  try {
+    const providerId = req.params.providerId || req.params.id;
+    const result = await providerService.getProviderSlotAvailability({
+      providerId,
+      date: req.query.date,
+      startTime: req.query.startTime,
+      endTime: req.query.endTime,
+      serviceId: req.query.serviceId
+    });
+    res.status(200).json({
+      success: true,
+      message: result.isAvailable ? 'Provider is available for the selected slot' : 'Provider is busy or unavailable at the selected slot',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * GET /api/providers/admin
  * Admin listing of all providers with filtering and pagination
  */
@@ -571,6 +619,7 @@ module.exports = {
   getProviderServices,
   addProviderService,
   updateProviderService,
+  updateProviderServiceStatus,
   deleteProviderService,
   getProviderAvailability,
   updateProviderAvailability,
@@ -585,6 +634,7 @@ module.exports = {
   deleteDocument,
   getPublicProviders,
   getPublicProviderById,
+  checkProviderSlotAvailability,
   getAdminProviders,
   getAdminPendingVerifications,
   getAdminProviderById,

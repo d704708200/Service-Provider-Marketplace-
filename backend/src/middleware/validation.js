@@ -117,14 +117,20 @@ const validateLogin = (req, res, next) => {
 
 const mongoose = require('mongoose');
 
-const validateObjectId = (paramName = 'id') => {
+const validateObjectId = (...paramNames) => {
+  const names = paramNames.length > 0 ? paramNames : ['id'];
   return (req, res, next) => {
-    const id = req.params[paramName];
+    // Find the first parameter that exists in req.params
+    let matchedParamName = names.find((name) => req.params[name] !== undefined);
+    if (!matchedParamName) {
+      matchedParamName = names[0];
+    }
+    const id = req.params[matchedParamName];
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
         error: {
-          message: `Invalid MongoDB ObjectId for parameter '${paramName}': '${id}'`,
+          message: `Invalid MongoDB ObjectId for parameter '${matchedParamName}': '${id}'`,
           statusCode: 400,
           timestamp: new Date().toISOString()
         }

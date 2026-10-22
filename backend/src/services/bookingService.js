@@ -93,16 +93,21 @@ const createBooking = async (userId, bookingData) => {
     }
 
     // Verify service ownership if service is provider-specific
-    if (service.provider && service.provider.toString() !== provider._id.toString()) {
+    const isOwnedService = service.provider && (
+      service.provider.toString() === provider._id.toString() ||
+      (provider.user && service.provider.toString() === provider.user.toString())
+    );
+
+    if (service.provider && !isOwnedService) {
       const err = new Error('The selected provider does not offer this specific service');
       err.statusCode = 400;
       throw err;
     }
 
-    // Verify provider offers category
-    const offersCategory = provider.categories && provider.categories.some(
+    // Verify provider offers category (or created/owns this custom service)
+    const offersCategory = isOwnedService || (provider.categories && provider.categories.some(
       (catId) => catId.toString() === service.category._id.toString()
-    );
+    ));
     if (!offersCategory) {
       const err = new Error('The selected provider does not offer this service category');
       err.statusCode = 400;
@@ -144,6 +149,34 @@ const createBooking = async (userId, bookingData) => {
             `The requested time slot '${bookingData.scheduledTimeSlot.startTime}' is outside the provider's available working hours for this day`
           );
           err.statusCode = 400;
+          throw err;
+        }
+      }
+
+      // Check for overlapping confirmed or in-progress bookings for this provider
+      const startOfDay = new Date(targetDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(targetDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const reqStart = (bookingData.scheduledTimeSlot?.startTime || '').trim();
+      const reqEnd = (bookingData.scheduledTimeSlot?.endTime || '').trim();
+
+      if (reqStart && reqEnd) {
+        const overlappingBooking = await Booking.findOne({
+          provider: provider._id,
+          status: { $in: ['pending', 'accepted', 'in_progress'] },
+          bookingMode: 'scheduled',
+          scheduledDate: { $gte: startOfDay, $lte: endOfDay },
+          'scheduledTimeSlot.startTime': { $lt: reqEnd },
+          'scheduledTimeSlot.endTime': { $gt: reqStart }
+        });
+
+        if (overlappingBooking) {
+          const err = new Error(
+            `The selected provider is already booked for this time slot (${overlappingBooking.scheduledTimeSlot.startTime} - ${overlappingBooking.scheduledTimeSlot.endTime}). Please select another time or an alternative provider.`
+          );
+          err.statusCode = 409;
           throw err;
         }
       }
@@ -1814,22 +1847,6 @@ const confirmCashPaymentByProvider = async (userId, bookingId) => {
     throw err;
   }
 
-  // Check if booking is eligible for cash collection:
-  // Case 1: booking.paymentMethod === 'cash'
-  // Case 2: booking.paymentMethod === 'online' AND booking.spareParts?.paymentMethod === 'cash'
-  const isBaseCash = booking.paymentMethod === 'cash';
-  const isSparePartsCash =
-    booking.spareParts &&
-    booking.spareParts.status === 'approved' &&
-    booking.spareParts.paymentMethod === 'cash';
-
-  // Status check: must be in_progress or completed
-  if (!['in_progress', 'completed'].includes(booking.status)) {
-    const err = new Error(`Cannot collect cash for booking in '${booking.status}' status. Must be 'in_progress' or 'completed'.`);
-    err.statusCode = 400;
-    throw err;
-  }
-
   // Pending proposal check: extra materials must not be awaiting customer decision
   if (
     booking.spareParts &&
@@ -1840,39 +1857,14 @@ const confirmCashPaymentByProvider = async (userId, bookingId) => {
     throw err;
   }
 
-  // Idempotency: check if everything payable in cash is already paid
-  if (isBaseCash) {
-    if (booking.paymentStatus === 'paid' && booking.paymentDetails?.cashConfirmedByProvider) {
-      if (!isSparePartsCash || booking.spareParts.paymentStatus === 'paid') {
-        return await Booking.findById(booking._id)
-          .populate('service', 'name price priceType')
-          .populate({
-            path: 'provider',
-            populate: { path: 'user', select: 'name phone' }
-          })
-          .populate({
-            path: 'customer',
-            populate: { path: 'user', select: 'name phone' }
-          });
-      }
-    }
-  } else if (
-    booking.paymentMethod === 'online' &&
-    isSparePartsCash &&
-    booking.spareParts.paymentStatus === 'paid'
-  ) {
-    // Idempotent return for online booking with already confirmed cash spare parts
-    return await Booking.findById(booking._id)
-      .populate('service', 'name price priceType')
-      .populate({
-        path: 'provider',
-        populate: { path: 'user', select: 'name phone' }
-      })
-      .populate({
-        path: 'customer',
-        populate: { path: 'user', select: 'name phone' }
-      });
-  }
+  // Check if booking is eligible for cash collection:
+  // Case 1: booking.paymentMethod === 'cash'
+  // Case 2: booking.paymentMethod === 'online' AND booking.spareParts?.paymentMethod === 'cash'
+  const isBaseCash = booking.paymentMethod === 'cash';
+  const isSparePartsCash =
+    booking.spareParts &&
+    booking.spareParts.status === 'approved' &&
+    booking.spareParts.paymentMethod === 'cash';
 
   if (!isBaseCash && !isSparePartsCash) {
     const err = new Error(`Cannot record cash collection for '${booking.paymentMethod}' booking without cash payment option selected`);
@@ -1880,33 +1872,99 @@ const confirmCashPaymentByProvider = async (userId, bookingId) => {
     throw err;
   }
 
-  if (!booking.paymentDetails) booking.paymentDetails = {};
+  // Status check: must be in_progress or completed
+  if (!['in_progress', 'completed'].includes(booking.status)) {
+    const err = new Error(`Cannot collect cash for booking in '${booking.status}' status. Must be 'in_progress' or 'completed'.`);
+    err.statusCode = 400;
+    throw err;
+  }
 
+  // Check already collected / duplicate collection
   if (isBaseCash) {
-    const finalPayable = booking.pricing?.totalAmount || 0;
-    booking.paymentStatus = 'paid';
-    booking.paymentDetails.cashCollectedAmount = finalPayable;
-    booking.paymentDetails.cashConfirmedByProvider = true;
-    booking.paymentDetails.cashConfirmedByProviderAt = new Date();
-    booking.paymentDetails.paidAt = new Date();
-    booking.paymentDetails.failureReason = null;
-    if (booking.spareParts && booking.spareParts.status === 'approved') {
-      booking.spareParts.paymentStatus = 'paid';
-      if (!booking.spareParts.paymentMethod) {
-        booking.spareParts.paymentMethod = 'cash';
+    if (booking.paymentStatus === 'paid' && booking.paymentDetails?.cashConfirmedByProvider) {
+      if (!isSparePartsCash || booking.spareParts.paymentStatus === 'paid') {
+        const err = new Error('Cash payment for this booking has already been collected and recorded');
+        err.statusCode = 400;
+        throw err;
       }
     }
   } else if (isSparePartsCash) {
-    // Base was already paid online (or non-cash), provider collects extra cash portion
-    const extraCash = booking.spareParts.totalAdditionalAmount || 0;
-    booking.spareParts.paymentStatus = 'paid';
-    booking.spareParts.paymentMethod = 'cash';
-    booking.paymentDetails.cashCollectedAmount = (booking.paymentDetails.cashCollectedAmount || 0) + extraCash;
-    booking.paymentDetails.cashConfirmedByProvider = true;
-    booking.paymentDetails.cashConfirmedByProviderAt = new Date();
+    if (booking.spareParts.paymentStatus === 'paid') {
+      const err = new Error('Approved extra materials cash charges have already been collected for this booking');
+      err.statusCode = 400;
+      throw err;
+    }
+    const extraCash = Number(booking.spareParts.totalAdditionalAmount || 0);
+    if (extraCash <= 0) {
+      const err = new Error('No outstanding cash balance to collect for this booking');
+      err.statusCode = 400;
+      throw err;
+    }
   }
 
-  await booking.save();
+  const now = new Date();
+  let updatedBooking = null;
+
+  if (isBaseCash) {
+    const finalPayable = booking.pricing?.totalAmount || 0;
+    const updateFields = {
+      paymentStatus: 'paid',
+      'paymentDetails.cashCollectedAmount': finalPayable,
+      'paymentDetails.cashConfirmedByProvider': true,
+      'paymentDetails.cashConfirmedByProviderAt': now,
+      'paymentDetails.paidAt': now,
+      'paymentDetails.failureReason': null
+    };
+
+    if (booking.spareParts && booking.spareParts.status === 'approved') {
+      updateFields['spareParts.paymentStatus'] = 'paid';
+      if (!booking.spareParts.paymentMethod) {
+        updateFields['spareParts.paymentMethod'] = 'cash';
+      }
+      updateFields['spareParts.paymentDetails.paidAt'] = now;
+    }
+
+    updatedBooking = await Booking.findOneAndUpdate(
+      {
+        _id: booking._id,
+        provider: provider._id,
+        $or: [
+          { paymentStatus: { $ne: 'paid' } },
+          { 'spareParts.paymentStatus': { $ne: 'paid' } }
+        ]
+      },
+      { $set: updateFields },
+      { new: true }
+    );
+  } else if (isSparePartsCash) {
+    const extraCash = Number(booking.spareParts.totalAdditionalAmount || 0);
+    updatedBooking = await Booking.findOneAndUpdate(
+      {
+        _id: booking._id,
+        provider: provider._id,
+        'spareParts.paymentStatus': { $ne: 'paid' }
+      },
+      {
+        $set: {
+          'spareParts.paymentStatus': 'paid',
+          'spareParts.paymentMethod': 'cash',
+          'spareParts.paymentDetails.paidAt': now,
+          'paymentDetails.cashConfirmedByProvider': true,
+          'paymentDetails.cashConfirmedByProviderAt': now
+        },
+        $inc: {
+          'paymentDetails.cashCollectedAmount': extraCash
+        }
+      },
+      { new: true }
+    );
+  }
+
+  if (!updatedBooking) {
+    const err = new Error('Cash payment could not be recorded: payment may have already been collected or modified concurrently');
+    err.statusCode = 400;
+    throw err;
+  }
 
   return await Booking.findById(booking._id)
     .populate('service', 'name price priceType')

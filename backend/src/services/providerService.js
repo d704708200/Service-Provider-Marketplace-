@@ -120,7 +120,18 @@ const getProviderServicesByUserId = async (userId) => {
     .sort({ createdAt: -1 })
     .lean();
 
-  return services;
+  // Attach booking count for each service
+  const servicesWithBookingCounts = await Promise.all(
+    services.map(async (srv) => {
+      const bookingCount = await Booking.countDocuments({ service: srv._id });
+      return {
+        ...srv,
+        bookingCount
+      };
+    })
+  );
+
+  return servicesWithBookingCounts;
 };
 
 /**
@@ -320,7 +331,23 @@ const addProviderServiceByUserId = async (userId, serviceData) => {
     throw err;
   }
 
-  const { name, category: categoryId, price, priceType = 'fixed', estimatedDurationMinutes = 60, description, image, isActive = true } = serviceData;
+  // Verification check: Only verified providers can publish custom services
+  if (provider.verificationStatus !== 'verified') {
+    const err = new Error('Only verified service providers are eligible to publish or manage custom services');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  const {
+    name,
+    category: categoryId,
+    price,
+    priceType = 'fixed',
+    estimatedDurationMinutes = 60,
+    description,
+    image,
+    isActive = true
+  } = serviceData;
 
   const category = await Category.findById(categoryId);
   if (!category || !category.isActive) {
@@ -330,8 +357,22 @@ const addProviderServiceByUserId = async (userId, serviceData) => {
   }
 
   // Price validation
+  if (price === undefined || price === null || typeof price !== 'number' || Number.isNaN(price) || price < 0) {
+    const err = new Error('Price is required and must be a positive number');
+    err.statusCode = 400;
+    throw err;
+  }
+
   if ((priceType === 'fixed' || priceType === 'hourly') && price <= 0) {
     const err = new Error(`Price must be greater than 0 for ${priceType} pricing model`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Duration validation
+  const durationNum = Number(estimatedDurationMinutes);
+  if (!Number.isInteger(durationNum) || durationNum < 1) {
+    const err = new Error('Estimated duration must be an integer of at least 1 minute');
     err.statusCode = 400;
     throw err;
   }
@@ -342,13 +383,17 @@ const addProviderServiceByUserId = async (userId, serviceData) => {
     provider: provider._id,
     price: Number(price),
     priceType,
-    estimatedDurationMinutes: Number(estimatedDurationMinutes) || 60,
+    estimatedDurationMinutes: durationNum,
     description: description ? description.trim() : '',
     image: image ? image.trim() : null,
     isActive: Boolean(isActive)
   });
 
-  return await Service.findById(newService._id).populate('category', 'name slug icon isActive').lean();
+  const created = await Service.findById(newService._id).populate('category', 'name slug icon isActive').lean();
+  return {
+    ...created,
+    bookingCount: 0
+  };
 };
 
 /**
@@ -359,6 +404,13 @@ const updateProviderServiceByUserId = async (userId, serviceId, updateData) => {
   if (!provider) {
     const err = new Error('Provider profile not found');
     err.statusCode = 404;
+    throw err;
+  }
+
+  // Verification check
+  if (provider.verificationStatus !== 'verified') {
+    const err = new Error('Only verified service providers are eligible to publish or manage custom services');
+    err.statusCode = 403;
     throw err;
   }
 
@@ -375,21 +427,120 @@ const updateProviderServiceByUserId = async (userId, serviceId, updateData) => {
     throw err;
   }
 
-  if (updateData.name !== undefined) service.name = updateData.name.trim();
-  if (updateData.description !== undefined) service.description = updateData.description.trim();
-  if (updateData.price !== undefined) service.price = Number(updateData.price);
-  if (updateData.priceType !== undefined) service.priceType = updateData.priceType;
-  if (updateData.estimatedDurationMinutes !== undefined) service.estimatedDurationMinutes = Number(updateData.estimatedDurationMinutes);
-  if (updateData.image !== undefined) service.image = updateData.image ? updateData.image.trim() : null;
-  if (updateData.isActive !== undefined) service.isActive = Boolean(updateData.isActive);
+  if (updateData.category !== undefined) {
+    const category = await Category.findById(updateData.category);
+    if (!category || !category.isActive) {
+      const err = new Error('Category not found or inactive');
+      err.statusCode = 400;
+      throw err;
+    }
+    service.category = category._id;
+  }
+
+  if (updateData.name !== undefined) {
+    if (!updateData.name || typeof updateData.name !== 'string' || !updateData.name.trim()) {
+      const err = new Error('Service name cannot be empty');
+      err.statusCode = 400;
+      throw err;
+    }
+    service.name = updateData.name.trim();
+  }
+
+  if (updateData.description !== undefined) {
+    service.description = typeof updateData.description === 'string' ? updateData.description.trim() : '';
+  }
+
+  const targetPriceType = updateData.priceType !== undefined ? updateData.priceType : service.priceType;
+  if (updateData.price !== undefined) {
+    const numPrice = Number(updateData.price);
+    if (typeof numPrice !== 'number' || Number.isNaN(numPrice) || numPrice < 0) {
+      const err = new Error('Price must be a positive number');
+      err.statusCode = 400;
+      throw err;
+    }
+    if ((targetPriceType === 'fixed' || targetPriceType === 'hourly') && numPrice <= 0) {
+      const err = new Error(`Price must be greater than 0 for ${targetPriceType} pricing model`);
+      err.statusCode = 400;
+      throw err;
+    }
+    service.price = numPrice;
+  }
+
+  if (updateData.priceType !== undefined) {
+    service.priceType = updateData.priceType;
+  }
+
+  if (updateData.estimatedDurationMinutes !== undefined) {
+    const dur = Number(updateData.estimatedDurationMinutes);
+    if (!Number.isInteger(dur) || dur < 1) {
+      const err = new Error('Estimated duration must be an integer of at least 1 minute');
+      err.statusCode = 400;
+      throw err;
+    }
+    service.estimatedDurationMinutes = dur;
+  }
+
+  if (updateData.image !== undefined) {
+    service.image = updateData.image ? String(updateData.image).trim() : null;
+  }
+
+  if (updateData.isActive !== undefined) {
+    service.isActive = Boolean(updateData.isActive);
+  }
 
   await service.save();
 
-  return await Service.findById(serviceId).populate('category', 'name slug icon isActive').lean();
+  const updated = await Service.findById(serviceId).populate('category', 'name slug icon isActive').lean();
+  const bookingCount = await Booking.countDocuments({ service: serviceId });
+  return {
+    ...updated,
+    bookingCount
+  };
 };
 
 /**
- * Deactivate or Delete an owned provider service
+ * Update status (active/inactive) of an owned provider service
+ */
+const updateProviderServiceStatusByUserId = async (userId, serviceId, isActive) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (provider.verificationStatus !== 'verified') {
+    const err = new Error('Only verified service providers are eligible to publish or manage custom services');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  const service = await Service.findById(serviceId);
+  if (!service) {
+    const err = new Error(`Service not found with ID '${serviceId}'`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (!service.provider || service.provider.toString() !== provider._id.toString()) {
+    const err = new Error('Access denied: You do not own this service');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  service.isActive = Boolean(isActive);
+  await service.save();
+
+  const updated = await Service.findById(serviceId).populate('category', 'name slug icon isActive').lean();
+  const bookingCount = await Booking.countDocuments({ service: serviceId });
+  return {
+    ...updated,
+    bookingCount
+  };
+};
+
+/**
+ * Delete an owned provider service (only if safe; otherwise reject and recommend deactivation)
  */
 const deleteProviderServiceByUserId = async (userId, serviceId) => {
   const provider = await Provider.findOne({ user: userId });
@@ -415,14 +566,12 @@ const deleteProviderServiceByUserId = async (userId, serviceId) => {
   // Check if existing bookings reference this service
   const bookingsCount = await Booking.countDocuments({ service: serviceId });
   if (bookingsCount > 0) {
-    // Soft-deactivate to preserve historical booking records
-    service.isActive = false;
-    await service.save();
-    return {
-      message: 'Service deactivated to preserve booking history',
-      deactivated: true,
-      serviceId
-    };
+    const err = new Error(
+      `Cannot delete service with ${bookingsCount} existing booking(s). Please deactivate the service instead to stop receiving new bookings.`
+    );
+    err.statusCode = 400;
+    err.canDeactivate = true;
+    throw err;
   }
 
   await Service.findByIdAndDelete(serviceId);
@@ -664,7 +813,7 @@ const getPublicProviders = async (query = {}) => {
     filter.showInTopRated = true;
   }
 
-  // 1. Resolve Category Filter (supports ObjectId, slug, name, or legacy string)
+  // 1. Resolve Category Filter (supports ObjectId, slug, or exact name)
   if (query.category && String(query.category).trim() && query.category !== 'all') {
     const rawCategory = String(query.category).trim();
     let categoryIds = [];
@@ -672,7 +821,7 @@ const getPublicProviders = async (query = {}) => {
     if (mongoose.Types.ObjectId.isValid(rawCategory)) {
       categoryIds.push(new mongoose.Types.ObjectId(rawCategory));
     } else {
-      // Find matching categories by exact name, slug, or partial name
+      // Find matching categories by exact name or slug
       const catRegex = new RegExp(`^${escapeRegex(rawCategory)}$`, 'i');
       const matchingCats = await Category.find({
         $or: [
@@ -686,23 +835,45 @@ const getPublicProviders = async (query = {}) => {
       }
     }
 
-    // Match on current categories array, or legacy category / specialization fields
-    const categoryConditions = [];
     if (categoryIds.length > 0) {
-      categoryConditions.push({ categories: { $in: categoryIds } });
-      categoryConditions.push({ category: { $in: categoryIds } });
-    }
-    // Also match legacy text fields if string was passed
-    const textCatRegex = new RegExp(escapeRegex(rawCategory), 'i');
-    categoryConditions.push({ category: textCatRegex });
-    categoryConditions.push({ serviceCategories: textCatRegex });
-    categoryConditions.push({ specialization: textCatRegex });
-
-    if (categoryConditions.length === 1) {
-      Object.assign(filter, categoryConditions[0]);
+      // A provider's category is the exact category assigned during registration (categories array or legacy category field)
+      filter.$or = [
+        { categories: { $in: categoryIds } },
+        { category: { $in: categoryIds } }
+      ];
     } else {
-      filter.$and = filter.$and || [];
-      filter.$and.push({ $or: categoryConditions });
+      // Unmatched category name passed; return empty results
+      filter._id = new mongoose.Types.ObjectId();
+    }
+  }
+
+  // 1b. Resolve Specific Service Filter
+  // If query.service is provided:
+  // - If it's a provider-owned custom service (service.provider != null), match only that provider.
+  // - If it's an admin catalog service (service.provider == null), match verified providers whose categories include service.category.
+  if (query.service && String(query.service).trim()) {
+    const rawService = String(query.service).trim();
+    let serviceDoc = null;
+    if (mongoose.Types.ObjectId.isValid(rawService)) {
+      serviceDoc = await Service.findById(rawService).lean();
+    } else {
+      serviceDoc = await Service.findOne({
+        name: new RegExp(`^${escapeRegex(rawService)}$`, 'i'),
+        isActive: true
+      }).lean();
+    }
+
+    if (serviceDoc) {
+      if (serviceDoc.provider) {
+        // Provider-owned custom service: match exact provider owner
+        filter._id = serviceDoc.provider;
+      } else if (serviceDoc.category) {
+        // Platform catalog service: match providers who offer this category
+        filter.categories = { $in: [serviceDoc.category] };
+      }
+    } else {
+      // Specified service was not found; return empty match
+      filter._id = new mongoose.Types.ObjectId();
     }
   }
 
@@ -850,11 +1021,19 @@ const getPublicProviders = async (query = {}) => {
         };
       }
 
-      // Get starting price from active services
-      const minService = await Service.findOne({ provider: p._id, isActive: true })
+      // Get starting price: first check provider custom services, otherwise check catalog services for provider's categories
+      const categoryIds = Array.isArray(p.categories) ? p.categories.map((c) => c._id || c) : [];
+      let minService = await Service.findOne({ provider: p._id, isActive: true })
         .sort({ price: 1 })
         .select('price')
         .lean();
+
+      if (!minService && categoryIds.length > 0) {
+        minService = await Service.findOne({ category: { $in: categoryIds }, provider: null, isActive: true })
+          .sort({ price: 1 })
+          .select('price')
+          .lean();
+      }
 
       const startingPrice = minService ? minService.price : null;
 
@@ -974,6 +1153,205 @@ const getPublicProviderById = async (providerId) => {
     isAvailable: provider.isAvailable,
     services,
     reviewCount: provider.rating?.count || 0
+  };
+};
+
+/**
+ * Check provider availability for a requested date and time slot.
+ * If provider is busy or unavailable, returns alternatives from the EXACT SAME category.
+ */
+const getProviderSlotAvailability = async ({ providerId, date, startTime, endTime, serviceId }) => {
+  if (!providerId || !mongoose.Types.ObjectId.isValid(providerId)) {
+    const err = new Error('A valid providerId is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!date || !startTime || !endTime) {
+    const err = new Error('Date, startTime, and endTime are required to check slot availability');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  let provider = await Provider.findById(providerId)
+    .populate('user', 'name avatar isActive')
+    .populate('categories', 'name slug icon')
+    .lean();
+
+  if (!provider) {
+    provider = await Provider.findOne({ user: providerId })
+      .populate('user', 'name avatar isActive')
+      .populate('categories', 'name slug icon')
+      .lean();
+  }
+
+  if (!provider || provider.verificationStatus !== 'verified' || !provider.user?.isActive || provider.isDeleted) {
+    const err = new Error('Provider not found or not active');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Parse target date and day of week
+  const targetDate = new Date(date);
+  if (isNaN(targetDate.getTime())) {
+    const err = new Error('Invalid date provided');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const startOfDay = new Date(targetDate);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(targetDate);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const dayOfWeek = targetDate.getDay();
+
+  // 1. Check working hours schedule in Availability collection
+  const availabilityDoc = await Availability.findOne({
+    provider: provider._id,
+    dayOfWeek
+  }).lean();
+
+  let isWorkingHours = true;
+  let workingHoursReason = null;
+
+  if (availabilityDoc) {
+    if (!availabilityDoc.isAvailable) {
+      isWorkingHours = false;
+      workingHoursReason = `Provider is off duty on this day of the week`;
+    } else if (availabilityDoc.slots && availabilityDoc.slots.length > 0) {
+      const slotMatch = availabilityDoc.slots.some(
+        (slot) => startTime >= slot.startTime && startTime < slot.endTime
+      );
+      if (!slotMatch) {
+        isWorkingHours = false;
+        workingHoursReason = `The requested time ${startTime} is outside provider's scheduled working hours`;
+      }
+    }
+  }
+
+  // 2. Check for overlapping active bookings
+  const conflictingBookings = await Booking.find({
+    provider: provider._id,
+    status: { $in: ['pending', 'accepted', 'in_progress'] },
+    bookingMode: 'scheduled',
+    scheduledDate: { $gte: startOfDay, $lte: endOfDay },
+    'scheduledTimeSlot.startTime': { $lt: endTime },
+    'scheduledTimeSlot.endTime': { $gt: startTime }
+  })
+    .select('bookingReference status scheduledDate scheduledTimeSlot service')
+    .lean();
+
+  const hasBookingConflict = conflictingBookings.length > 0;
+  const isAvailable = provider.isAvailable && isWorkingHours && !hasBookingConflict;
+
+  let busyReason = null;
+  if (!provider.isAvailable) {
+    busyReason = 'Provider is currently offline/unavailable';
+  } else if (!isWorkingHours) {
+    busyReason = workingHoursReason || 'Outside working hours';
+  } else if (hasBookingConflict) {
+    busyReason = `Provider has an existing booking at the selected time (${conflictingBookings[0].scheduledTimeSlot.startTime} - ${conflictingBookings[0].scheduledTimeSlot.endTime})`;
+  }
+
+  // 3. If busy/unavailable, find alternatives from the EXACT SAME category
+  let alternativeProviders = [];
+  let primaryCategory = null;
+  let categoryId = null;
+
+  if (serviceId && mongoose.Types.ObjectId.isValid(serviceId)) {
+    const s = await Service.findById(serviceId).populate('category', 'name slug icon').lean();
+    if (s && s.category) {
+      primaryCategory = s.category;
+      categoryId = s.category._id || s.category;
+    }
+  }
+
+  if (!categoryId && Array.isArray(provider.categories) && provider.categories.length > 0) {
+    primaryCategory = provider.categories[0];
+    categoryId = primaryCategory?._id || primaryCategory;
+  }
+
+  if (!isAvailable && categoryId) {
+    // Find all other verified active providers in this exact category
+    const otherProviders = await Provider.find({
+      _id: { $ne: provider._id },
+      verificationStatus: 'verified',
+      isAvailable: true,
+      isDeleted: { $ne: true },
+      categories: { $in: [categoryId] }
+    })
+      .populate('user', 'name avatar isActive')
+      .populate('categories', 'name slug icon')
+      .lean();
+
+    const activeOtherProviders = otherProviders.filter((p) => p.user && p.user.isActive);
+
+    // Filter which ones are free during this time slot
+    for (const alt of activeOtherProviders) {
+      // Check schedule
+      const altAvail = await Availability.findOne({
+        provider: alt._id,
+        dayOfWeek
+      }).lean();
+
+      if (altAvail && !altAvail.isAvailable) {
+        continue;
+      }
+      if (altAvail && altAvail.slots && altAvail.slots.length > 0) {
+        const slotMatch = altAvail.slots.some(
+          (s) => startTime >= s.startTime && startTime < s.endTime
+        );
+        if (!slotMatch) continue;
+      }
+
+      // Check overlapping bookings
+      const altConflicts = await Booking.countDocuments({
+        provider: alt._id,
+        status: { $in: ['pending', 'accepted', 'in_progress'] },
+        bookingMode: 'scheduled',
+        scheduledDate: { $gte: startOfDay, $lte: endOfDay },
+        'scheduledTimeSlot.startTime': { $lt: endTime },
+        'scheduledTimeSlot.endTime': { $gt: startTime }
+      });
+
+      if (altConflicts === 0) {
+        // Compute starting price
+        const altService = await Service.findOne({
+          $or: [
+            { provider: alt._id },
+            { category: categoryId, provider: null }
+          ],
+          isActive: true
+        })
+          .sort({ price: 1 })
+          .select('price')
+          .lean();
+
+        alternativeProviders.push({
+          _id: alt._id,
+          businessName: alt.businessName || alt.user?.name || 'Verified Provider',
+          avatar: alt.user?.avatar || null,
+          experienceYears: alt.experienceYears || 0,
+          categories: alt.categories,
+          rating: alt.rating || { average: 5.0, count: 0 },
+          startingPrice: altService ? altService.price : null,
+          isAvailable: true
+        });
+      }
+    }
+  }
+
+  return {
+    providerId: provider._id,
+    businessName: provider.businessName || provider.user?.name,
+    requestedDate: date,
+    requestedSlot: { startTime, endTime },
+    isAvailable,
+    status: isAvailable ? 'available' : 'busy',
+    reason: busyReason,
+    category: primaryCategory,
+    alternativeProviders
   };
 };
 
@@ -1292,6 +1670,7 @@ module.exports = {
   deleteProviderServiceAreaByUserId,
   addProviderServiceByUserId,
   updateProviderServiceByUserId,
+  updateProviderServiceStatusByUserId,
   deleteProviderServiceByUserId,
   submitDocument,
   submitKYCDocuments,
@@ -1299,6 +1678,7 @@ module.exports = {
   deleteDocument,
   getPublicProviders,
   getPublicProviderById,
+  getProviderSlotAvailability,
   getAdminProviders,
   getAdminProviderById,
   reviewDocument,
