@@ -98,10 +98,31 @@ const getProviderBookingById = async (req, res, next) => {
 
 const acceptProviderBooking = async (req, res, next) => {
   try {
-    const booking = await bookingService.acceptBookingByProvider(req.user._id, req.params.id);
+    const booking = await bookingService.acceptBookingByProvider(
+      req.user._id,
+      req.params.id,
+      req.body.serviceTeam || (req.body.totalCount ? req.body : null)
+    );
     res.status(200).json({
       success: true,
       message: 'Booking accepted successfully',
+      data: booking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateProviderTeamSize = async (req, res, next) => {
+  try {
+    const booking = await bookingService.updateTeamSizeByProvider(
+      req.user._id,
+      req.params.id,
+      req.body
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Service team size updated successfully',
       data: booking
     });
   } catch (error) {
@@ -435,5 +456,6 @@ module.exports = {
   confirmCashPaymentByCustomer,
   reportCashPaymentDispute,
   getNotifications,
-  markNotificationAsRead
+  markNotificationAsRead,
+  updateProviderTeamSize
 };

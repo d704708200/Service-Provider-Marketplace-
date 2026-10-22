@@ -1425,6 +1425,87 @@ const validateSelectSparePartsPaymentMethod = (req, res, next) => {
   next();
 };
 
+/**
+ * Validation for provider updating / confirming service team size
+ */
+const validateUpdateTeamSize = (req, res, next) => {
+  const { totalCount, roles, notes, reason } = req.body;
+  const errors = [];
+
+  // 1. totalCount validation
+  if (totalCount === undefined || totalCount === null) {
+    errors.push('totalCount is required');
+  } else if (!Number.isInteger(Number(totalCount)) || Number(totalCount) < 1) {
+    errors.push('totalCount must be an integer greater than or equal to 1');
+  } else if (Number(totalCount) > 50) {
+    errors.push('totalCount cannot exceed 50');
+  }
+
+  // 2. roles validation (optional array)
+  if (roles !== undefined) {
+    if (!Array.isArray(roles)) {
+      errors.push('roles must be an array');
+    } else {
+      let roleSum = 0;
+      let hasMain = false;
+      for (let i = 0; i < roles.length; i++) {
+        const item = roles[i];
+        if (!item || typeof item !== 'object') {
+          errors.push(`Role item at index ${i} must be an object`);
+          continue;
+        }
+        if (!item.role || typeof item.role !== 'string' || !item.role.trim()) {
+          errors.push(`Role item at index ${i} requires a non-empty 'role' name`);
+        } else {
+          const roleLower = item.role.trim().toLowerCase();
+          if (
+            roleLower.includes('main') ||
+            roleLower.includes('lead') ||
+            roleLower.includes('primary') ||
+            roleLower.includes('technician') ||
+            roleLower.includes('provider')
+          ) {
+            hasMain = true;
+          }
+        }
+        if (item.count === undefined || !Number.isInteger(Number(item.count)) || Number(item.count) < 1) {
+          errors.push(`Role count at index ${i} must be an integer greater than or equal to 1`);
+        } else {
+          roleSum += Number(item.count);
+        }
+      }
+
+      if (Number.isInteger(Number(totalCount))) {
+        if (roleSum > Number(totalCount)) {
+          errors.push(`Sum of role counts (${roleSum}) cannot exceed total team size (${totalCount})`);
+        }
+      }
+    }
+  }
+
+  if (notes !== undefined && typeof notes !== 'string') {
+    errors.push('notes must be a string');
+  }
+
+  if (reason !== undefined && typeof reason !== 'string') {
+    errors.push('reason must be a string');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'Team size validation failed',
+        details: errors,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   validateRegisterCustomer,
   validateRegisterProvider,
@@ -1457,7 +1538,9 @@ module.exports = {
   validateVerifyPayment,
   validateSubmitSpareParts,
   validateReviewSpareParts,
-  validateSelectSparePartsPaymentMethod
+  validateSelectSparePartsPaymentMethod,
+  validateUpdateTeamSize
 };
+
 
 

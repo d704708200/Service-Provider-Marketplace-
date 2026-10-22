@@ -27,6 +27,88 @@ export default function BookingDetailScreen({ route, navigation }) {
   const [partsList, setPartsList] = useState([]);
   const [partsSubmitting, setPartsSubmitting] = useState(false);
 
+  // Service Team Size state
+  const [showTeamModal, setShowTeamModal] = useState(false);
+  const [teamTotalCount, setTeamTotalCount] = useState(1);
+  const [teamRoles, setTeamRoles] = useState([
+    { role: 'Main Technician', count: 1 }
+  ]);
+  const [teamNotes, setTeamNotes] = useState('');
+  const [teamReason, setTeamReason] = useState('');
+  const [teamSubmitting, setTeamSubmitting] = useState(false);
+
+  const openTeamModal = () => {
+    if (booking?.serviceTeam?.totalCount) {
+      setTeamTotalCount(booking.serviceTeam.totalCount);
+      if (Array.isArray(booking.serviceTeam.roles) && booking.serviceTeam.roles.length > 0) {
+        setTeamRoles(booking.serviceTeam.roles.map(r => ({ role: r.role, count: r.count })));
+      } else {
+        setTeamRoles([
+          { role: 'Main Technician', count: 1 },
+          ...(booking.serviceTeam.totalCount > 1
+            ? [{ role: 'Helper', count: booking.serviceTeam.totalCount - 1 }]
+            : [])
+        ]);
+      }
+      setTeamNotes(booking.serviceTeam.notes || '');
+    } else {
+      setTeamTotalCount(1);
+      setTeamRoles([{ role: 'Main Technician', count: 1 }]);
+      setTeamNotes('');
+    }
+    setTeamReason('');
+    setShowTeamModal(true);
+  };
+
+  const handleSaveTeamSize = async () => {
+    if (teamTotalCount < 1) {
+      Alert.alert('Invalid Team Size', 'Total team size must be at least 1 person (including you).');
+      return;
+    }
+
+    // Validate role counts sum <= totalCount
+    const roleSum = teamRoles.reduce((sum, r) => sum + (parseInt(r.count, 10) || 0), 0);
+    if (roleSum > teamTotalCount) {
+      Alert.alert(
+        'Role Count Exceeds Total',
+        `The sum of role counts (${roleSum}) exceeds your total team size (${teamTotalCount}). Please adjust counts.`
+      );
+      return;
+    }
+
+    // Require reason if booking is in_progress
+    if (booking?.status === 'in_progress' && !teamReason.trim()) {
+      Alert.alert(
+        'Reason Required',
+        'Service is already in progress. Please specify a reason for modifying the service team size.'
+      );
+      return;
+    }
+
+    setTeamSubmitting(true);
+    try {
+      const payload = {
+        totalCount: teamTotalCount,
+        roles: teamRoles.filter(r => r.role.trim() && (parseInt(r.count, 10) || 0) > 0),
+        notes: teamNotes.trim(),
+        reason: teamReason.trim()
+      };
+      const res = await bookingApi.updateTeamSize(booking._id, payload);
+      if (res?.success) {
+        setBooking(res.data);
+        setShowTeamModal(false);
+        Alert.alert(
+          'Team Size Confirmed',
+          `Service team size (${teamTotalCount === 1 ? '1 person' : `${teamTotalCount} people`}) updated and notified to the customer.`
+        );
+      }
+    } catch (err) {
+      Alert.alert('Update Failed', err.userMessage || 'Could not update service team size');
+    } finally {
+      setTeamSubmitting(false);
+    }
+  };
+
   const fetchDetail = useCallback(async () => {
     if (!bookingId) return;
     try {
@@ -452,6 +534,98 @@ export default function BookingDetailScreen({ route, navigation }) {
           <View style={styles.metaRow}>
             <Text style={styles.metaLabel}>Schedule</Text>
             <Text style={styles.metaVal}>{scheduleText}</Text>
+          </View>
+        </Card>
+
+        {/* Service Team Size Card */}
+        <Card style={styles.card}>
+          <View style={styles.partsHeaderRow}>
+            <View>
+              <Text style={styles.sectionTitle}>Service Team Size</Text>
+              <Text style={styles.sectionSubtitle}>
+                Specify people attending to perform service
+              </Text>
+            </View>
+            <Badge
+              label={booking.serviceTeam?.isConfirmed ? 'CONFIRMED' : 'NOT CONFIRMED'}
+              variant={booking.serviceTeam?.isConfirmed ? 'success' : 'warning'}
+              size="sm"
+            />
+          </View>
+
+          <View style={{ marginTop: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1A162B', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#2D2845' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#2E1065', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="people" size={18} color="#A78BFA" />
+                </View>
+                <View>
+                  <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>
+                    {booking.serviceTeam?.isConfirmed && booking.serviceTeam?.totalCount
+                      ? booking.serviceTeam.totalCount === 1
+                        ? '1 person attending'
+                        : `${booking.serviceTeam.totalCount} people attending`
+                      : 'Team size not confirmed'}
+                  </Text>
+                  <Text style={{ color: '#9CA3AF', fontSize: 11, marginTop: 2 }}>
+                    Main service provider included in count
+                  </Text>
+                </View>
+              </View>
+              {(booking.status === 'accepted' || booking.status === 'in_progress') && (
+                <TouchableOpacity
+                  onPress={openTeamModal}
+                  style={{
+                    backgroundColor: '#7C3AED',
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    borderRadius: 6
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                    {booking.serviceTeam?.isConfirmed ? 'Update Team' : 'Configure'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Role Breakdown if configured */}
+            {booking.serviceTeam?.isConfirmed && Array.isArray(booking.serviceTeam?.roles) && booking.serviceTeam.roles.length > 0 && (
+              <View style={{ marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {booking.serviceTeam.roles.map((r, idx) => (
+                  <View
+                    key={idx}
+                    style={{
+                      backgroundColor: '#252136',
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: '#3B3355'
+                    }}
+                  >
+                    <Text style={{ color: '#DDD6FE', fontSize: 12, fontWeight: '600' }}>
+                      {r.role}: {r.count}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* In-progress notice or notes */}
+            {booking.serviceTeam?.notes ? (
+              <Text style={{ color: '#9CA3AF', fontSize: 12, fontStyle: 'italic', marginTop: 8 }}>
+                Notes: {booking.serviceTeam.notes}
+              </Text>
+            ) : null}
+
+            {/* Update history count if available */}
+            {Array.isArray(booking.serviceTeam?.history) && booking.serviceTeam.history.length > 1 && (
+              <Text style={{ color: '#6B7280', fontSize: 11, marginTop: 6 }}>
+                Last updated at {new Date(booking.serviceTeam.history[booking.serviceTeam.history.length - 1].updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </Text>
+            )}
           </View>
         </Card>
 
@@ -931,6 +1105,260 @@ export default function BookingDetailScreen({ route, navigation }) {
                 loading={partsSubmitting}
                 disabled={partsSubmitting}
                 onPress={handleSubmitParts}
+                style={{ flex: 2 }}
+              />
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Team Size Configuration Modal */}
+      {showTeamModal && (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Service Team Size</Text>
+                <Text style={styles.modalSubtitle}>
+                  {booking.status === 'in_progress' ? 'Authorized team change in progress' : 'Specify team members attending'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => !teamSubmitting && setShowTeamModal(false)}
+                style={styles.modalCloseBtn}
+                disabled={teamSubmitting}
+              >
+                <Ionicons name="close" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {/* Stepper for Total Team Count */}
+              <View style={{ backgroundColor: '#161420', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#252136', marginBottom: 16 }}>
+                <Text style={{ color: '#E2E8F0', fontSize: 14, fontWeight: '700', marginBottom: 4 }}>
+                  Total Team Members *
+                </Text>
+                <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 14 }}>
+                  Must include yourself (the main service provider).
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+                  <TouchableOpacity
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      backgroundColor: teamTotalCount > 1 ? '#7C3AED' : '#2D2845',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    onPress={() => {
+                      if (teamTotalCount > 1) {
+                        const newCount = teamTotalCount - 1;
+                        setTeamTotalCount(newCount);
+                      }
+                    }}
+                    disabled={teamTotalCount <= 1}
+                  >
+                    <Ionicons name="remove" size={24} color="#FFFFFF" />
+                  </TouchableOpacity>
+
+                  <View style={{ minWidth: 80, alignItems: 'center' }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 26, fontWeight: '800' }}>
+                      {teamTotalCount}
+                    </Text>
+                    <Text style={{ color: '#A78BFA', fontSize: 12, fontWeight: '600' }}>
+                      {teamTotalCount === 1 ? 'person' : 'people'}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      backgroundColor: teamTotalCount < 50 ? '#7C3AED' : '#2D2845',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    onPress={() => {
+                      if (teamTotalCount < 50) {
+                        const newCount = teamTotalCount + 1;
+                        setTeamTotalCount(newCount);
+                      }
+                    }}
+                    disabled={teamTotalCount >= 50}
+                  >
+                    <Ionicons name="add" size={24} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Role Breakdown Setup */}
+              <View style={{ marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ color: '#E2E8F0', fontSize: 13, fontWeight: '700' }}>
+                    Role-wise Counts (Optional)
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setTeamRoles([...teamRoles, { role: 'Helper', count: 1 }]);
+                    }}
+                  >
+                    <Text style={{ color: '#A78BFA', fontSize: 12, fontWeight: '700' }}>+ Add Role</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {teamRoles.map((roleItem, rIdx) => (
+                  <View
+                    key={rIdx}
+                    style={{
+                      flexDirection: 'row',
+                      gap: 8,
+                      alignItems: 'center',
+                      backgroundColor: '#161420',
+                      padding: 10,
+                      borderRadius: 8,
+                      marginBottom: 8,
+                      borderWidth: 1,
+                      borderColor: '#252136'
+                    }}
+                  >
+                    <TextInput
+                      style={{
+                        flex: 2,
+                        backgroundColor: '#1F1B2E',
+                        color: '#FFFFFF',
+                        paddingHorizontal: 10,
+                        paddingVertical: 7,
+                        borderRadius: 6,
+                        borderWidth: 1,
+                        borderColor: '#373052',
+                        fontSize: 13
+                      }}
+                      placeholder="Role (e.g. Helper, Electrician)"
+                      placeholderTextColor="#6B7280"
+                      value={roleItem.role}
+                      onChangeText={(val) => {
+                        const updated = [...teamRoles];
+                        updated[rIdx].role = val;
+                        setTeamRoles(updated);
+                      }}
+                    />
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center' }}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          const current = parseInt(roleItem.count, 10) || 1;
+                          if (current > 1) {
+                            const updated = [...teamRoles];
+                            updated[rIdx].count = current - 1;
+                            setTeamRoles(updated);
+                          }
+                        }}
+                        style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#2D2845', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Ionicons name="remove" size={16} color="#FFFFFF" />
+                      </TouchableOpacity>
+                      <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700', minWidth: 20, textAlign: 'center' }}>
+                        {roleItem.count}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          const current = parseInt(roleItem.count, 10) || 1;
+                          const updated = [...teamRoles];
+                          updated[rIdx].count = current + 1;
+                          setTeamRoles(updated);
+                        }}
+                        style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#2D2845', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Ionicons name="add" size={16} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </View>
+
+                    {teamRoles.length > 1 && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setTeamRoles(teamRoles.filter((_, idx) => idx !== rIdx));
+                        }}
+                        style={{ padding: 4 }}
+                      >
+                        <Ionicons name="trash-outline" size={18} color="#F43F5E" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </View>
+
+              {/* Notes */}
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ color: '#E2E8F0', fontSize: 13, fontWeight: '700', marginBottom: 6 }}>
+                  Team Notes (Visible to Customer)
+                </Text>
+                <TextInput
+                  style={{
+                    backgroundColor: '#161420',
+                    color: '#FFFFFF',
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: '#252136',
+                    fontSize: 13,
+                    minHeight: 48
+                  }}
+                  placeholder="e.g. Arriving with 1 apprentice for heavy lifting"
+                  placeholderTextColor="#6B7280"
+                  multiline
+                  value={teamNotes}
+                  onChangeText={setTeamNotes}
+                />
+              </View>
+
+              {/* Required Reason if in_progress */}
+              {booking.status === 'in_progress' && (
+                <View style={{ marginBottom: 16, backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#F59E0B' }}>
+                  <Text style={{ color: '#FCD34D', fontSize: 13, fontWeight: '700', marginBottom: 4 }}>
+                    Authorized Change Reason *
+                  </Text>
+                  <Text style={{ color: '#D1D5DB', fontSize: 11, marginBottom: 8 }}>
+                    Because the service has already begun, any change in team size must be explicitly recorded in the job history.
+                  </Text>
+                  <TextInput
+                    style={{
+                      backgroundColor: '#161420',
+                      color: '#FFFFFF',
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: '#F59E0B',
+                      fontSize: 13,
+                      minHeight: 48
+                    }}
+                    placeholder="e.g. Customer requested additional specialist to expedite wiring"
+                    placeholderTextColor="#9CA3AF"
+                    multiline
+                    value={teamReason}
+                    onChangeText={setTeamReason}
+                  />
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.cancelModalBtn}
+                onPress={() => setShowTeamModal(false)}
+                disabled={teamSubmitting}
+              >
+                <Text style={styles.cancelModalText}>Cancel</Text>
+              </TouchableOpacity>
+              <Button
+                title={teamSubmitting ? 'Saving...' : 'Confirm Team Size'}
+                variant="primary"
+                loading={teamSubmitting}
+                disabled={teamSubmitting}
+                onPress={handleSaveTeamSize}
                 style={{ flex: 2 }}
               />
             </View>

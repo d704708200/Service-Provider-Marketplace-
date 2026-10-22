@@ -188,6 +188,75 @@ const bookingSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: ''
+    },
+    serviceTeam: {
+      totalCount: {
+        type: Number,
+        min: 1,
+        default: null
+      },
+      roles: [
+        {
+          role: {
+            type: String,
+            trim: true,
+            required: true
+          },
+          count: {
+            type: Number,
+            min: 1,
+            default: 1
+          }
+        }
+      ],
+      isConfirmed: {
+        type: Boolean,
+        default: false
+      },
+      confirmedAt: {
+        type: Date,
+        default: null
+      },
+      notes: {
+        type: String,
+        trim: true,
+        default: ''
+      },
+      history: [
+        {
+          updatedAt: {
+            type: Date,
+            default: Date.now
+          },
+          updatedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+          },
+          previousTotalCount: {
+            type: Number,
+            default: null
+          },
+          newTotalCount: {
+            type: Number,
+            required: true
+          },
+          roles: [
+            {
+              role: String,
+              count: Number
+            }
+          ],
+          reason: {
+            type: String,
+            trim: true,
+            default: ''
+          },
+          bookingStatusAtUpdate: {
+            type: String,
+            default: ''
+          }
+        }
+      ]
     }
   },
   {

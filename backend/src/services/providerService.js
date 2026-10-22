@@ -937,7 +937,15 @@ const getPublicProviderById = async (providerId) => {
     throw err;
   }
 
-  const rawServices = await Service.find({ provider: provider._id, isActive: true })
+  // Find provider-specific services OR platform-standard services matching the provider's registered categories
+  const categoryIds = Array.isArray(provider.categories) ? provider.categories.map((c) => c._id || c) : [];
+  const rawServices = await Service.find({
+    $or: [
+      { provider: provider._id },
+      { category: { $in: categoryIds }, provider: null }
+    ],
+    isActive: true
+  })
     .populate('category', 'name slug icon')
     .lean();
 

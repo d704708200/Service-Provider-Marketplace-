@@ -609,7 +609,7 @@ const getProviderBookingById = async (userId, bookingId) => {
 /**
  * Concurrency-safe atomic booking acceptance by provider
  */
-const acceptBookingByProvider = async (userId, bookingId) => {
+const acceptBookingByProvider = async (userId, bookingId, teamData = null) => {
   const provider = await Provider.findOne({ user: userId });
   if (!provider) {
     const err = new Error('Provider profile not found');
@@ -625,6 +625,42 @@ const acceptBookingByProvider = async (userId, bookingId) => {
 
   const now = new Date();
 
+  // Build serviceTeam update if provided
+  let serviceTeamUpdate = undefined;
+  if (teamData && teamData.totalCount) {
+    const totalCount = parseInt(teamData.totalCount, 10);
+    const roles = Array.isArray(teamData.roles)
+      ? teamData.roles.map(r => ({ role: String(r.role || '').trim(), count: parseInt(r.count, 10) || 1 }))
+      : [];
+    serviceTeamUpdate = {
+      totalCount,
+      roles,
+      isConfirmed: true,
+      confirmedAt: now,
+      notes: (teamData.notes || '').trim(),
+      history: [
+        {
+          updatedAt: now,
+          updatedBy: userId,
+          previousTotalCount: null,
+          newTotalCount: totalCount,
+          roles,
+          reason: 'Initial confirmation upon accepting booking',
+          bookingStatusAtUpdate: 'accepted'
+        }
+      ]
+    };
+  }
+
+  const updateFields = {
+    status: 'accepted',
+    provider: provider._id,
+    'statusTimestamps.acceptedAt': now
+  };
+  if (serviceTeamUpdate) {
+    updateFields.serviceTeam = serviceTeamUpdate;
+  }
+
   // Concurrency-safe atomic conditional update:
   // Matches either:
   // A) Assigned directly to this provider: { _id, status: 'pending', provider: provider._id }
@@ -636,11 +672,7 @@ const acceptBookingByProvider = async (userId, bookingId) => {
       $or: [{ provider: provider._id }, { provider: null }]
     },
     {
-      $set: {
-        status: 'accepted',
-        provider: provider._id,
-        'statusTimestamps.acceptedAt': now
-      }
+      $set: updateFields
     },
     { new: true }
   )
@@ -2029,6 +2061,130 @@ const markNotificationRead = async (userId, notificationId) => {
   return notification;
 };
 
+/**
+ * Provider updates / confirms service team size on a booking
+ * Rules:
+ * - Booking must belong to this provider
+ * - Booking status must be 'accepted' or 'in_progress' (cannot update when pending, completed, or cancelled)
+ * - When 'in_progress', reason is required for explicit authorized updates and recorded in history
+ * - Price/payment is NEVER modified by team size changes
+ * - Customer is notified via project notification system
+ */
+const updateTeamSizeByProvider = async (userId, bookingId, teamData) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const booking = await Booking.findById(bookingId).populate({
+    path: 'customer',
+    populate: { path: 'user', select: 'name phone email' }
+  });
+
+  if (!booking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (!booking.provider || booking.provider.toString() !== provider._id.toString()) {
+    const err = new Error('Access denied: You are not the assigned provider for this booking');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // Allowed states check
+  if (!['accepted', 'in_progress'].includes(booking.status)) {
+    const err = new Error(
+      `Cannot update team size for booking in '${booking.status}' status. Team size can only be configured for 'accepted' or 'in_progress' bookings.`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // After service starts ('in_progress'), explicit reason / authorization is required
+  if (booking.status === 'in_progress') {
+    if (!teamData.reason || typeof teamData.reason !== 'string' || !teamData.reason.trim()) {
+      const err = new Error(
+        'Reason for team size update is required because the service is already in progress'
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  const totalCount = parseInt(teamData.totalCount, 10);
+  const roles = Array.isArray(teamData.roles)
+    ? teamData.roles.map((r) => ({
+        role: String(r.role || '').trim(),
+        count: parseInt(r.count, 10) || 1
+      }))
+    : [];
+
+  const now = new Date();
+  const previousTotal = booking.serviceTeam?.totalCount || null;
+
+  const historyEntry = {
+    updatedAt: now,
+    updatedBy: userId,
+    previousTotalCount: previousTotal,
+    newTotalCount: totalCount,
+    roles,
+    reason: (teamData.reason || (booking.serviceTeam?.isConfirmed ? 'Provider updated team configuration' : 'Provider confirmed initial team size')).trim(),
+    bookingStatusAtUpdate: booking.status
+  };
+
+  const existingHistory = Array.isArray(booking.serviceTeam?.history) ? booking.serviceTeam.history : [];
+
+  booking.serviceTeam = {
+    totalCount,
+    roles,
+    isConfirmed: true,
+    confirmedAt: booking.serviceTeam?.confirmedAt || now,
+    notes: (teamData.notes !== undefined ? teamData.notes : (booking.serviceTeam?.notes || '')).trim(),
+    history: [...existingHistory, historyEntry]
+  };
+
+  await booking.save();
+
+  // Populate service details for response
+  await booking.populate('service');
+
+  // Notify customer about confirmed / updated team size
+  try {
+    const custUserId = booking.customer?.user?._id;
+    if (custUserId) {
+      const teamLabel = totalCount === 1 ? '1 person' : `${totalCount} people`;
+      const updateMsg = previousTotal
+        ? `The service team size has been updated to ${teamLabel} for booking ${booking.bookingReference}.`
+        : `Your service team size has been confirmed: ${teamLabel} will arrive for booking ${booking.bookingReference}.`;
+
+      await Notification.create({
+        recipient: custUserId,
+        title: `Service Team Update: ${booking.bookingReference}`,
+        message: updateMsg,
+        type: 'booking',
+        data: {
+          bookingId: booking._id.toString(),
+          bookingReference: booking.bookingReference,
+          totalCount,
+          status: booking.status
+        }
+      });
+    }
+  } catch (notifErr) {
+    console.error('[TEAM_SIZE_NOTIFICATION_ERROR]', notifErr.message);
+  }
+
+  console.log(
+    `[TEAM_SIZE_UPDATED] Booking: ${booking.bookingReference} | Total: ${totalCount} | Provider: ${provider._id}`
+  );
+
+  return booking;
+};
+
 module.exports = {
   createBooking,
   getCustomerBookings,
@@ -2058,5 +2214,7 @@ module.exports = {
   confirmCashPaymentByCustomer,
   reportCashPaymentDispute,
   getUserNotifications,
-  markNotificationRead
+  markNotificationRead,
+  updateTeamSizeByProvider
 };
+

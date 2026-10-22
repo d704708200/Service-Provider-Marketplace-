@@ -122,8 +122,12 @@ export const bookingApi = {
     const response = await api.get(`/bookings/provider/${id}`);
     return response.data;
   },
-  acceptBooking: async (id) => {
-    const response = await api.patch(`/bookings/provider/${id}/accept`);
+  acceptBooking: async (id, data = {}) => {
+    const response = await api.patch(`/bookings/provider/${id}/accept`, data);
+    return response.data;
+  },
+  updateTeamSize: async (id, teamData) => {
+    const response = await api.patch(`/bookings/provider/${id}/team-size`, teamData);
     return response.data;
   },
   rejectBooking: async (id, rejectionReason) => {

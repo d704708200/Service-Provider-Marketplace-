@@ -10,7 +10,8 @@ const {
   validateVerifyPayment,
   validateSubmitSpareParts,
   validateReviewSpareParts,
-  validateSelectSparePartsPaymentMethod
+  validateSelectSparePartsPaymentMethod,
+  validateUpdateTeamSize
 } = require('../middleware/validation');
 
 // ==========================================
@@ -165,6 +166,16 @@ router.patch(
   requireRole('provider'),
   validateObjectId('id'),
   bookingController.acceptProviderBooking
+);
+
+// Update / confirm service team size (provider)
+router.patch(
+  '/provider/:id/team-size',
+  authenticate,
+  requireRole('provider'),
+  validateObjectId('id'),
+  validateUpdateTeamSize,
+  bookingController.updateProviderTeamSize
 );
 
 // Reject booking request
