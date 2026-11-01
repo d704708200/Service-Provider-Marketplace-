@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const HORIZONTAL_MARGIN = 16;
 const DEFAULT_CARD_WIDTH = SCREEN_WIDTH - HORIZONTAL_MARGIN * 2;
-const BANNER_ASPECT_RATIO = 2.4; // 1200 x 500 standard wide promotional banner
+const BANNER_ASPECT_RATIO = 2.1; // ~2.1:1 aspect ratio yielding ~145-155px height on 360px device
 const SLIDE_INTERVAL = 3500; // 3.5 seconds
 
 export default function HomeSliderBanner({ banners = [], navigation }) {
@@ -301,7 +301,8 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    marginVertical: 10,
+    marginTop: 8,
+    marginBottom: 0,
     alignItems: 'center'
   },
   carouselClipWrap: {

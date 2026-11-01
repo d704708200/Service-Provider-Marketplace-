@@ -800,7 +800,7 @@ const styles = StyleSheet.create({
     color: '#D8B4FE'
   },
   sectionContainer: {
-    marginTop: 18
+    marginTop: 14
   },
   sectionHeaderRow: {
     flexDirection: 'row',
