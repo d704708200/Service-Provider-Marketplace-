@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const HORIZONTAL_MARGIN = 16;
 const DEFAULT_CARD_WIDTH = SCREEN_WIDTH - HORIZONTAL_MARGIN * 2;
+const BANNER_ASPECT_RATIO = 2.4; // 1200 x 500 standard wide promotional banner
 const SLIDE_INTERVAL = 3500; // 3.5 seconds
 
 export default function HomeSliderBanner({ banners = [], navigation }) {
@@ -63,7 +64,7 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
           });
           setActiveIndex(nextIndex);
         } catch {
-          // Fallback if scrollToIndex failed (e.g. item not rendered yet)
+          // Fallback if scrollToIndex failed
           flatListRef.current.scrollToOffset({
             offset: nextIndex * containerWidth,
             animated: true
@@ -180,63 +181,55 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
     return null;
   }
 
-  // Calculate banner height with 16:7.5 aspect ratio
-  const bannerHeight = Math.max(140, Math.round(containerWidth * 0.46));
+  // Calculate proportional height based on 2.4:1 aspect ratio (1200 x 500)
+  const bannerHeight = Math.round(containerWidth / BANNER_ASPECT_RATIO);
 
   const renderItem = ({ item, index }) => {
     const isLoaded = Boolean(imageLoadedStates[item._id || index]);
     const isError = Boolean(imageErrorStates[item._id || index]);
     const hasImage = Boolean(item.imageUrl) && !isError;
+    const isClickable = item.destinationType && item.destinationType !== 'none';
 
     return (
       <TouchableOpacity
         key={item._id || String(index)}
-        activeOpacity={item.destinationType && item.destinationType !== 'none' ? 0.9 : 1}
+        activeOpacity={0.92}
         onPress={() => handleBannerPress(item)}
         style={[styles.slideCard, { width: containerWidth, height: bannerHeight }]}
+        accessibilityRole="button"
+        accessibilityLabel={item.title || 'Promotional Banner'}
       >
-        {/* Placeholder / Skeleton Loader behind the image */}
+        {/* Placeholder / Skeleton Loader behind the image while loading */}
         {!isLoaded && hasImage && (
-          <View style={[styles.skeletonBox, { height: bannerHeight }]}>
-            <ActivityIndicator size="small" color="#8B5CF6" />
+          <View style={[styles.skeletonBox, { width: containerWidth, height: bannerHeight }]}>
+            <ActivityIndicator size="small" color="#7C3AED" />
           </View>
         )}
 
-        {/* Fallback View when image fails or is missing */}
+        {/* Fallback View only when image fails or is missing */}
         {(!hasImage || isError) && (
-          <View style={[styles.fallbackCard, { height: bannerHeight }]}>
-            <View style={styles.fallbackContent}>
-              <View style={styles.fallbackIconWrap}>
-                <Ionicons name="sparkles" size={20} color="#A78BFA" />
-              </View>
-              {item.title ? (
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => handleBannerPress(item)}
-                  style={styles.ctaButton}
-                  accessibilityRole="button"
-                  accessibilityLabel={item.title}
-                >
-                  <Text style={styles.ctaButtonText} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  <Ionicons name="arrow-forward" size={12} color="#FFFFFF" />
-                </TouchableOpacity>
-              ) : null}
-              {item.subtitle ? (
-                <Text style={styles.fallbackSubtitle} numberOfLines={1}>
-                  {item.subtitle}
-                </Text>
-              ) : null}
+          <View style={[styles.fallbackCard, { width: containerWidth, height: bannerHeight }]}>
+            <View style={styles.fallbackIconWrap}>
+              <Ionicons name="sparkles" size={24} color="#A78BFA" />
             </View>
+            {item.title ? (
+              <Text style={styles.fallbackTitle} numberOfLines={1}>
+                {item.title}
+              </Text>
+            ) : null}
+            {item.subtitle ? (
+              <Text style={styles.fallbackSubtitle} numberOfLines={1}>
+                {item.subtitle}
+              </Text>
+            ) : null}
           </View>
         )}
 
-        {/* Banner Graphic Image */}
+        {/* Pure Promotional Artwork Graphic - No Text/CTA Overlays */}
         {hasImage && (
           <Image
             source={{ uri: item.imageUrl }}
-            style={[styles.bannerImage, { height: bannerHeight }]}
+            style={styles.bannerImage}
             resizeMode="cover"
             onLoad={() => {
               setImageLoadedStates((prev) => ({ ...prev, [item._id || index]: true }));
@@ -246,74 +239,51 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
             }}
           />
         )}
-
-        {/* Bottom overlay with modern CTA button & subtitle */}
-        {hasImage && (item.title || item.subtitle) && (
-          <View style={styles.textOverlay}>
-            {item.title ? (
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => handleBannerPress(item)}
-                style={styles.ctaButton}
-                accessibilityRole="button"
-                accessibilityLabel={item.title}
-              >
-                <Text style={styles.ctaButtonText} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                <Ionicons name="arrow-forward" size={12} color="#FFFFFF" />
-              </TouchableOpacity>
-            ) : null}
-            {item.subtitle ? (
-              <Text style={styles.overlaySubtitle} numberOfLines={1}>
-                {item.subtitle}
-              </Text>
-            ) : null}
-          </View>
-        )}
       </TouchableOpacity>
     );
   };
 
-  // If only 1 banner exists, display it without unnecessary animation
+  // If only 1 banner exists, display it directly without unnecessary animation
   if (totalBanners === 1) {
     return (
-      <View style={[styles.container, { width: '100%' }]} onLayout={onLayout}>
+      <View style={styles.container} onLayout={onLayout}>
         {renderItem({ item: validBanners[0], index: 0 })}
       </View>
     );
   }
 
-  // Multiple banners: render full interactive infinite carousel
+  // Multiple banners: render full interactive infinite carousel with dots below
   return (
-    <View style={[styles.container, { width: '100%' }]} onLayout={onLayout}>
-      <FlatList
-        ref={flatListRef}
-        data={validBanners}
-        renderItem={renderItem}
-        keyExtractor={(item, index) => item._id || String(index)}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={containerWidth}
-        snapToAlignment="center"
-        decelerationRate="fast"
-        bounces={false}
-        onScrollBeginDrag={handleScrollBeginDrag}
-        onScrollEndDrag={handleScrollEndDrag}
-        onMomentumScrollEnd={handleMomentumScrollEnd}
-        getItemLayout={(_, index) => ({
-          length: containerWidth,
-          offset: containerWidth * index,
-          index
-        })}
-        initialNumToRender={2}
-        maxToRenderPerBatch={3}
-        windowSize={3}
-      />
+    <View style={styles.container} onLayout={onLayout}>
+      <View style={[styles.carouselClipWrap, { width: containerWidth, height: bannerHeight }]}>
+        <FlatList
+          ref={flatListRef}
+          data={validBanners}
+          renderItem={renderItem}
+          keyExtractor={(item, index) => item._id || String(index)}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={containerWidth}
+          snapToAlignment="center"
+          decelerationRate="fast"
+          bounces={false}
+          onScrollBeginDrag={handleScrollBeginDrag}
+          onScrollEndDrag={handleScrollEndDrag}
+          onMomentumScrollEnd={handleMomentumScrollEnd}
+          getItemLayout={(_, index) => ({
+            length: containerWidth,
+            offset: containerWidth * index,
+            index
+          })}
+          initialNumToRender={2}
+          maxToRenderPerBatch={3}
+          windowSize={3}
+        />
+      </View>
 
-      {/* Pagination Indicator Dots */}
-      <View style={styles.paginationContainer}>
+      {/* Small, elegant pagination dots positioned cleanly below the image */}
+      <View style={styles.paginationRow}>
         {validBanners.map((_, i) => (
           <View
             key={i}
@@ -330,143 +300,79 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 12,
-    borderRadius: 16,
-    overflow: 'hidden',
-    position: 'relative'
+    width: '100%',
+    marginVertical: 10,
+    alignItems: 'center'
+  },
+  carouselClipWrap: {
+    borderRadius: 20,
+    overflow: 'hidden'
   },
   slideCard: {
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: '#1C162E',
-    borderWidth: 1,
-    borderColor: '#2D2348',
-    position: 'relative',
-    justifyContent: 'center'
-  },
-  skeletonBox: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#1C152B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 0
+    backgroundColor: '#161424',
+    position: 'relative'
   },
   bannerImage: {
     width: '100%',
-    borderRadius: 15,
-    zIndex: 1
+    height: '100%',
+    borderRadius: 20
+  },
+  skeletonBox: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#161424',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+    zIndex: 0
   },
   fallbackCard: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#1D1432',
-    padding: 16,
+    backgroundColor: '#1C162E',
+    alignItems: 'center',
     justifyContent: 'center',
+    padding: 16,
+    borderRadius: 20,
     zIndex: 1
   },
-  fallbackContent: {
-    maxWidth: '80%'
-  },
   fallbackIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     backgroundColor: '#2E2250',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8
   },
   fallbackTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: -0.2
   },
   fallbackSubtitle: {
     fontSize: 12,
-    color: '#D1D5DB',
+    color: '#A1A1AA',
     marginTop: 3
   },
-  textOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(11, 8, 20, 0.72)',
-    borderBottomLeftRadius: 15,
-    borderBottomRightRadius: 15,
-    zIndex: 2
-  },
-  ctaButton: {
+  paginationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
+    justifyContent: 'center',
     gap: 6,
-    backgroundColor: '#7C3AED',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.35)',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 3,
-    elevation: 4
-  },
-  ctaButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.3
-  },
-  overlaySubtitle: {
-    fontSize: 11,
-    color: '#E5E7EB',
-    marginTop: 4
-  },
-  actionPill: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    backgroundColor: 'rgba(124, 58, 237, 0.88)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    zIndex: 3
-  },
-  actionPillText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#FFFFFF'
-  },
-  paginationContainer: {
-    position: 'absolute',
-    bottom: 8,
-    right: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    paddingHorizontal: 7,
-    paddingVertical: 3.5,
-    borderRadius: 10,
-    zIndex: 10
+    marginTop: 8
   },
   dot: {
-    borderRadius: 3,
-    height: 4.5
+    height: 4,
+    borderRadius: 2
   },
   activeDot: {
-    width: 14,
+    width: 18,
     backgroundColor: '#A78BFA'
   },
   inactiveDot: {
-    width: 4.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.4)'
+    width: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)'
   }
 });
