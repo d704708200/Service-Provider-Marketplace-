@@ -23,25 +23,36 @@ Per the explicit architecture requirement:
 - **Model:** The `BannerConfig` model and its underlying MongoDB collection are completely untouched.
 - **Settings & Routes:** The existing `/api/banner` and `/api/banner/admin` endpoints remain operational and unchanged.
 - **Admin Panel Settings:** The settings page (`SettingsPage.jsx`) retains full control over the single promotional offer card (badge text, title, subtitle, button label, discount amount, currency symbol, target route).
-- **Customer App UI:** The existing card (`styles.promoBanner`) remains rendered immediately below the new slider on the Home Screen.
+- **Customer App UI:** The static purple hero card ("Vetted Local Experts", "Trusted Professionals") has been replaced with `<HomeSliderBanner />` directly at the top. The existing single promotional card (`styles.promoBanner`) remains intact in its intended lower position (after Available Near You).
 
-Both banner systems coexist in harmony on the Customer Home Screen:
+Home Screen section ordering:
 ```
 +-------------------------------------------------------+
 |  Customer Home Screen                                 |
 |                                                       |
-|  [ NEW DYNAMIC INFINITE SLIDING BANNER CAROUSEL ]     |
-|   * Auto-slide every 3.5s                             |
-|   * Infinite loop & touch-pause                       |
-|   * Pagination indicator dots                         |
-|   * Configurable deep link actions                    |
+|  1. Greeting, location, search & notification header  |
 |                                                       |
-|  [ EXISTING SINGLE PROMOTIONAL OFFER CARD ]           |
-|   * Badge: "FIRST SERVICE ORDER"                      |
-|   * Title: "Get ₹100 OFF"                             |
-|   * "Book Now" CTA                                    |
+|  2. [ NEW ADMIN DYNAMIC SLIDING HERO BANNER ]         |
+|     * Replaces old static hero banner                 |
+|     * Auto-slide every 3.5s (if > 1 banner)           |
+|     * Direct render (if 1 banner)                     |
+|     * Clean collapse (if 0 banners)                   |
+|     * Configurable deep link actions                  |
 |                                                       |
-|  [ All Services Grid ]                                |
+|  3. Quick Services Grid                               |
+|                                                       |
+|  4. Popular Services Horizontal List                  |
+|                                                       |
+|  5. Top Rated Professionals                           |
+|                                                       |
+|  6. Available Near You                                |
+|                                                       |
+|  7. [ EXISTING SINGLE PROMOTIONAL OFFER CARD ]        |
+|     * Badge: "FIRST SERVICE ORDER"                    |
+|     * Title: "Get ₹100 OFF"                           |
+|     * "Book Now" CTA (Preserved)                      |
+|                                                       |
+|  8. All Services Grid (12 categories)                 |
 +-------------------------------------------------------+
 ```
 
@@ -181,4 +192,23 @@ Both banner systems coexist in harmony on the Customer Home Screen:
 
 ### 6.4 Customer App Syntax & Parser Verification
 - Babel parser verified `customer-app/src/components/home/HomeSliderBanner.js` and `customer-app/src/screens/home/HomeScreen.js` with 100% pass rate.
+
+### 6.5 Top Hero Banner Verification & Screenshot
+- Verified using real browser automation via Chrome DevTools Protocol (CDP) connected to `http://localhost:8081`.
+- Old static purple hero banner ("Vetted Local Experts", "Trusted Professionals") is completely removed.
+- Admin-uploaded dynamic banner ("20% off", "thytrty", Cloudinary asset) appears directly beneath the greeting & location header and above Quick Services.
+- Section ordering verified:
+  1. Header
+  2. Dynamic Hero Slider Banner
+  3. Quick Services
+  4. Popular Services
+  5. Top Rated Professionals
+  6. Available Near You
+  7. Single Promotional Offer Card (Preserved)
+  8. All Services Grid
+- No duplicate banner instances exist.
+- Screenshot evidence captured: `docs/assets/customer_app_hero_slider_proof.png`.
+
+![Customer App Top Hero Slider Banner](assets/customer_app_hero_slider_proof.png)
+
 

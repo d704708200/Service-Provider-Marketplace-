@@ -142,3 +142,4 @@ Using headless Chrome via Chrome DevTools Protocol (CDP) connected to `http://lo
 - **Backend:** Live on Render (`https://service-provider-marketplace.onrender.com/api`).
 - **Admin Panel:** Live on Netlify (`https://serviceprovider3.netlify.app/home-banners`).
 - **Customer App:** Tested and verified locally on Metro (`http://localhost:8081`).
+

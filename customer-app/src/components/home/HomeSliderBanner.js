@@ -316,7 +316,7 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 18,
+    marginVertical: 12,
     borderRadius: 16,
     overflow: 'hidden',
     position: 'relative'

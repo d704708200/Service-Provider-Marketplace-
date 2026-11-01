@@ -313,45 +313,8 @@ export default function HomeScreen({ navigation }) {
           </View>
         ) : null}
 
-        {/* Hero Banner matching Figma */}
-        <View style={styles.heroBanner}>
-          <View style={styles.heroBadgeRow}>
-            <Ionicons name="shield-checkmark" size={11} color="#C084FC" />
-            <Text style={styles.heroBadgeText}>VETTED LOCAL EXPERTS</Text>
-          </View>
-
-          <Text style={styles.heroTitle}>Trusted Professionals,{"\n"}Right At Your Door</Text>
-          <Text style={styles.heroSubtitle}>Book reliable services near you</Text>
-
-          <View style={styles.heroBottomRow}>
-            <TouchableOpacity
-              style={styles.findServiceButton}
-              onPress={() => navigation.navigate('SearchTab')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.findServiceBtnText}>Find a Service</Text>
-              <Ionicons name="arrow-forward" size={14} color="#161420" />
-            </TouchableOpacity>
-
-            <View style={styles.expertsBadge}>
-              <View style={styles.expertsAvatarsRow}>
-                <Image
-                  source={{ uri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=50&auto=format&fit=crop&q=80' }}
-                  style={[styles.miniAvatar, { zIndex: 3 }]}
-                />
-                <Image
-                  source={{ uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&auto=format&fit=crop&q=80' }}
-                  style={[styles.miniAvatar, { marginLeft: -8, zIndex: 2 }]}
-                />
-                <Image
-                  source={{ uri: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=50&auto=format&fit=crop&q=80' }}
-                  style={[styles.miniAvatar, { marginLeft: -8, zIndex: 1 }]}
-                />
-              </View>
-              <Text style={styles.expertsBadgeText}>12k+ experts</Text>
-            </View>
-          </View>
-        </View>
+        {/* Admin-Managed Infinite Sliding Banners (Replaced Static Hero Banner at Top) */}
+        <HomeSliderBanner banners={homeBanners} navigation={navigation} />
 
         {/* Quick Services Section matching Figma */}
         <View style={styles.sectionContainer}>
@@ -584,10 +547,7 @@ export default function HomeScreen({ navigation }) {
           )}
         </View>
 
-        {/* Dynamic Infinite Sliding Banners (Placed Above Existing Promotional Banner) */}
-        <HomeSliderBanner banners={homeBanners} navigation={navigation} />
-
-        {/* Promotional Coupon Banner matching Figma (Admin-Controlled) */}
+        {/* Promotional Coupon Banner matching Figma (Admin-Controlled - Preserved) */}
         {bannerConfig && bannerConfig.isEnabled !== false ? (
           <View style={styles.promoBanner}>
             <View style={styles.promoTextCol}>
