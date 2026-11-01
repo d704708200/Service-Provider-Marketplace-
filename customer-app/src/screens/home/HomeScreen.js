@@ -134,15 +134,15 @@ export default function HomeScreen({ navigation }) {
         }),
         bannerApi && typeof bannerApi.getBanner === 'function'
           ? bannerApi.getBanner().catch((e) => {
-              if (__DEV__) console.warn('[HomeScreen] banner fetch failed:', e?.message);
-              return { data: null };
-            })
+            if (__DEV__) console.warn('[HomeScreen] banner fetch failed:', e?.message);
+            return { data: null };
+          })
           : Promise.resolve({ data: null }),
         homeBannerApi && typeof homeBannerApi.getBanners === 'function'
           ? homeBannerApi.getBanners().catch((e) => {
-              if (__DEV__) console.warn('[HomeScreen] dynamic home banners fetch failed:', e?.message);
-              return { data: [] };
-            })
+            if (__DEV__) console.warn('[HomeScreen] dynamic home banners fetch failed:', e?.message);
+            return { data: [] };
+          })
           : Promise.resolve({ data: [] })
       ]);
 
