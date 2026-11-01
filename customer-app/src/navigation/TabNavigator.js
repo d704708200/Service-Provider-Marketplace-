@@ -7,11 +7,14 @@ import SearchScreen from '../screens/search/SearchScreen';
 import BookingHistoryScreen from '../screens/history/BookingHistoryScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
+import { useNotifications } from '../context/NotificationContext';
 import colors from '../theme/colors';
 
 const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
+  const { unreadCount } = useNotifications();
+
   return (
     <Tab.Navigator
       initialRouteName="HomeTab"
@@ -64,7 +67,16 @@ export default function TabNavigator() {
       <Tab.Screen
         name="AlertsTab"
         component={NotificationsScreen}
-        options={{ tabBarLabel: 'Alerts' }}
+        options={{
+          tabBarLabel: 'Alerts',
+          tabBarBadge: unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#EF4444',
+            color: '#FFFFFF',
+            fontSize: 10,
+            fontWeight: '700'
+          }
+        }}
       />
       <Tab.Screen
         name="ProfileTab"

@@ -9,6 +9,7 @@ const ServiceArea = require('../models/ServiceArea');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const paymentService = require('./paymentService');
+const notificationService = require('./notificationService');
 
 /**
  * Generate unique, human-readable booking reference (e.g. BK-20261013-A1B2)
@@ -390,22 +391,43 @@ const createBooking = async (userId, bookingData) => {
     }
 
     if (providerUserIds.length > 0) {
-      const notifDocs = providerUserIds.map((pUserId) => ({
-        recipient: pUserId,
-        title: `New Booking Request: ${createdDoc.bookingReference}`,
-        message: `New request for ${serviceName} from ${customerName}. Scheduled: ${scheduledInfo}. Total: ₹${createdDoc.pricing?.totalAmount || 0}.`,
+      await notificationService.sendNotification({
+        recipientIds: providerUserIds,
+        title: 'New Booking Request',
+        body: `New request for ${serviceName} from ${customerName}. Scheduled: ${scheduledInfo}. Booking ID: ${createdDoc.bookingReference}. Total: ₹${createdDoc.pricing?.totalAmount || 0}.`,
+        type: 'booking',
+        data: {
+          bookingId: createdDoc._id.toString(),
+          bookingReference: createdDoc.bookingReference,
+          mode: createdDoc.bookingMode,
+          serviceName,
+          customerName,
+          scheduledInfo
+        },
+        bookingId: createdDoc._id,
+        idempotencyKey: `booking_created_${createdDoc._id}`
+      });
+      console.log(
+        `[BOOKING_NOTIFICATION] Dispatched push and in-app notification(s) to ${providerUserIds.length} provider(s) for booking ${createdDoc.bookingReference}`
+      );
+    }
+
+    // Also notify the customer that their booking request was submitted
+    const custUserId = createdDoc.customer?.user?._id || createdDoc.customer?.user;
+    if (custUserId) {
+      await notificationService.sendNotification({
+        recipientIds: [custUserId],
+        title: `Booking Request Submitted: ${createdDoc.bookingReference}`,
+        body: `Your booking for ${serviceName} has been submitted successfully. Total: ₹${createdDoc.pricing?.totalAmount || 0}.`,
         type: 'booking',
         data: {
           bookingId: createdDoc._id.toString(),
           bookingReference: createdDoc.bookingReference,
           mode: createdDoc.bookingMode
-        }
-      }));
-
-      await Notification.insertMany(notifDocs);
-      console.log(
-        `[BOOKING_NOTIFICATION] Created ${notifDocs.length} notification(s) for booking ${createdDoc.bookingReference}`
-      );
+        },
+        bookingId: createdDoc._id,
+        idempotencyKey: `booking_customer_created_${createdDoc._id}`
+      });
     }
   } catch (notifErr) {
     // Notification delivery failure must not abort booking creation
@@ -576,6 +598,30 @@ const cancelBookingByCustomer = async (userId, bookingId, cancellationReason) =>
   booking.cancellationReason = (cancellationReason || 'Customer requested cancellation').trim();
   booking.statusTimestamps.cancelledAt = new Date();
   await booking.save();
+
+  // Safe notification to assigned provider that customer cancelled
+  try {
+    if (booking.provider) {
+      const provDoc = await Provider.findById(booking.provider).select('user');
+      if (provDoc?.user) {
+        await notificationService.sendNotification({
+          recipientIds: [provDoc.user],
+          title: `Booking Cancelled: ${booking.bookingReference}`,
+          body: `The customer has cancelled booking ${booking.bookingReference}.`,
+          type: 'booking',
+          data: {
+            bookingId: booking._id.toString(),
+            bookingReference: booking.bookingReference,
+            status: 'cancelled'
+          },
+          bookingId: booking._id,
+          idempotencyKey: `booking_cust_cancelled_${booking._id}`
+        });
+      }
+    }
+  } catch (notifErr) {
+    console.error('[BOOKING_CANCEL_NOTIFICATION_ERROR]', notifErr.message);
+  }
 
   return await Booking.findById(bookingId)
     .populate('service')
@@ -861,18 +907,31 @@ const acceptBookingByProvider = async (userId, bookingId, teamData = null) => {
 
   // Safe notification to customer that provider accepted
   try {
-    const custUserId = updatedBooking.customer?.user?._id;
+    const custUserId = updatedBooking.customer?.user?._id || updatedBooking.customer?.user;
     if (custUserId) {
-      await Notification.create({
-        recipient: custUserId,
-        title: `Booking Accepted: ${updatedBooking.bookingReference}`,
-        message: `${provider.businessName || 'Service Provider'} has accepted your booking request.`,
+      const serviceName = updatedBooking.service?.name || 'Service';
+      const scheduledInfo = updatedBooking.bookingMode === 'instant'
+        ? 'Immediate (ASAP)'
+        : updatedBooking.scheduledDate
+        ? `${new Date(updatedBooking.scheduledDate).toLocaleDateString()} (${updatedBooking.scheduledTimeSlot?.startTime || ''})`
+        : 'Scheduled';
+      const providerName = provider.businessName || 'Service Provider';
+
+      await notificationService.sendNotification({
+        recipientIds: [custUserId],
+        title: 'Booking Confirmed',
+        body: `${providerName} has confirmed your booking for ${serviceName} (${updatedBooking.bookingReference}) scheduled for ${scheduledInfo}.`,
         type: 'booking',
         data: {
           bookingId: updatedBooking._id.toString(),
           bookingReference: updatedBooking.bookingReference,
-          status: 'accepted'
-        }
+          status: 'accepted',
+          serviceName,
+          providerName,
+          scheduledInfo
+        },
+        bookingId: updatedBooking._id,
+        idempotencyKey: `booking_accepted_${updatedBooking._id}`
       });
     }
   } catch (notifErr) {
@@ -916,6 +975,30 @@ const rejectBookingByProvider = async (userId, bookingId, rejectionReason) => {
     booking.rejectionReason = (rejectionReason || 'Provider declined request').trim();
     booking.statusTimestamps.rejectedAt = new Date();
     await booking.save();
+
+    // Safe notification to customer that provider declined
+    try {
+      const custDoc = await Customer.findById(booking.customer).select('user');
+      if (custDoc?.user) {
+        await notificationService.sendNotification({
+          recipientIds: [custDoc.user],
+          title: 'Booking Request Declined',
+          body: `${provider.businessName || 'Service Provider'} was unable to accept booking ${booking.bookingReference}. Reason: ${booking.rejectionReason}.`,
+          type: 'booking',
+          data: {
+            bookingId: booking._id.toString(),
+            bookingReference: booking.bookingReference,
+            status: 'rejected',
+            rejectionReason: booking.rejectionReason
+          },
+          bookingId: booking._id,
+          idempotencyKey: `booking_rejected_${booking._id}`
+        });
+      }
+    } catch (notifErr) {
+      console.error('[BOOKING_REJECT_NOTIFICATION_ERROR]', notifErr.message);
+    }
+
     return booking;
   }
 
@@ -979,6 +1062,28 @@ const startServiceByProvider = async (userId, bookingId) => {
     const err = new Error(`Cannot start service from '${existing.status}' status. Must be in 'accepted' status.`);
     err.statusCode = 400;
     throw err;
+  }
+
+  // Safe notification to customer that service has started
+  try {
+    const custUserId = updatedBooking.customer?.user?._id || updatedBooking.customer?.user;
+    if (custUserId) {
+      await notificationService.sendNotification({
+        recipientIds: [custUserId],
+        title: `Service Started: ${updatedBooking.bookingReference}`,
+        body: `Your service provider has started work on your booking.`,
+        type: 'booking',
+        data: {
+          bookingId: updatedBooking._id.toString(),
+          bookingReference: updatedBooking.bookingReference,
+          status: 'in_progress'
+        },
+        bookingId: updatedBooking._id,
+        idempotencyKey: `booking_started_${updatedBooking._id}`
+      });
+    }
+  } catch (notifErr) {
+    console.error('[BOOKING_START_NOTIFICATION_ERROR]', notifErr.message);
   }
 
   return updatedBooking;
@@ -1101,6 +1206,28 @@ const completeServiceByProvider = async (userId, bookingId) => {
   await Provider.findByIdAndUpdate(provider._id, {
     $inc: { completedBookingsCount: 1 }
   });
+
+  // Safe notification to customer that service is completed
+  try {
+    const custUserId = updatedBooking.customer?.user?._id || updatedBooking.customer?.user;
+    if (custUserId) {
+      await notificationService.sendNotification({
+        recipientIds: [custUserId],
+        title: `Service Completed: ${updatedBooking.bookingReference}`,
+        body: `Your service ${updatedBooking.service?.name || ''} has been marked as completed. Please leave a review!`,
+        type: 'booking',
+        data: {
+          bookingId: updatedBooking._id.toString(),
+          bookingReference: updatedBooking.bookingReference,
+          status: 'completed'
+        },
+        bookingId: updatedBooking._id,
+        idempotencyKey: `booking_completed_${updatedBooking._id}`
+      });
+    }
+  } catch (notifErr) {
+    console.error('[BOOKING_COMPLETE_NOTIFICATION_ERROR]', notifErr.message);
+  }
 
   return updatedBooking;
 };
@@ -1357,6 +1484,34 @@ const cancelBookingByAdmin = async (bookingId, cancellationReason) => {
   booking.cancellationReason = (cancellationReason || 'Cancelled by platform administrator').trim();
   booking.statusTimestamps.cancelledAt = new Date();
   await booking.save();
+
+  // Safe notification to customer and provider
+  try {
+    const custDoc = await Customer.findById(booking.customer).select('user');
+    const provDoc = booking.provider ? await Provider.findById(booking.provider).select('user') : null;
+
+    const recipientIds = [];
+    if (custDoc?.user) recipientIds.push(custDoc.user);
+    if (provDoc?.user) recipientIds.push(provDoc.user);
+
+    if (recipientIds.length > 0) {
+      await notificationService.sendNotification({
+        recipientIds,
+        title: `Booking Cancelled by Admin: ${booking.bookingReference}`,
+        body: `Booking ${booking.bookingReference} was cancelled by platform administration. Reason: ${booking.cancellationReason}.`,
+        type: 'booking',
+        data: {
+          bookingId: booking._id.toString(),
+          bookingReference: booking.bookingReference,
+          status: 'cancelled'
+        },
+        bookingId: booking._id,
+        idempotencyKey: `booking_admin_cancelled_${booking._id}`
+      });
+    }
+  } catch (notifErr) {
+    console.error('[BOOKING_ADMIN_CANCEL_NOTIFICATION_ERROR]', notifErr.message);
+  }
 
   return await Booking.findById(bookingId)
     .populate('service')
@@ -1643,6 +1798,29 @@ const submitSpareParts = async (userId, bookingId, { items }) => {
 
   await booking.save();
 
+  // Safe notification to customer on extra materials submission
+  try {
+    const custDoc = await Customer.findById(booking.customer).select('user');
+    if (custDoc?.user) {
+      const partsTotal = booking.spareParts.totalAdditionalAmount || 0;
+      await notificationService.sendNotification({
+        recipientIds: [custDoc.user],
+        title: `Extra Materials Quotation: ${booking.bookingReference}`,
+        body: `Service provider requested approval for additional materials (₹${partsTotal}). Please review in your app.`,
+        type: 'booking',
+        data: {
+          bookingId: booking._id.toString(),
+          bookingReference: booking.bookingReference,
+          status: 'spare_parts_submitted'
+        },
+        bookingId: booking._id,
+        idempotencyKey: `booking_spare_submitted_${booking._id}`
+      });
+    }
+  } catch (notifErr) {
+    console.error('[SPARE_PARTS_NOTIFICATION_ERROR]', notifErr.message);
+  }
+
   return await Booking.findById(booking._id)
     .populate('service', 'name price priceType')
     .populate({
@@ -1706,6 +1884,28 @@ const reviewSpareParts = async (userId, bookingId, { action, rejectionReason }) 
   }
 
   await booking.save();
+
+  // Safe notification to provider on customer decision
+  try {
+    const provDoc = await Provider.findById(booking.provider).select('user');
+    if (provDoc?.user) {
+      await notificationService.sendNotification({
+        recipientIds: [provDoc.user],
+        title: `Materials ${action === 'approve' ? 'Approved' : 'Rejected'}: ${booking.bookingReference}`,
+        body: `Customer ${action === 'approve' ? 'approved' : 'rejected'} the proposed extra materials.`,
+        type: 'booking',
+        data: {
+          bookingId: booking._id.toString(),
+          bookingReference: booking.bookingReference,
+          action
+        },
+        bookingId: booking._id,
+        idempotencyKey: `booking_spare_reviewed_${booking._id}`
+      });
+    }
+  } catch (notifErr) {
+    console.error('[SPARE_PARTS_REVIEW_NOTIFICATION_ERROR]', notifErr.message);
+  }
 
   return await Booking.findById(booking._id)
     .populate('service', 'name price priceType')
@@ -2198,53 +2398,14 @@ const reportCashPaymentDispute = async (userId, bookingId, disputeReason) => {
  * Get notifications for authenticated user
  */
 const getUserNotifications = async (userId, query = {}) => {
-  const page = Math.max(1, parseInt(query.page, 10) || 1);
-  const limit = Math.max(1, Math.min(100, parseInt(query.limit, 10) || 20));
-  const skip = (page - 1) * limit;
-
-  const filter = { recipient: userId };
-  if (query.unreadOnly === 'true') {
-    filter.isRead = false;
-  }
-
-  const [notifications, total, unreadCount] = await Promise.all([
-    Notification.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    Notification.countDocuments(filter),
-    Notification.countDocuments({ recipient: userId, isRead: false })
-  ]);
-
-  return {
-    notifications,
-    unreadCount,
-    pagination: {
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit)
-    }
-  };
+  return await notificationService.getUserNotifications(userId, query);
 };
 
 /**
  * Mark notification as read
  */
 const markNotificationRead = async (userId, notificationId) => {
-  const notification = await Notification.findOneAndUpdate(
-    { _id: notificationId, recipient: userId },
-    { $set: { isRead: true, readAt: new Date() } },
-    { new: true }
-  );
-
-  if (!notification) {
-    const err = new Error('Notification not found or access denied');
-    err.statusCode = 404;
-    throw err;
-  }
-
-  return notification;
+  return await notificationService.markNotificationRead(userId, notificationId);
 };
 
 /**
@@ -2347,17 +2508,19 @@ const updateTeamSizeByProvider = async (userId, bookingId, teamData) => {
         ? `The service team size has been updated to ${teamLabel} for booking ${booking.bookingReference}.`
         : `Your service team size has been confirmed: ${teamLabel} will arrive for booking ${booking.bookingReference}.`;
 
-      await Notification.create({
-        recipient: custUserId,
+      await notificationService.sendNotification({
+        recipientIds: [custUserId],
         title: `Service Team Update: ${booking.bookingReference}`,
-        message: updateMsg,
+        body: updateMsg,
         type: 'booking',
         data: {
           bookingId: booking._id.toString(),
           bookingReference: booking.bookingReference,
-          totalCount,
+          totalCount: String(totalCount),
           status: booking.status
-        }
+        },
+        bookingId: booking._id,
+        idempotencyKey: `booking_team_size_${booking._id}_${totalCount}`
       });
     }
   } catch (notifErr) {

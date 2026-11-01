@@ -18,7 +18,7 @@ import { spacing, typography, borderRadius, shadows } from '../../theme';
 
 export default function BookingDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
-  const { bookingId } = route.params || {};
+  const bookingId = route.params?.bookingId || route.params?.id;
 
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);

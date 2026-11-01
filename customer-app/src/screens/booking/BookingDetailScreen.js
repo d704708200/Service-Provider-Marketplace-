@@ -96,7 +96,8 @@ const getBookingStatusBadge = (status) => {
 
 export default function BookingDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
-  const { bookingId, booking: initialBooking } = route.params || {};
+  const bookingId = route.params?.bookingId || route.params?.id;
+  const { booking: initialBooking } = route.params || {};
 
   const [booking, setBooking] = useState(initialBooking || null);
   const [loading, setLoading] = useState(!initialBooking);

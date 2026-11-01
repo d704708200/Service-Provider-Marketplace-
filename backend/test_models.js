@@ -1,4 +1,4 @@
-﻿const assert = require('assert');
+const assert = require('assert');
 const mongoose = require('mongoose');
 const {
   User,
@@ -11,7 +11,8 @@ const {
   Booking,
   Review,
   Notification,
-  Admin
+  Admin,
+  DeviceToken
 } = require('./src/models');
 
 console.log('--- Running Schema & Model Unit Tests ---');
@@ -144,4 +145,16 @@ const admin = new Admin({
 assert.strictEqual(admin.validateSync(), undefined);
 console.log('✓ Admin model validation passed');
 
-console.log('--- ALL 11 MODEL TESTS PASSED SUCCESSFULLY! ---');
+// Test 12: DeviceToken
+const deviceToken = new DeviceToken({
+  user: new mongoose.Types.ObjectId(),
+  token: 'fcm_test_token_1234567890abcdef',
+  role: 'customer',
+  platform: 'android',
+  deviceModel: 'Pixel 8',
+  appVersion: '1.0.0'
+});
+assert.strictEqual(deviceToken.validateSync(), undefined);
+console.log('✓ DeviceToken model validation passed');
+
+console.log('--- ALL 12 MODEL TESTS PASSED SUCCESSFULLY! ---');

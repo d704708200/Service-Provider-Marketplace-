@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import { authStorage } from '../storage/authStorage';
 import { authApi, setOnUnauthorizedCallback } from '../services/api';
+import { registerTokenWithBackend, unregisterTokenFromBackend } from '../services/notificationService';
 
 const AuthContext = createContext(null);
 
@@ -18,6 +19,7 @@ export const AuthProvider = ({ children }) => {
   // Logout / clear session
   const logout = useCallback(async () => {
     try {
+      await unregisterTokenFromBackend();
       await authStorage.clearAuth();
     } catch (e) {
       console.error('Logout error:', e);
@@ -54,6 +56,8 @@ export const AuthProvider = ({ children }) => {
         setUser(response.data.user);
         setProfile(response.data.profile || null);
         await authStorage.setUser(response.data.user);
+        // Register / refresh push token in background
+        registerTokenWithBackend('customer').catch((e) => console.log('Token sync note:', e.message));
       } else {
         await logout();
       }
@@ -118,6 +122,10 @@ export const AuthProvider = ({ children }) => {
         setToken(receivedToken);
         setUser(receivedUser);
         setProfile(receivedProfile || null);
+
+        // Register push token upon successful login
+        registerTokenWithBackend('customer').catch((e) => console.log('Token sync note:', e.message));
+
         return { success: true, data: response.data };
       }
       const genericErr = 'Login failed: Invalid server response.';
@@ -144,6 +152,10 @@ export const AuthProvider = ({ children }) => {
         setToken(receivedToken);
         setUser(receivedUser);
         setProfile(receivedProfile || null);
+
+        // Register push token upon successful registration
+        registerTokenWithBackend('customer').catch((e) => console.log('Token sync note:', e.message));
+
         return { success: true, data: response.data };
       }
       const genericErr = 'Registration failed: Invalid server response.';

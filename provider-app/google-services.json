@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "894601382298",
+    "project_id": "service-provider-marketplace",
+    "storage_bucket": "service-provider-marketplace.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:894601382298:android:ba4ecba4df73b6af3b1223",
+        "android_client_info": {
+          "package_name": "com.mendroo.provider"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBi8WvyrTSi18dtbcrmxz9AyGo2z3h7Ij4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:894601382298:android:99816ac58bf0b1a63b1223",
+        "android_client_info": {
+          "package_name": "com.serviceprovider.customerapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBi8WvyrTSi18dtbcrmxz9AyGo2z3h7Ij4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

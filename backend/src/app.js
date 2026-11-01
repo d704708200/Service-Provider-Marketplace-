@@ -15,6 +15,11 @@ const bannerRoutes = require('./routes/bannerRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const serviceAreaRoutes = require('./routes/serviceAreaRoutes');
 const reportRoutes = require('./routes/reportRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const { initializeFirebase, isFirebaseConfigured, getFirebaseProjectId } = require('./config/firebase');
+
+// Initialize Firebase Admin SDK (safe startup)
+initializeFirebase();
 
 const app = express();
 
@@ -39,7 +44,7 @@ app.use(
   express.static(path.join(__dirname, '../uploads'))
 );
 
-// Health Check Endpoint (reporting system and DB status without exposing internal details)
+// Health Check Endpoint (reporting system, DB and Firebase status without exposing secrets)
 app.get('/api/health', (req, res) => {
   const dbStatus = getDBStatus();
 
@@ -51,6 +56,10 @@ app.get('/api/health', (req, res) => {
     database: {
       status: dbStatus.state,
       connected: dbStatus.isConnected
+    },
+    firebase: {
+      configured: isFirebaseConfigured(),
+      projectId: getFirebaseProjectId()
     },
     environment: process.env.NODE_ENV || 'development'
   });
@@ -77,6 +86,7 @@ app.use('/api/banner', bannerRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/locations', serviceAreaRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404 Handler
 app.use(notFoundHandler);

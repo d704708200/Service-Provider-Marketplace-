@@ -15,6 +15,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
+import { useNotifications } from '../../context/NotificationContext';
 import { categoryApi, serviceApi, providerApi, bannerApi } from '../../services/api';
 import { formatRating } from '../../utils/formatters';
 import colors from '../../theme/colors';
@@ -52,6 +53,7 @@ const resolveIconName = (icon, name) => {
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { unreadCount } = useNotifications();
   const {
     location,
     permissionStatus,
@@ -259,8 +261,16 @@ export default function HomeScreen({ navigation }) {
             style={styles.headerIconBtn}
             onPress={() => navigation.navigate('AlertsTab')}
             activeOpacity={0.7}
+            accessibilityLabel="Notifications"
           >
             <Ionicons name="notifications-outline" size={18} color="#FFFFFF" />
+            {unreadCount > 0 && (
+              <View style={styles.headerBadge}>
+                <Text style={styles.headerBadgeText}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -708,7 +718,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#252136',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    position: 'relative'
+  },
+  headerBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#EF4444',
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#0F0E16'
+  },
+  headerBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center'
   },
   scroll: {
     flex: 1

@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationContext';
 import { bookingApi, providerApi } from '../../services/api';
 import { getApiBaseUrl } from '../../config/env';
 import { Card, Badge, Button } from '../../components/common';
@@ -26,12 +27,12 @@ import { spacing, typography, borderRadius } from '../../theme';
 export default function DashboardScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { user, profile: authProfile, checkAuthSession } = useAuth();
+  const { unreadCount, refreshUnreadCount } = useNotifications();
 
   const [profile, setProfile] = useState(authProfile);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [activeBookings, setActiveBookings] = useState([]);
   const [completedBookings, setCompletedBookings] = useState([]);
-  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [isAvailable, setIsAvailable] = useState(true);
   const [toggleLoading, setToggleLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -151,9 +152,8 @@ export default function DashboardScreen({ navigation }) {
       }
 
       const pendingList = pendingRes?.data || [];
-      const unreadNotifCount = typeof notifsRes?.unreadCount === 'number' ? notifsRes.unreadCount : 0;
       setPendingRequests(pendingList);
-      setUnreadNotificationsCount(Math.max(pendingList.length, unreadNotifCount));
+      refreshUnreadCount();
       const active = [...(acceptedRes?.data || []), ...(inProgressRes?.data || [])];
       setActiveBookings(active);
       setCompletedBookings(completedRes?.data || []);
@@ -270,14 +270,15 @@ export default function DashboardScreen({ navigation }) {
         <View style={styles.headerRight}>
           <TouchableOpacity
             style={styles.headerIconBtn}
-            onPress={() => navigation.navigate('RequestsTab')}
+            onPress={() => navigation.navigate('Notifications')}
             activeOpacity={0.7}
+            accessibilityLabel="Notifications"
           >
             <Ionicons name="notifications-outline" size={18} color="#FFFFFF" />
-            {unreadNotificationsCount > 0 && (
+            {unreadCount > 0 && (
               <View style={styles.headerBadge}>
                 <Text style={styles.headerBadgeText}>
-                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                  {unreadCount > 99 ? '99+' : unreadCount}
                 </Text>
               </View>
             )}

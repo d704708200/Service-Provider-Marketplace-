@@ -7,11 +7,14 @@ import RequestsScreen from '../screens/requests/RequestsScreen';
 import HistoryScreen from '../screens/history/HistoryScreen';
 import ProviderServicesScreen from '../screens/services/ProviderServicesScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
+import { useNotifications } from '../context/NotificationContext';
 import colors from '../theme/colors';
 
 const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
+  const { unreadCount } = useNotifications();
+
   return (
     <Tab.Navigator
       initialRouteName="HomeTab"
@@ -54,7 +57,16 @@ export default function TabNavigator() {
       <Tab.Screen
         name="RequestsTab"
         component={RequestsScreen}
-        options={{ tabBarLabel: 'Requests' }}
+        options={{
+          tabBarLabel: 'Requests',
+          tabBarBadge: unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#EF4444',
+            color: '#FFFFFF',
+            fontSize: 10,
+            fontWeight: '700'
+          }
+        }}
       />
       <Tab.Screen
         name="HistoryTab"

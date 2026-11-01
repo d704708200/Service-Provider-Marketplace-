@@ -10,6 +10,7 @@ const Review = require('./Review');
 const Notification = require('./Notification');
 const Admin = require('./Admin');
 const BannerConfig = require('./BannerConfig');
+const DeviceToken = require('./DeviceToken');
 
 module.exports = {
   User,
@@ -23,5 +24,6 @@ module.exports = {
   Review,
   Notification,
   Admin,
-  BannerConfig
+  BannerConfig,
+  DeviceToken
 };

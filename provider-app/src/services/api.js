@@ -242,4 +242,32 @@ export const providerServicesApi = {
   }
 };
 
+// Provider Notifications & Device Token API
+export const notificationApi = {
+  registerDeviceToken: async (tokenData) => {
+    const response = await api.post('/notifications/token', tokenData);
+    return response.data;
+  },
+  unregisterDeviceToken: async (token) => {
+    const response = await api.post('/notifications/token/unregister', { token });
+    return response.data;
+  },
+  getNotifications: async (params = {}) => {
+    const response = await api.get('/notifications', { params });
+    return response.data;
+  },
+  getUnreadCount: async () => {
+    const response = await api.get('/notifications/unread-count');
+    return response.data;
+  },
+  markAsRead: async (notificationId) => {
+    const response = await api.patch(`/notifications/${notificationId}/read`);
+    return response.data;
+  },
+  markAllAsRead: async () => {
+    const response = await api.patch('/notifications/read-all');
+    return response.data;
+  }
+};
+
 export default api;
