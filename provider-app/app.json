@@ -2,7 +2,7 @@
   "expo": {
     "name": "provider-app",
     "slug": "provider-app",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -19,6 +19,7 @@
     },
     "android": {
       "package": "com.mendroo.provider",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#020a25"
