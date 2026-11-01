@@ -209,9 +209,20 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
               <View style={styles.fallbackIconWrap}>
                 <Ionicons name="sparkles" size={20} color="#A78BFA" />
               </View>
-              <Text style={styles.fallbackTitle} numberOfLines={2}>
-                {item.title || 'Special Promotion'}
-              </Text>
+              {item.title ? (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => handleBannerPress(item)}
+                  style={styles.ctaButton}
+                  accessibilityRole="button"
+                  accessibilityLabel={item.title}
+                >
+                  <Text style={styles.ctaButtonText} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Ionicons name="arrow-forward" size={12} color="#FFFFFF" />
+                </TouchableOpacity>
+              ) : null}
               {item.subtitle ? (
                 <Text style={styles.fallbackSubtitle} numberOfLines={1}>
                   {item.subtitle}
@@ -236,25 +247,28 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
           />
         )}
 
-        {/* Gradient / Dark text backdrop overlay if title or subtitle present */}
+        {/* Bottom overlay with modern CTA button & subtitle */}
         {hasImage && (item.title || item.subtitle) && (
           <View style={styles.textOverlay}>
-            <Text style={styles.overlayTitle} numberOfLines={1}>
-              {item.title}
-            </Text>
+            {item.title ? (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => handleBannerPress(item)}
+                style={styles.ctaButton}
+                accessibilityRole="button"
+                accessibilityLabel={item.title}
+              >
+                <Text style={styles.ctaButtonText} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                <Ionicons name="arrow-forward" size={12} color="#FFFFFF" />
+              </TouchableOpacity>
+            ) : null}
             {item.subtitle ? (
               <Text style={styles.overlaySubtitle} numberOfLines={1}>
                 {item.subtitle}
               </Text>
             ) : null}
-          </View>
-        )}
-
-        {/* Action badge if destination configured */}
-        {item.destinationType && item.destinationType !== 'none' && (
-          <View style={styles.actionPill}>
-            <Text style={styles.actionPillText}>Explore</Text>
-            <Ionicons name="chevron-forward" size={11} color="#FFFFFF" />
           </View>
         )}
       </TouchableOpacity>
@@ -384,16 +398,33 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 15,
     zIndex: 2
   },
-  overlayTitle: {
-    fontSize: 14,
+  ctaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 4
+  },
+  ctaButtonText: {
+    fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: -0.2
+    letterSpacing: 0.3
   },
   overlaySubtitle: {
     fontSize: 11,
     color: '#E5E7EB',
-    marginTop: 2
+    marginTop: 4
   },
   actionPill: {
     position: 'absolute',
