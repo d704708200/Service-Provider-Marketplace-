@@ -298,7 +298,7 @@ export const reviewApi = {
 };
 
 // ==========================================
-// 9. Home Promotional Banner API
+// 9. Home Promotional Banner API (Single Offer Banner - Untouched)
 // ==========================================
 export const bannerApi = {
   getBanner: async () => {
@@ -307,6 +307,16 @@ export const bannerApi = {
   },
   getPublicBanner: async () => {
     const response = await api.get('/banner');
+    return response.data;
+  }
+};
+
+// ==========================================
+// 9.1 Dynamic Infinite Sliding Banners API
+// ==========================================
+export const homeBannerApi = {
+  getBanners: async () => {
+    const response = await api.get('/home-banners');
     return response.data;
   }
 };

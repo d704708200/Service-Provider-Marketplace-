@@ -367,5 +367,61 @@ export const reportApi = {
   }
 };
 
+// Home Screen Slider Banners API Methods
+export const homeBannerApi = {
+  getAll: async (params = {}) => {
+    const response = await api.get('/admin/home-banners', { params });
+    return response.data;
+  },
+  getById: async (id) => {
+    const response = await api.get(`/admin/home-banners/${id}`);
+    return response.data;
+  },
+  create: async (data, onUploadProgress) => {
+    const headers = {};
+    if (data instanceof FormData) {
+      headers['Content-Type'] = 'multipart/form-data';
+    }
+    const response = await api.post('/admin/home-banners', data, {
+      headers,
+      onUploadProgress: (progressEvent) => {
+        if (typeof onUploadProgress === 'function' && progressEvent.total) {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onUploadProgress(percent);
+        }
+      }
+    });
+    return response.data;
+  },
+  update: async (id, data, onUploadProgress) => {
+    const headers = {};
+    if (data instanceof FormData) {
+      headers['Content-Type'] = 'multipart/form-data';
+    }
+    const response = await api.put(`/admin/home-banners/${id}`, data, {
+      headers,
+      onUploadProgress: (progressEvent) => {
+        if (typeof onUploadProgress === 'function' && progressEvent.total) {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onUploadProgress(percent);
+        }
+      }
+    });
+    return response.data;
+  },
+  delete: async (id) => {
+    const response = await api.delete(`/admin/home-banners/${id}`);
+    return response.data;
+  },
+  toggleStatus: async (id, isActive) => {
+    const response = await api.patch(`/admin/home-banners/${id}/status`, { isActive });
+    return response.data;
+  },
+  reorder: async (orderedIds) => {
+    const response = await api.patch('/admin/home-banners/reorder', { orderedIds });
+    return response.data;
+  }
+};
+
 export default api;
 

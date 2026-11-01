@@ -16,7 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
 import { useNotifications } from '../../context/NotificationContext';
-import { categoryApi, serviceApi, providerApi, bannerApi } from '../../services/api';
+import { categoryApi, serviceApi, providerApi, bannerApi, homeBannerApi } from '../../services/api';
+import HomeSliderBanner from '../../components/home/HomeSliderBanner';
 import { formatRating } from '../../utils/formatters';
 import colors from '../../theme/colors';
 
@@ -68,6 +69,7 @@ export default function HomeScreen({ navigation }) {
   const [featuredServices, setFeaturedServices] = useState([]);
   const [topRatedProviders, setTopRatedProviders] = useState([]);
   const [nearbyProviders, setNearbyProviders] = useState([]);
+  const [homeBanners, setHomeBanners] = useState([]);
   const [bannerConfig, setBannerConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -105,7 +107,7 @@ export default function HomeScreen({ navigation }) {
         nearbyParams.longitude = location.longitude;
       }
 
-      const [allCatRes, quickCatRes, popCatRes, servRes, topProvRes, allProvRes, bannerRes] = await Promise.all([
+      const [allCatRes, quickCatRes, popCatRes, servRes, topProvRes, allProvRes, bannerRes, homeBannerRes] = await Promise.all([
         categoryApi.getAll().catch((e) => {
           if (__DEV__) console.warn('[HomeScreen] all categories fetch failed:', e?.message);
           return { data: [] };
@@ -135,7 +137,13 @@ export default function HomeScreen({ navigation }) {
               if (__DEV__) console.warn('[HomeScreen] banner fetch failed:', e?.message);
               return { data: null };
             })
-          : Promise.resolve({ data: null })
+          : Promise.resolve({ data: null }),
+        homeBannerApi && typeof homeBannerApi.getBanners === 'function'
+          ? homeBannerApi.getBanners().catch((e) => {
+              if (__DEV__) console.warn('[HomeScreen] dynamic home banners fetch failed:', e?.message);
+              return { data: [] };
+            })
+          : Promise.resolve({ data: [] })
       ]);
 
       const allCategories = extractArray(allCatRes);
@@ -182,6 +190,7 @@ export default function HomeScreen({ navigation }) {
       setTopRatedProviders(topRatedList);
       setNearbyProviders(allProvidersList);
       setBannerConfig(bannerRes?.data || null);
+      setHomeBanners(extractArray(homeBannerRes));
     } catch (err) {
       if (__DEV__) {
         console.error('[HomeScreen] Error fetching home data:', err?.message || err);
@@ -572,6 +581,9 @@ export default function HomeScreen({ navigation }) {
             </View>
           )}
         </View>
+
+        {/* Dynamic Infinite Sliding Banners (Placed Above Existing Promotional Banner) */}
+        <HomeSliderBanner banners={homeBanners} navigation={navigation} />
 
         {/* Promotional Coupon Banner matching Figma (Admin-Controlled) */}
         {bannerConfig && bannerConfig.isEnabled !== false ? (

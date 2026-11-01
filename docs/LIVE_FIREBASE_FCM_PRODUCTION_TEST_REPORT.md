@@ -258,3 +258,4 @@
 ## 7. Conclusion
 
 The Firebase Cloud Messaging (FCM) push notification infrastructure is **fully verified, operational, and production-ready** on the live Render deployment (`https://service-provider-marketplace.onrender.com/api`). Device tokens generate reliably on native Android devices, register seamlessly upon user login, and receive real-time high-priority booking event push notifications across Foreground, Background, and Terminated/Dismissed application states.
+

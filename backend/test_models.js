@@ -12,7 +12,8 @@ const {
   Review,
   Notification,
   Admin,
-  DeviceToken
+  DeviceToken,
+  HomeBanner
 } = require('./src/models');
 
 console.log('--- Running Schema & Model Unit Tests ---');
@@ -157,4 +158,17 @@ const deviceToken = new DeviceToken({
 assert.strictEqual(deviceToken.validateSync(), undefined);
 console.log('✓ DeviceToken model validation passed');
 
-console.log('--- ALL 12 MODEL TESTS PASSED SUCCESSFULLY! ---');
+// Test 13: HomeBanner
+const homeBanner = new HomeBanner({
+  title: 'Summer Service Bonanza',
+  subtitle: 'Up to 30% discount on all AC repair services',
+  imageUrl: 'https://res.cloudinary.com/demo/image/upload/sample.jpg',
+  destinationType: 'category',
+  destinationId: '6ad0669fc4dfd126d9d0649b',
+  displayOrder: 1,
+  isActive: true
+});
+assert.strictEqual(homeBanner.validateSync(), undefined);
+console.log('✓ HomeBanner model validation passed');
+
+console.log('--- ALL 13 MODEL TESTS PASSED SUCCESSFULLY! ---');

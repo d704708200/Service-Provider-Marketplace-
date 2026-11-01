@@ -1517,6 +1517,160 @@ const validateUpdateTeamSize = (req, res, next) => {
   next();
 };
 
+const VALID_DESTINATION_TYPES = ['category', 'service', 'search', 'offer', 'screen', 'url', 'none'];
+
+const validateCreateHomeBanner = (req, res, next) => {
+  const { title, subtitle, imageUrl, destinationType, destinationId, startDate, endDate, displayOrder } = req.body;
+  const errors = [];
+
+  if (!title || typeof title !== 'string' || !title.trim()) {
+    errors.push('Banner title is required');
+  } else if (title.trim().length > 120) {
+    errors.push('Banner title cannot exceed 120 characters');
+  }
+
+  if (subtitle && typeof subtitle === 'string' && subtitle.trim().length > 200) {
+    errors.push('Banner subtitle cannot exceed 200 characters');
+  }
+
+  if (!req.file && (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.trim())) {
+    errors.push('Banner image file or imageUrl is required');
+  }
+
+  if (destinationType && !VALID_DESTINATION_TYPES.includes(destinationType)) {
+    errors.push(`destinationType must be one of: ${VALID_DESTINATION_TYPES.join(', ')}`);
+  }
+
+  if (displayOrder !== undefined && isNaN(Number(displayOrder))) {
+    errors.push('displayOrder must be a valid number');
+  }
+
+  let parsedStart = null;
+  let parsedEnd = null;
+
+  if (startDate) {
+    parsedStart = new Date(startDate);
+    if (isNaN(parsedStart.getTime())) {
+      errors.push('startDate must be a valid date');
+    }
+  }
+
+  if (endDate) {
+    parsedEnd = new Date(endDate);
+    if (isNaN(parsedEnd.getTime())) {
+      errors.push('endDate must be a valid date');
+    }
+  }
+
+  if (parsedStart && parsedEnd && parsedEnd < parsedStart) {
+    errors.push('endDate cannot be earlier than startDate');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'Home banner validation failed',
+        details: errors,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateUpdateHomeBanner = (req, res, next) => {
+  const { title, subtitle, imageUrl, destinationType, destinationId, startDate, endDate, displayOrder } = req.body;
+  const errors = [];
+
+  if (title !== undefined) {
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      errors.push('Banner title cannot be empty');
+    } else if (title.trim().length > 120) {
+      errors.push('Banner title cannot exceed 120 characters');
+    }
+  }
+
+  if (subtitle !== undefined && typeof subtitle === 'string' && subtitle.trim().length > 200) {
+    errors.push('Banner subtitle cannot exceed 200 characters');
+  }
+
+  if (destinationType !== undefined && !VALID_DESTINATION_TYPES.includes(destinationType)) {
+    errors.push(`destinationType must be one of: ${VALID_DESTINATION_TYPES.join(', ')}`);
+  }
+
+  if (displayOrder !== undefined && isNaN(Number(displayOrder))) {
+    errors.push('displayOrder must be a valid number');
+  }
+
+  let parsedStart = null;
+  let parsedEnd = null;
+
+  if (startDate) {
+    parsedStart = new Date(startDate);
+    if (isNaN(parsedStart.getTime())) {
+      errors.push('startDate must be a valid date');
+    }
+  }
+
+  if (endDate) {
+    parsedEnd = new Date(endDate);
+    if (isNaN(parsedEnd.getTime())) {
+      errors.push('endDate must be a valid date');
+    }
+  }
+
+  if (parsedStart && parsedEnd && parsedEnd < parsedStart) {
+    errors.push('endDate cannot be earlier than startDate');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'Home banner update validation failed',
+        details: errors,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateReorderHomeBanners = (req, res, next) => {
+  const { orderedIds } = req.body;
+  const errors = [];
+
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    errors.push('orderedIds must be a non-empty array of banner IDs');
+  } else {
+    for (let i = 0; i < orderedIds.length; i++) {
+      if (!orderedIds[i] || !mongoose.Types.ObjectId.isValid(orderedIds[i])) {
+        errors.push(`Invalid ObjectId at index ${i}: '${orderedIds[i]}'`);
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: 'Home banner reorder validation failed',
+        details: errors,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+
 module.exports = {
   validateRegisterCustomer,
   validateRegisterProvider,
@@ -1550,7 +1704,11 @@ module.exports = {
   validateSubmitSpareParts,
   validateReviewSpareParts,
   validateSelectSparePartsPaymentMethod,
-  validateUpdateTeamSize
+  
+validateUpdateTeamSize,
+  validateCreateHomeBanner,
+  validateUpdateHomeBanner,
+  validateReorderHomeBanners
 };
 
 

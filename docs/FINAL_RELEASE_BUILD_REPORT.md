@@ -170,3 +170,4 @@ adb install -r release/provider-app-release.apk
 ## 6. Conclusion
 
 Fresh, optimized, and signed production Release APKs for both the **Customer App** and **Provider App** have been successfully built, verified, and placed in the `release/` directory. All package identities, signing certificates, Firebase FCM integration hooks, and production backend configurations are fully preserved and operational.
+

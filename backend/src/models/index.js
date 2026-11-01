@@ -11,6 +11,7 @@ const Notification = require('./Notification');
 const Admin = require('./Admin');
 const BannerConfig = require('./BannerConfig');
 const DeviceToken = require('./DeviceToken');
+const HomeBanner = require('./HomeBanner');
 
 module.exports = {
   User,
@@ -25,5 +26,6 @@ module.exports = {
   Notification,
   Admin,
   BannerConfig,
-  DeviceToken
+  DeviceToken,
+  HomeBanner
 };

@@ -155,8 +155,53 @@ const uploadSingleKYCDocument = (fieldName = 'document') => {
   };
 };
 
+const uploadSingleBannerImage = (fieldName = 'image') => {
+  return (req, res, next) => {
+    const contentType = req.headers['content-type'] || '';
+    if (!contentType.toLowerCase().includes('multipart/form-data')) {
+      // Allow JSON bodies when image URL is provided directly
+      return next();
+    }
+
+    const uploadMiddleware = upload.single(fieldName);
+    uploadMiddleware(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            success: false,
+            error: {
+              message: 'Banner image file size exceeds maximum allowed limit of 5MB',
+              statusCode: 400,
+              timestamp: new Date().toISOString()
+            }
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: `Banner image upload error: ${err.message}`,
+            statusCode: 400,
+            timestamp: new Date().toISOString()
+          }
+        });
+      } else if (err) {
+        return res.status(err.statusCode || 400).json({
+          success: false,
+          error: {
+            message: err.message || 'Banner image upload failed',
+            statusCode: err.statusCode || 400,
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
+      next();
+    });
+  };
+};
+
 module.exports = {
   upload,
   uploadSingleAvatar,
-  uploadSingleKYCDocument
+  uploadSingleKYCDocument,
+  uploadSingleBannerImage
 };

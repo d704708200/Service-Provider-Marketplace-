@@ -16,6 +16,7 @@ const reviewRoutes = require('./routes/reviewRoutes');
 const serviceAreaRoutes = require('./routes/serviceAreaRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const { publicRouter: homeBannerPublicRoutes, adminRouter: homeBannerAdminRoutes } = require('./routes/homeBannerRoutes');
 const { initializeFirebase, isFirebaseConfigured, getFirebaseProjectId } = require('./config/firebase');
 
 // Initialize Firebase Admin SDK (safe startup)
@@ -87,6 +88,8 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/locations', serviceAreaRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/home-banners', homeBannerPublicRoutes);
+app.use('/api/admin/home-banners', homeBannerAdminRoutes);
 
 // 404 Handler
 app.use(notFoundHandler);

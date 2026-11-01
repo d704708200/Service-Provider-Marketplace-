@@ -14,7 +14,8 @@ import {
   BarChart3,
   Settings,
   X,
-  Shield
+  Shield,
+  SlidersHorizontal
 } from 'lucide-react';
 
 const navItems = [
@@ -24,6 +25,7 @@ const navItems = [
   { name: 'Verification', path: '/provider-verification', icon: ShieldCheck },
   { name: 'Categories', path: '/categories', icon: Layers },
   { name: 'Services', path: '/services', icon: Wrench },
+  { name: 'Home Screen Banners', path: '/home-banners', icon: SlidersHorizontal },
   { name: 'Booking Management', path: '/bookings', icon: Calendar },
   { name: 'Service Requests', path: '/requests', icon: CalendarCheck },
   { name: 'Reviews', path: '/reviews', icon: Star },
