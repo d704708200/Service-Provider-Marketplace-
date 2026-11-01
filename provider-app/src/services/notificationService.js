@@ -5,14 +5,16 @@ import { notificationApi } from './api';
 
 const DEVICE_TOKEN_STORAGE_KEY = '@fcm_provider_device_token';
 
-// Configure foreground notification presentation behavior
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true
-  })
-});
+// Configure foreground notification presentation behavior (native only; avoids web UnavailabilityError)
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true
+    })
+  });
+}
 
 /**
  * Configure default Android notification channel for high-priority provider booking alerts
@@ -41,6 +43,37 @@ export const configureNotificationChannel = async () => {
  * Request notification permissions and obtain the native FCM registration token
  */
 export const requestPermissionAndGetToken = async () => {
+  // --- WEB PLATFORM GUARD ---
+  if (Platform.OS === 'web') {
+    const vapidKey = process.env.EXPO_PUBLIC_VAPID_KEY;
+    if (!vapidKey) {
+      if (__DEV__) {
+        console.warn(
+          '[ProviderNotification] Web Push notifications require VAPID key configuration (EXPO_PUBLIC_VAPID_KEY). Web push token registration skipped.'
+        );
+      }
+      return { granted: false, token: null, reason: 'vapid_missing' };
+    }
+
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          return { granted: false, token: null, reason: 'permission_denied' };
+        }
+        const pushTokenData = await Notifications.getExpoPushTokenAsync({
+          vapidPublicKey: vapidKey
+        });
+        return { granted: true, token: pushTokenData?.data, type: 'web' };
+      }
+      return { granted: false, token: null, reason: 'unsupported' };
+    } catch (webErr) {
+      console.warn('[ProviderNotification] Web notification permission/token error:', webErr?.message);
+      return { granted: false, token: null, error: webErr?.message };
+    }
+  }
+
+  // --- NATIVE MOBILE PLATFORM (Android / iOS) ---
   try {
     await configureNotificationChannel();
 
@@ -94,6 +127,11 @@ export const requestPermissionAndGetToken = async () => {
  */
 export const registerTokenWithBackend = async (role = 'provider') => {
   try {
+    // On web, if no VAPID is configured, skip cleanly
+    if (Platform.OS === 'web' && !process.env.EXPO_PUBLIC_VAPID_KEY) {
+      return { success: false, reason: 'Web push not configured' };
+    }
+
     const { granted, token } = await requestPermissionAndGetToken();
 
     if (!granted || !token) {
@@ -107,7 +145,7 @@ export const registerTokenWithBackend = async (role = 'provider') => {
     const response = await notificationApi.registerDeviceToken({
       token,
       platform: Platform.OS,
-      deviceModel: Platform.OS === 'android' ? 'Android Device' : 'iOS Device',
+      deviceModel: Platform.OS === 'android' ? 'Android Device' : Platform.OS === 'ios' ? 'iOS Device' : 'Web Browser',
       appVersion: '1.0.0'
     });
 
@@ -125,9 +163,11 @@ export const registerTokenWithBackend = async (role = 'provider') => {
 export const unregisterTokenFromBackend = async () => {
   try {
     const storedToken = await AsyncStorage.getItem(DEVICE_TOKEN_STORAGE_KEY);
-    await notificationApi.unregisterDeviceToken(storedToken || '');
-    await AsyncStorage.removeItem(DEVICE_TOKEN_STORAGE_KEY);
-    console.log('[ProviderNotification] Provider device token unregistered on logout');
+    if (storedToken) {
+      await notificationApi.unregisterDeviceToken(storedToken);
+      await AsyncStorage.removeItem(DEVICE_TOKEN_STORAGE_KEY);
+      console.log('[ProviderNotification] Provider device token unregistered on logout');
+    }
     return { success: true };
   } catch (err) {
     console.warn('[ProviderNotification] Failed to unregister token on logout:', err.message);
@@ -139,29 +179,46 @@ export const unregisterTokenFromBackend = async () => {
  * Initialize notification listeners for foreground reception and tap navigation
  */
 export const initNotificationListeners = (navigationRef, onForegroundNotification) => {
-  // 1. Foreground listener
-  const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
-    if (typeof onForegroundNotification === 'function') {
-      onForegroundNotification(notification);
-    }
-  });
+  // On web, avoid calling native-only listener methods and return clean no-op
+  if (Platform.OS === 'web') {
+    return () => { };
+  }
 
-  // 2. Tap / Response listener
-  const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
-    handleNotificationTap(response, navigationRef);
-  });
+  let receivedSubscription = null;
+  let responseSubscription = null;
 
-  // 3. Cold launch check
-  Notifications.getLastNotificationResponseAsync().then((response) => {
-    if (response) {
+  try {
+    // 1. Foreground listener
+    receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
+      if (typeof onForegroundNotification === 'function') {
+        onForegroundNotification(notification);
+      }
+    });
+
+    // 2. Tap / Response listener
+    responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
       handleNotificationTap(response, navigationRef);
-    }
-  });
+    });
 
-  return () => {
-    receivedSubscription.remove();
-    responseSubscription.remove();
-  };
+    // 3. Cold launch check (guarded with .catch to prevent unhandled rejection)
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) {
+          handleNotificationTap(response, navigationRef);
+        }
+      })
+      .catch((err) => {
+        console.warn('[ProviderNotification] Cold launch response check error:', err?.message);
+      });
+
+    return () => {
+      if (receivedSubscription?.remove) receivedSubscription.remove();
+      if (responseSubscription?.remove) responseSubscription.remove();
+    };
+  } catch (err) {
+    console.warn('[ProviderNotification] initNotificationListeners setup error:', err?.message);
+    return () => { };
+  }
 };
 
 /**

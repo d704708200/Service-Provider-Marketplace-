@@ -12,12 +12,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { bookingApi } from '../../services/api';
+import { useRequests } from '../../context/RequestContext';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView, EmptyState } from '../../components/common';
 import colors from '../../theme/colors';
 import { spacing, typography } from '../../theme';
 
 export default function RequestsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { setPendingRequestsCount, decrementPendingRequestsCount, refreshPendingRequestsCount } = useRequests();
 
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,14 +31,16 @@ export default function RequestsScreen({ navigation }) {
     try {
       setError(null);
       const res = await bookingApi.getPendingRequests();
-      setRequests(res.data || []);
+      const list = Array.isArray(res?.data) ? res.data : [];
+      setRequests(list);
+      setPendingRequestsCount(list.length);
     } catch (err) {
       setError(err.userMessage || 'Unable to load pending requests');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [setPendingRequestsCount]);
 
   useEffect(() => {
     fetchRequests();
@@ -60,8 +64,9 @@ export default function RequestsScreen({ navigation }) {
     try {
       const res = await bookingApi.acceptBooking(booking._id);
       if (res?.success) {
-        // Optimistically remove from pending requests list
+        // Optimistically remove from pending requests list and decrement badge
         setRequests((prev) => prev.filter((r) => r._id !== booking._id));
+        decrementPendingRequestsCount(1);
 
         Alert.alert(
           'Request Accepted!',
@@ -80,8 +85,9 @@ export default function RequestsScreen({ navigation }) {
       // If booking was already claimed by someone else or is no longer pending (HTTP 409)
       const isConflict = err.response?.status === 409 || /no longer pending|already claimed|conflict/i.test(err.message || '');
       
-      // Remove stale booking immediately from list
+      // Remove stale booking immediately from list and decrement badge
       setRequests((prev) => prev.filter((r) => r._id !== booking._id));
+      decrementPendingRequestsCount(1);
 
       Alert.alert(
         'Request Unavailable',
@@ -108,6 +114,8 @@ export default function RequestsScreen({ navigation }) {
             setProcessingId(booking._id);
             try {
               await bookingApi.rejectBooking(booking._id, 'Provider declined');
+              setRequests((prev) => prev.filter((r) => r._id !== booking._id));
+              decrementPendingRequestsCount(1);
               fetchRequests();
             } catch (err) {
               Alert.alert('Error', err.userMessage || 'Failed to reject request');

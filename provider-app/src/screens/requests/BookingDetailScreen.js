@@ -12,12 +12,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { bookingApi } from '../../services/api';
+import { useRequests } from '../../context/RequestContext';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView } from '../../components/common';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius, shadows } from '../../theme';
 
 export default function BookingDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
+  const { decrementPendingRequestsCount, refreshPendingRequestsCount } = useRequests();
   const bookingId = route.params?.bookingId || route.params?.id;
 
   const [booking, setBooking] = useState(null);
@@ -368,11 +370,17 @@ export default function BookingDetailScreen({ route, navigation }) {
     try {
       const res = await bookingApi.acceptBooking(booking._id);
       if (res?.success) {
+        decrementPendingRequestsCount(1);
         Alert.alert('Accepted', 'You have claimed this booking.');
         setBooking(res.data);
       }
     } catch (err) {
       const isConflict = err.response?.status === 409 || /no longer pending|already claimed|conflict/i.test(err.message || '');
+      if (isConflict) {
+        decrementPendingRequestsCount(1);
+      } else {
+        refreshPendingRequestsCount();
+      }
       Alert.alert(
         'Request Unavailable',
         isConflict

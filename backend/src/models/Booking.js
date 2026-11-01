@@ -257,6 +257,36 @@ const bookingSchema = new mongoose.Schema(
           }
         }
       ]
+    },
+    warranty: {
+      hasWarranty: {
+        type: Boolean,
+        default: false
+      },
+      periodDays: {
+        type: Number,
+        default: 0
+      },
+      startDate: {
+        type: Date,
+        default: null
+      },
+      endDate: {
+        type: Date,
+        default: null
+      },
+      gracePeriodDays: {
+        type: Number,
+        default: 15
+      }
+    },
+    warrantyEndDate: {
+      type: Date,
+      default: null
+    },
+    warrantyGracePeriodDays: {
+      type: Number,
+      default: 15
     }
   },
   {

@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { serviceApi, providerApi, categoryApi } from '../../services/api';
 import { formatRating, formatPrice } from '../../utils/formatters';
+import { getValidCategoryIcon } from '../../utils/categoryIcons';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
@@ -335,7 +336,7 @@ export default function SearchScreen({ navigation }) {
                   activeOpacity={0.7}
                 >
                   <View style={[styles.categoryIconCircle, isSelected && styles.categoryIconCircleActive]}>
-                    <Ionicons name={item.icon} size={20} color={isSelected ? '#FFFFFF' : '#A78BFA'} />
+                    <Ionicons name={getValidCategoryIcon(item.icon, item.label)} size={20} color={isSelected ? '#FFFFFF' : '#A78BFA'} />
                   </View>
                   <Text style={[styles.categoryLabel, isSelected && styles.categoryLabelActive]}>
                     {item.label}

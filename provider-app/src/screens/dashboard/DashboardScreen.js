@@ -18,6 +18,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { useRequests } from '../../context/RequestContext';
 import { bookingApi, providerApi } from '../../services/api';
 import { getApiBaseUrl } from '../../config/env';
 import { Card, Badge, Button } from '../../components/common';
@@ -28,6 +29,7 @@ export default function DashboardScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { user, profile: authProfile, checkAuthSession } = useAuth();
   const { unreadCount, refreshUnreadCount } = useNotifications();
+  const { setPendingRequestsCount } = useRequests();
 
   const [profile, setProfile] = useState(authProfile);
   const [pendingRequests, setPendingRequests] = useState([]);
@@ -153,6 +155,7 @@ export default function DashboardScreen({ navigation }) {
 
       const pendingList = pendingRes?.data || [];
       setPendingRequests(pendingList);
+      setPendingRequestsCount(pendingList.length);
       refreshUnreadCount();
       const active = [...(acceptedRes?.data || []), ...(inProgressRes?.data || [])];
       setActiveBookings(active);

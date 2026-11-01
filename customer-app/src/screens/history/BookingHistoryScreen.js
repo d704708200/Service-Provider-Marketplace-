@@ -17,6 +17,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { bookingApi, reviewApi } from '../../services/api';
 import { openRazorpayCheckout } from '../../services/razorpayService';
+import { callPhoneNumber } from '../../utils/phoneUtils';
+import { getWarrantyContactStatus } from '../../utils/warrantyUtils';
 
 const TABS = [
   { id: 'pending', label: 'Pending' },
@@ -340,8 +342,11 @@ export default function BookingHistoryScreen({ navigation }) {
 
   const renderBookingCard = ({ item }) => {
     const providerName =
-      item.provider?.businessName || item.provider?.user?.name || 'Raj Kumar';
-    const category = item.service?.name || item.provider?.specialization || 'Electrical Inspection';
+      item.provider?.businessName || item.provider?.user?.name || 'Assigned Provider';
+    const providerPhone = item.provider?.user?.phone || item.provider?.phone;
+    const warrantyStatus = getWarrantyContactStatus(item);
+    const canCallProvider = warrantyStatus.canCallProvider && Boolean(providerPhone);
+    const category = item.service?.name || item.provider?.specialization || 'Home Service';
     const scheduledDate = item.scheduledDate
       ? new Date(item.scheduledDate).toLocaleDateString('en-US', {
           month: 'short',
@@ -427,9 +432,16 @@ export default function BookingHistoryScreen({ navigation }) {
             <Text style={styles.categorySub}>{category}</Text>
           </View>
 
-          <TouchableOpacity style={styles.callIconBtn} activeOpacity={0.7}>
-            <Ionicons name="call" size={16} color="#A78BFA" />
-          </TouchableOpacity>
+          {canCallProvider && (
+            <TouchableOpacity
+              style={styles.callIconBtn}
+              activeOpacity={0.7}
+              onPress={() => callPhoneNumber(providerPhone, providerName)}
+              accessibilityLabel={`Call ${providerName}`}
+            >
+              <Ionicons name="call" size={16} color="#A78BFA" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Price & Payment Summary */}

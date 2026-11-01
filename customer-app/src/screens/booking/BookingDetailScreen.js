@@ -17,6 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { bookingApi, reviewApi } from '../../services/api';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView } from '../../components/common';
+import { callPhoneNumber } from '../../utils/phoneUtils';
+import { getWarrantyContactStatus } from '../../utils/warrantyUtils';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
@@ -157,13 +159,7 @@ export default function BookingDetailScreen({ route, navigation }) {
   };
 
   const handleCallProvider = (phone) => {
-    if (!phone) {
-      Alert.alert('Contact Unavailable', 'Provider phone number is not listed.');
-      return;
-    }
-    Linking.openURL(`tel:${phone}`).catch(() => {
-      Alert.alert('Call Failed', `Could not initiate call to ${phone}`);
-    });
+    callPhoneNumber(phone, providerName);
   };
 
   const handleCancelBooking = () => {
@@ -278,7 +274,9 @@ export default function BookingDetailScreen({ route, navigation }) {
   const provider = booking.provider;
   const providerUser = provider?.user;
   const providerName = provider?.businessName || providerUser?.name || 'Assigned Provider';
-  const providerPhone = providerUser?.phone;
+  const providerPhone = providerUser?.phone || provider?.phone;
+  const warrantyStatus = getWarrantyContactStatus(booking);
+  const canCallProvider = warrantyStatus.canCallProvider && Boolean(providerPhone);
   const isInstant = booking.bookingMode === 'instant';
   const hasSpareParts = Boolean(
     booking.spareParts &&
@@ -474,11 +472,12 @@ export default function BookingDetailScreen({ route, navigation }) {
               </View>
             </View>
 
-            {providerPhone && (
+            {canCallProvider && (
               <TouchableOpacity
                 style={styles.callProviderBtn}
-                onPress={() => handleCallProvider(providerPhone)}
+                onPress={() => callPhoneNumber(providerPhone, providerName)}
                 activeOpacity={0.8}
+                accessibilityLabel={`Call ${providerName}`}
               >
                 <Ionicons name="call" size={16} color="#FFFFFF" />
                 <Text style={styles.callProviderBtnText}>Call</Text>
@@ -1352,9 +1351,16 @@ const styles = StyleSheet.create({
   },
   timelineDotActive: {
     backgroundColor: '#10B981',
-    shadowColor: '#10B981',
-    shadowRadius: 6,
-    shadowOpacity: 0.6
+    ...Platform.select({
+      web: {
+        boxShadow: '0px 0px 6px rgba(16, 185, 129, 0.6)'
+      },
+      default: {
+        shadowColor: '#10B981',
+        shadowRadius: 6,
+        shadowOpacity: 0.6
+      }
+    })
   },
   timelineDotDanger: {
     backgroundColor: '#EF4444'

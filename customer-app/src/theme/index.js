@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import colors, { COLORS } from './colors.js';
 
 export { colors, COLORS };
@@ -69,20 +70,30 @@ export const borderRadius = {
 };
 
 export const shadows = {
-  card: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2
-  },
-  elevated: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4
-  }
+  card: Platform.select({
+    web: {
+      boxShadow: '0px 2px 8px rgba(15, 23, 42, 0.05)'
+    },
+    default: {
+      shadowColor: '#0F172A',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 8,
+      elevation: 2
+    }
+  }),
+  elevated: Platform.select({
+    web: {
+      boxShadow: '0px 4px 12px rgba(15, 23, 42, 0.10)'
+    },
+    default: {
+      shadowColor: '#0F172A',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.1,
+      shadowRadius: 12,
+      elevation: 4
+    }
+  })
 };
 
 export const theme = {

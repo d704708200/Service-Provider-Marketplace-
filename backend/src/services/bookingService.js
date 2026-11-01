@@ -10,6 +10,7 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const paymentService = require('./paymentService');
 const notificationService = require('./notificationService');
+const { applyWarrantyContactPolicy, getWarrantyContactStatus } = require('../utils/warrantyUtils');
 
 /**
  * Generate unique, human-readable booking reference (e.g. BK-20261013-A1B2)
@@ -27,7 +28,7 @@ const acquireBookingLock = async (lockKey) => {
   while (bookingLocks.has(lockKey)) {
     try {
       await bookingLocks.get(lockKey);
-    } catch (_) {}
+    } catch (_) { }
   }
   let release;
   const promise = new Promise((resolve) => {
@@ -376,8 +377,8 @@ const createBooking = async (userId, bookingData) => {
     const scheduledInfo = createdDoc.bookingMode === 'instant'
       ? 'Immediate (ASAP)'
       : createdDoc.scheduledDate
-      ? `${new Date(createdDoc.scheduledDate).toLocaleDateString()} (${createdDoc.scheduledTimeSlot?.startTime || ''})`
-      : 'Scheduled';
+        ? `${new Date(createdDoc.scheduledDate).toLocaleDateString()} (${createdDoc.scheduledTimeSlot?.startTime || ''})`
+        : 'Scheduled';
 
     const providerUserIds = [];
 
@@ -494,10 +495,15 @@ const getCustomerBookings = async (userId, query = {}) => {
     });
   }
 
-  const enrichedBookings = bookings.map((b) => ({
-    ...b,
-    review: reviewsMap.get(b._id.toString()) || null
-  }));
+  const enrichedBookings = bookings.map((b) => {
+    const withReview = {
+      ...b,
+      review: reviewsMap.get(b._id.toString()) || null
+    };
+    return applyWarrantyContactPolicy(withReview, {
+      gracePeriodDays: query.gracePeriodDays ? parseInt(query.gracePeriodDays, 10) : undefined
+    });
+  });
 
   return {
     bookings: enrichedBookings,
@@ -513,7 +519,7 @@ const getCustomerBookings = async (userId, query = {}) => {
 /**
  * Customer retrieves single booking detail (ownership enforced)
  */
-const getCustomerBookingById = async (userId, bookingId) => {
+const getCustomerBookingById = async (userId, bookingId, query = {}) => {
   const customer = await Customer.findOne({ user: userId });
   if (!customer) {
     const err = new Error('Customer profile not found');
@@ -544,7 +550,9 @@ const getCustomerBookingById = async (userId, bookingId) => {
     throw err;
   }
 
-  return booking;
+  return applyWarrantyContactPolicy(booking, {
+    gracePeriodDays: query?.gracePeriodDays ? parseInt(query.gracePeriodDays, 10) : undefined
+  });
 };
 
 /**
@@ -913,8 +921,8 @@ const acceptBookingByProvider = async (userId, bookingId, teamData = null) => {
       const scheduledInfo = updatedBooking.bookingMode === 'instant'
         ? 'Immediate (ASAP)'
         : updatedBooking.scheduledDate
-        ? `${new Date(updatedBooking.scheduledDate).toLocaleDateString()} (${updatedBooking.scheduledTimeSlot?.startTime || ''})`
-        : 'Scheduled';
+          ? `${new Date(updatedBooking.scheduledDate).toLocaleDateString()} (${updatedBooking.scheduledTimeSlot?.startTime || ''})`
+          : 'Scheduled';
       const providerName = provider.businessName || 'Service Provider';
 
       await notificationService.sendNotification({
@@ -2465,9 +2473,9 @@ const updateTeamSizeByProvider = async (userId, bookingId, teamData) => {
   const totalCount = parseInt(teamData.totalCount, 10);
   const roles = Array.isArray(teamData.roles)
     ? teamData.roles.map((r) => ({
-        role: String(r.role || '').trim(),
-        count: parseInt(r.count, 10) || 1
-      }))
+      role: String(r.role || '').trim(),
+      count: parseInt(r.count, 10) || 1
+    }))
     : [];
 
   const now = new Date();

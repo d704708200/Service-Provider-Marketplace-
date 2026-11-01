@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useAuth } from './AuthContext';
 import { notificationApi } from '../services/api';
@@ -14,12 +14,15 @@ const NotificationContext = createContext({
 export const NotificationProvider = ({ children, navigationRef }) => {
   const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
+  const isFetchingRef = useRef(false);
 
   const refreshUnreadCount = useCallback(async () => {
     if (!user) {
       setUnreadCount(0);
       return;
     }
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     try {
       const res = await notificationApi.getUnreadCount();
       const count =
@@ -31,6 +34,8 @@ export const NotificationProvider = ({ children, navigationRef }) => {
       setUnreadCount(count);
     } catch (err) {
       // Standby / offline silent catch
+    } finally {
+      isFetchingRef.current = false;
     }
   }, [user]);
 
@@ -72,6 +77,19 @@ export const NotificationProvider = ({ children, navigationRef }) => {
       if (typeof cleanup === 'function') cleanup();
     };
   }, [navigationRef, refreshUnreadCount]);
+
+  // 4. Periodic background sync while active (every 30s)
+  useEffect(() => {
+    if (!user) return;
+    const intervalId = setInterval(() => {
+      if (AppState.currentState === 'active') {
+        refreshUnreadCount();
+      }
+    }, 30000);
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [user, refreshUnreadCount]);
 
   return (
     <NotificationContext.Provider

@@ -179,11 +179,22 @@ export const LocationProvider = ({ children }) => {
       setIsLoading(false);
       return newLoc;
     } catch (err) {
-      const errMsg = err?.message || 'Failed to determine current location.';
-      if (__DEV__) {
+      const isDenied =
+        err?.code === 1 || // GeolocationPositionError.PERMISSION_DENIED
+        /denied|not allowed|permission/i.test(err?.message || '');
+
+      if (isDenied) {
+        setPermissionStatus('denied');
+      }
+
+      const errMsg = isDenied
+        ? 'Location permission not granted. You can select your location manually.'
+        : (err?.message || 'Failed to determine current location.');
+
+      if (__DEV__ && !isDenied) {
         console.warn('[LocationContext] Location error:', errMsg);
       }
-      setError(errMsg);
+      setError(null);
       setIsLoading(false);
       return null;
     }
@@ -268,6 +279,16 @@ export const LocationProvider = ({ children }) => {
     return null;
   }, [checkPermission, fetchCurrentLocation]);
 
+  // Dismiss modal and remember user preference
+  const dismissPermissionModal = useCallback(async () => {
+    setShowPermissionModal(false);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.HAS_REQUESTED_PERMISSION, 'true');
+    } catch (e) {
+      // Ignore storage errors
+    }
+  }, []);
+
   // Set manual location (e.g. from address selector or preset)
   const setManualLocation = useCallback(async (manualLoc) => {
     setLocation(manualLoc);
@@ -288,6 +309,7 @@ export const LocationProvider = ({ children }) => {
         error,
         showPermissionModal,
         setShowPermissionModal,
+        dismissPermissionModal,
         checkPermission,
         requestPermission,
         fetchCurrentLocation,

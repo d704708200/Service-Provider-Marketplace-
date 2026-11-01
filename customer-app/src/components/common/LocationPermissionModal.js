@@ -15,6 +15,7 @@ export default function LocationPermissionModal() {
   const {
     showPermissionModal,
     setShowPermissionModal,
+    dismissPermissionModal,
     permissionStatus,
     requestPermission,
     openAppSettings,
@@ -24,17 +25,18 @@ export default function LocationPermissionModal() {
   if (!showPermissionModal) return null;
 
   const isBlocked = permissionStatus === 'blocked';
+  const handleClose = dismissPermissionModal || (() => setShowPermissionModal(false));
 
   return (
     <Modal
       visible={showPermissionModal}
       transparent
       animationType="fade"
-      onRequestClose={() => setShowPermissionModal(false)}
+      onRequestClose={handleClose}
     >
       <Pressable
         style={styles.overlay}
-        onPress={() => setShowPermissionModal(false)}
+        onPress={handleClose}
       >
         <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
           <View style={styles.iconCircle}>
@@ -57,7 +59,7 @@ export default function LocationPermissionModal() {
                 style={styles.primaryBtn}
                 onPress={() => {
                   openAppSettings();
-                  setShowPermissionModal(false);
+                  handleClose();
                 }}
                 activeOpacity={0.8}
               >
@@ -80,7 +82,7 @@ export default function LocationPermissionModal() {
 
             <TouchableOpacity
               style={styles.cancelBtn}
-              onPress={() => setShowPermissionModal(false)}
+              onPress={handleClose}
               activeOpacity={0.7}
             >
               <Text style={styles.cancelBtnText}>Not Now</Text>

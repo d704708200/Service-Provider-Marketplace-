@@ -30,7 +30,7 @@ const getCustomerBookings = async (req, res, next) => {
 
 const getCustomerBookingById = async (req, res, next) => {
   try {
-    const booking = await bookingService.getCustomerBookingById(req.user._id, req.params.id);
+    const booking = await bookingService.getCustomerBookingById(req.user._id, req.params.id, req.query);
     res.status(200).json({
       success: true,
       data: booking

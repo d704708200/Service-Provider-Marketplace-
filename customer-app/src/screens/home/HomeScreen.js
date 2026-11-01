@@ -19,37 +19,10 @@ import { useNotifications } from '../../context/NotificationContext';
 import { categoryApi, serviceApi, providerApi, bannerApi, homeBannerApi } from '../../services/api';
 import HomeSliderBanner from '../../components/home/HomeSliderBanner';
 import { formatRating } from '../../utils/formatters';
+import { getValidCategoryIcon } from '../../utils/categoryIcons';
 import colors from '../../theme/colors';
 
-const DEFAULT_CATEGORY_ICONS = {
-  electrician: 'flash-outline',
-  mechanic: 'construct-outline',
-  plumber: 'water-outline',
-  'ac service': 'snow-outline',
-  'ac repair': 'snow-outline',
-  'electrical repair': 'flash-outline',
-  'bike service': 'bicycle-outline',
-  carpenter: 'hammer-outline',
-  painter: 'color-palette-outline',
-  cleaner: 'sparkles-outline',
-  'pest control': 'shield-outline'
-};
-
-const resolveIconName = (icon, name) => {
-  if (icon && typeof icon === 'string' && icon.trim()) {
-    return icon.trim();
-  }
-  const cleanName = (name || '').toLowerCase().trim();
-  if (DEFAULT_CATEGORY_ICONS[cleanName]) {
-    return DEFAULT_CATEGORY_ICONS[cleanName];
-  }
-  for (const [key, val] of Object.entries(DEFAULT_CATEGORY_ICONS)) {
-    if (cleanName.includes(key)) {
-      return val;
-    }
-  }
-  return 'grid-outline';
-};
+const resolveIconName = (icon, name) => getValidCategoryIcon(icon, name);
 
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
