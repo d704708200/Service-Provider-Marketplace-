@@ -190,11 +190,12 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
 
     return (
       <TouchableOpacity
+        key={item._id || String(index)}
         activeOpacity={item.destinationType && item.destinationType !== 'none' ? 0.9 : 1}
         onPress={() => handleBannerPress(item)}
         style={[styles.slideCard, { width: containerWidth, height: bannerHeight }]}
       >
-        {/* Placeholder / Skeleton Loader */}
+        {/* Placeholder / Skeleton Loader behind the image */}
         {!isLoaded && hasImage && (
           <View style={[styles.skeletonBox, { height: bannerHeight }]}>
             <ActivityIndicator size="small" color="#8B5CF6" />
@@ -260,8 +261,18 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
     );
   };
 
+  // If only 1 banner exists, display it without unnecessary animation
+  if (totalBanners === 1) {
+    return (
+      <View style={[styles.container, { width: '100%' }]} onLayout={onLayout}>
+        {renderItem({ item: validBanners[0], index: 0 })}
+      </View>
+    );
+  }
+
+  // Multiple banners: render full interactive infinite carousel
   return (
-    <View style={styles.container} onLayout={onLayout}>
+    <View style={[styles.container, { width: '100%' }]} onLayout={onLayout}>
       <FlatList
         ref={flatListRef}
         data={validBanners}
@@ -287,20 +298,18 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
         windowSize={3}
       />
 
-      {/* Pagination Indicator Dots (only shown when multiple banners exist) */}
-      {totalBanners > 1 && (
-        <View style={styles.paginationContainer}>
-          {validBanners.map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                i === activeIndex ? styles.activeDot : styles.inactiveDot
-              ]}
-            />
-          ))}
-        </View>
-      )}
+      {/* Pagination Indicator Dots */}
+      <View style={styles.paginationContainer}>
+        {validBanners.map((_, i) => (
+          <View
+            key={i}
+            style={[
+              styles.dot,
+              i === activeIndex ? styles.activeDot : styles.inactiveDot
+            ]}
+          />
+        ))}
+      </View>
     </View>
   );
 }
@@ -326,17 +335,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#1C152B',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1
+    zIndex: 0
   },
   bannerImage: {
     width: '100%',
-    borderRadius: 15
+    borderRadius: 15,
+    zIndex: 1
   },
   fallbackCard: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#1D1432',
     padding: 16,
-    justifyContent: 'center'
+    justifyContent: 'center',
+    zIndex: 1
   },
   fallbackContent: {
     maxWidth: '80%'
@@ -370,7 +381,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: 'rgba(11, 8, 20, 0.72)',
     borderBottomLeftRadius: 15,
-    borderBottomRightRadius: 15
+    borderBottomRightRadius: 15,
+    zIndex: 2
   },
   overlayTitle: {
     fontSize: 14,
@@ -393,7 +405,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(124, 58, 237, 0.88)',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12
+    borderRadius: 12,
+    zIndex: 3
   },
   actionPillText: {
     fontSize: 10,
@@ -426,4 +439,3 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.4)'
   }
 });
-

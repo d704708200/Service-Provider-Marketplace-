@@ -152,6 +152,7 @@ export default function HomeScreen({ navigation }) {
       const servicesList = extractArray(servRes);
       let topRatedList = extractArray(topProvRes);
       const allProvidersList = extractArray(allProvRes);
+      const bannersList = extractArray(homeBannerRes);
 
       // Business logic fallbacks if specific filter flags yield empty but general active records exist
       if (quickList.length === 0 && allCategories.length > 0) {
@@ -179,7 +180,8 @@ export default function HomeScreen({ navigation }) {
           popularServicesCount: popList.length,
           servicesCount: servicesList.length,
           topRatedCount: topRatedList.length,
-          nearbyProvidersCount: allProvidersList.length
+          nearbyProvidersCount: allProvidersList.length,
+          homeBannersCount: bannersList.length
         });
       }
 
@@ -190,7 +192,7 @@ export default function HomeScreen({ navigation }) {
       setTopRatedProviders(topRatedList);
       setNearbyProviders(allProvidersList);
       setBannerConfig(bannerRes?.data || null);
-      setHomeBanners(extractArray(homeBannerRes));
+      setHomeBanners(bannersList);
     } catch (err) {
       if (__DEV__) {
         console.error('[HomeScreen] Error fetching home data:', err?.message || err);
