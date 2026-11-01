@@ -31,4 +31,7 @@ router.patch('/:id/read', authenticate, validateObjectId('id'), notificationCont
 // Mark all notifications as read
 router.patch('/read-all', authenticate, notificationController.markAllAsRead);
 
+// Send test push notification to currently authenticated user (for production verification)
+router.post('/test-push', authenticate, notificationController.sendTestPush);
+
 module.exports = router;

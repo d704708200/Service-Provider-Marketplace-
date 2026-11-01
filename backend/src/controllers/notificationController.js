@@ -96,11 +96,39 @@ const markAllAsRead = async (req, res, next) => {
   }
 };
 
+const sendTestPush = async (req, res, next) => {
+  try {
+    const title = req.body.title || 'FCM Push Test';
+    const body = req.body.body || `Hello ${req.user.name || 'User'}, this is a real FCM push notification from Render production backend!`;
+
+    const result = await notificationService.sendNotification({
+      recipientIds: [req.user._id],
+      title,
+      body,
+      type: 'system',
+      data: {
+        test: 'true',
+        userId: req.user._id.toString(),
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Test push notification dispatched',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   registerToken,
   unregisterToken,
   getNotifications,
   getUnreadCount,
   markNotificationAsRead,
-  markAllAsRead
+  markAllAsRead,
+  sendTestPush
 };
