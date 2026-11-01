@@ -78,3 +78,4 @@ homeBannerSchema.index({ isActive: 1, displayOrder: 1, startDate: 1, endDate: 1 
 const HomeBanner = mongoose.model('HomeBanner', homeBannerSchema);
 
 module.exports = HomeBanner;
+
