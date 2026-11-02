@@ -117,6 +117,10 @@ export const categoryApi = {
     const response = await api.get('/categories/admin', { params });
     return response.data;
   },
+  getCategories: async (params = {}) => {
+    const response = await api.get('/categories/admin', { params });
+    return response.data;
+  },
   getPublicCategories: async (params = {}) => {
     const response = await api.get('/categories', { params });
     return response.data;

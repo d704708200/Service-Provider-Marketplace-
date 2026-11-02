@@ -43,6 +43,8 @@ const ServiceTagsPage = () => {
   // Main Data States
   const [tags, setTags] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState(null);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -69,14 +71,35 @@ const ServiceTagsPage = () => {
   // Delete/Archive Confirmation Modal
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, tag: null, isSubmitting: false });
 
-  // Fetch Categories for dropdown filter
+  // Fetch Categories for modal dropdown and filter
   const fetchCategories = useCallback(async () => {
+    setCategoriesLoading(true);
+    setCategoriesError(null);
     try {
-      const res = await categoryApi.getCategories({ limit: 100 });
-      const catList = res?.data || (Array.isArray(res) ? res : []);
-      setCategories(catList);
+      let res;
+      try {
+        res = await categoryApi.getAdminCategories({ limit: 100 });
+      } catch (adminErr) {
+        // Fallback to public categories if admin requires different permissions
+        res = await categoryApi.getPublicCategories({ limit: 100 });
+      }
+
+      let catList = [];
+      if (Array.isArray(res?.data)) {
+        catList = res.data;
+      } else if (Array.isArray(res?.categories)) {
+        catList = res.categories;
+      } else if (Array.isArray(res)) {
+        catList = res;
+      }
+
+      const validCats = catList.filter((c) => c && c._id && c.name);
+      setCategories(validCats);
     } catch (err) {
-      console.warn('Failed to load categories for tags filter:', err.message);
+      console.error('Failed to load categories for service tags:', err);
+      setCategoriesError(err.message || 'Failed to load categories');
+    } finally {
+      setCategoriesLoading(false);
     }
   }, []);
 
@@ -161,6 +184,9 @@ const ServiceTagsPage = () => {
   // Open Create Modal
   const handleOpenCreate = () => {
     setEditingTag(null);
+    if (categories.length === 0) {
+      fetchCategories();
+    }
     setFormData({
       ...initialFormData,
       category: categories.length > 0 ? categories[0]._id : ''
@@ -171,6 +197,9 @@ const ServiceTagsPage = () => {
 
   // Open Edit Modal
   const handleOpenEdit = (tag) => {
+    if (categories.length === 0) {
+      fetchCategories();
+    }
     setEditingTag(tag);
     setFormData({
       name: tag.name || '',
@@ -218,8 +247,24 @@ const ServiceTagsPage = () => {
   const handleSubmitForm = async (e) => {
     e.preventDefault();
     const errors = {};
-    if (!formData.name.trim()) errors.name = 'Tag name is required';
+    if (!formData.name?.trim()) errors.name = 'Tag name is required';
     if (!formData.category) errors.category = 'Category is required';
+    if (!formData.subcategoryName?.trim()) errors.subcategoryName = 'Subcategory is required';
+
+    // Client-side duplicate check
+    const cleanName = formData.name.trim().toLowerCase();
+    const cleanSub = (formData.subcategoryName || 'General').trim().toLowerCase();
+    const isDuplicate = tags.some((t) => {
+      const matchCat = String(t.category?._id || t.category) === String(formData.category);
+      const matchSub = (t.subcategory?.name || 'General').trim().toLowerCase() === cleanSub;
+      const matchName = t.name.trim().toLowerCase() === cleanName;
+      const isSelf = editingTag && String(t._id) === String(editingTag._id);
+      return matchCat && matchSub && matchName && !isSelf;
+    });
+
+    if (isDuplicate) {
+      errors.name = `Tag '${formData.name.trim()}' already exists in this category and subcategory`;
+    }
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -646,15 +691,34 @@ const ServiceTagsPage = () => {
             <form onSubmit={handleSubmitForm} className="space-y-4">
               {/* Category Select */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Category *
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Category *
+                  </label>
+                  {categoriesLoading && (
+                    <span className="text-[11px] text-indigo-600 flex items-center gap-1 font-medium">
+                      <RefreshCw className="h-3 w-3 animate-spin" /> Loading categories...
+                    </span>
+                  )}
+                  {categoriesError && (
+                    <button
+                      type="button"
+                      onClick={fetchCategories}
+                      className="text-[11px] text-rose-600 hover:text-rose-800 underline font-medium"
+                    >
+                      Failed to load. Click to retry
+                    </button>
+                  )}
+                </div>
                 <select
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                  disabled={categoriesLoading}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs disabled:bg-slate-50 disabled:text-slate-400"
                 >
-                  <option value="">Select Category</option>
+                  <option value="">
+                    {categoriesLoading ? 'Loading categories...' : 'Select Category'}
+                  </option>
                   {categories.map((c) => (
                     <option key={c._id} value={c._id}>
                       {c.name}
@@ -682,7 +746,7 @@ const ServiceTagsPage = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Subcategory (Grouping)
+                    Subcategory (Grouping) *
                   </label>
                   <input
                     type="text"
@@ -691,6 +755,7 @@ const ServiceTagsPage = () => {
                     placeholder="e.g. Two Wheeler or Residential"
                     className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
                   />
+                  {formErrors.subcategoryName && <p className="text-xs text-rose-600 mt-1">{formErrors.subcategoryName}</p>}
                 </div>
               </div>
 
