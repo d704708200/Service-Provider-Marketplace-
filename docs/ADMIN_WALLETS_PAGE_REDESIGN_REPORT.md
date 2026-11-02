@@ -95,3 +95,4 @@ Triggered when clicking `[View]` on any request:
 
 ## 4. Conclusion
 The Wallets & Payouts page is fully deployed, cleanly styled to match the Admin Panel's design language, and ready for production operation.
+
