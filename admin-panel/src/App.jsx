@@ -20,6 +20,7 @@ import ReviewsPage from './pages/reviews/ReviewsPage';
 import LocationsPage from './pages/locations/LocationsPage';
 import ReportsPage from './pages/reports/ReportsPage';
 import SettingsPage from './pages/settings/SettingsPage';
+import WalletsPage from './pages/wallets/WalletsPage';
 import NotFound from './pages/NotFound';
 
 function App() {
@@ -48,6 +49,7 @@ function App() {
               <Route path="/reviews" element={<ReviewsPage />} />
               <Route path="/locations" element={<LocationsPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/wallets" element={<WalletsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<NotFound />} />
             </Route>

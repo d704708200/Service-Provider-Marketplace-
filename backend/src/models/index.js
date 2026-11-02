@@ -12,6 +12,9 @@ const Admin = require('./Admin');
 const BannerConfig = require('./BannerConfig');
 const DeviceToken = require('./DeviceToken');
 const HomeBanner = require('./HomeBanner');
+const ProviderWallet = require('./ProviderWallet');
+const WalletTransaction = require('./WalletTransaction');
+const WithdrawalRequest = require('./WithdrawalRequest');
 
 module.exports = {
   User,
@@ -27,5 +30,8 @@ module.exports = {
   Admin,
   BannerConfig,
   DeviceToken,
-  HomeBanner
+  HomeBanner,
+  ProviderWallet,
+  WalletTransaction,
+  WithdrawalRequest
 };

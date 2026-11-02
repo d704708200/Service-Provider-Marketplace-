@@ -15,7 +15,8 @@ import {
   Settings,
   X,
   Shield,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Wallet
 } from 'lucide-react';
 
 const navItems = [
@@ -30,6 +31,7 @@ const navItems = [
   { name: 'Service Requests', path: '/requests', icon: CalendarCheck },
   { name: 'Reviews', path: '/reviews', icon: Star },
   { name: 'Service Areas', path: '/locations', icon: MapPin },
+  { name: 'Wallets & Payouts', path: '/wallets', icon: Wallet },
   { name: 'Reports', path: '/reports', icon: BarChart3 },
   { name: 'Settings', path: '/settings', icon: Settings }
 ];

@@ -372,6 +372,25 @@ export default function ProfileScreen({ navigation }) {
 
           <TouchableOpacity
             style={styles.navRow}
+            onPress={() => navigation.navigate('Wallet')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.navLeft}>
+              <View style={[styles.iconCircle, { backgroundColor: '#2E1065' }]}>
+                <Ionicons name="wallet-outline" size={18} color="#C4B5FD" />
+              </View>
+              <View>
+                <Text style={styles.navLabel}>Wallet & Payouts</Text>
+                <Text style={styles.navSub}>Balance, earnings breakdown & withdrawals</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.navRow}
             onPress={() => navigation.navigate('Availability')}
             activeOpacity={0.7}
           >

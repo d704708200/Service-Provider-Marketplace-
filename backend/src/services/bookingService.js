@@ -1215,6 +1215,14 @@ const completeServiceByProvider = async (userId, bookingId) => {
     $inc: { completedBookingsCount: 1 }
   });
 
+  // Credit provider earnings in Wallet (idempotent)
+  try {
+    const walletService = require('./walletService');
+    await walletService.creditBookingEarnings(updatedBooking._id);
+  } catch (walletErr) {
+    console.error('[WALLET_CREDIT_BOOKING_EARNINGS_ERROR]', walletErr.message);
+  }
+
   // Safe notification to customer that service is completed
   try {
     const custUserId = updatedBooking.customer?.user?._id || updatedBooking.customer?.user;
@@ -1674,6 +1682,15 @@ const verifyPayment = async (userId, bookingId, paymentPayload) => {
   booking.paymentDetails.failureReason = null;
   await booking.save();
 
+  if (booking.status === 'completed') {
+    try {
+      const walletService = require('./walletService');
+      await walletService.creditBookingEarnings(booking._id);
+    } catch (walletErr) {
+      console.error('[WALLET_CREDIT_BOOKING_EARNINGS_ERROR]', walletErr.message);
+    }
+  }
+
   return await Booking.findById(booking._id)
     .populate('service', 'name price priceType estimatedDurationMinutes')
     .populate({
@@ -2130,6 +2147,15 @@ const verifySparePartsPayment = async (userId, bookingId, paymentPayload) => {
   }
 
   await booking.save();
+
+  if (booking.status === 'completed' && booking.paymentStatus === 'paid') {
+    try {
+      const walletService = require('./walletService');
+      await walletService.creditBookingEarnings(booking._id);
+    } catch (walletErr) {
+      console.error('[WALLET_CREDIT_BOOKING_EARNINGS_ERROR]', walletErr.message);
+    }
+  }
 
   return await Booking.findById(booking._id)
     .populate('service', 'name price priceType')

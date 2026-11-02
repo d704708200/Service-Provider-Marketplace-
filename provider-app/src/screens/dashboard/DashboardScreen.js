@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useRequests } from '../../context/RequestContext';
-import { bookingApi, providerApi } from '../../services/api';
+import { bookingApi, providerApi, walletApi } from '../../services/api';
 import { getApiBaseUrl } from '../../config/env';
 import { Card, Badge, Button } from '../../components/common';
 import colors from '../../theme/colors';
@@ -43,6 +43,7 @@ export default function DashboardScreen({ navigation }) {
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [cacheBuster, setCacheBuster] = useState(Date.now());
+  const [walletSummary, setWalletSummary] = useState(null);
 
   // Helper to format avatar URL with full backend base URL for relative paths
   const getFullAvatarUrl = useCallback((avatarPath) => {
@@ -137,14 +138,19 @@ export default function DashboardScreen({ navigation }) {
 
   const fetchDashboardData = useCallback(async () => {
     try {
-      const [profileRes, pendingRes, acceptedRes, inProgressRes, completedRes, notifsRes] = await Promise.all([
+      const [profileRes, pendingRes, acceptedRes, inProgressRes, completedRes, notifsRes, walletRes] = await Promise.all([
         providerApi.getProfile().catch(() => ({ data: null })),
         bookingApi.getPendingRequests().catch(() => ({ data: [] })),
         bookingApi.getHistory({ status: 'accepted' }).catch(() => ({ data: [] })),
         bookingApi.getHistory({ status: 'in_progress' }).catch(() => ({ data: [] })),
         bookingApi.getHistory({ status: 'completed' }).catch(() => ({ data: [] })),
-        bookingApi.getNotifications({ unreadOnly: 'true' }).catch(() => ({ data: [], unreadCount: 0 }))
+        bookingApi.getNotifications({ unreadOnly: 'true' }).catch(() => ({ data: [], unreadCount: 0 })),
+        walletApi.getSummary().catch(() => ({ data: null }))
       ]);
+
+      if (walletRes?.data) {
+        setWalletSummary(walletRes.data);
+      }
 
       if (profileRes?.data) {
         setProfile(profileRes.data);
@@ -339,6 +345,31 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
 
+        {/* Quick Wallet Glance Card */}
+        <TouchableOpacity
+          style={styles.walletGlanceCard}
+          onPress={() => navigation.navigate('Wallet')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.walletGlanceLeft}>
+            <View style={styles.walletIconCircle}>
+              <Ionicons name="wallet" size={20} color="#C4B5FD" />
+            </View>
+            <View>
+              <Text style={styles.walletGlanceLabel}>WALLET AVAILABLE BALANCE</Text>
+              <Text style={styles.walletGlanceAmount}>
+                ₹{(walletSummary?.availableBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.walletGlanceRight}>
+            <View style={styles.walletPill}>
+              <Text style={styles.walletPillText}>Wallet</Text>
+              <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+            </View>
+          </View>
+        </TouchableOpacity>
+
         {/* Stats Grid */}
         <View style={styles.statsSection}>
           <View style={styles.statsRow}>
@@ -435,6 +466,18 @@ export default function DashboardScreen({ navigation }) {
               </View>
               <Text style={styles.quickActionTitle}>My Services</Text>
               <Text style={styles.quickActionSub}>Rates & catalog</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickActionCard}
+              onPress={() => navigation.navigate('Wallet')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.quickIconCircle, { backgroundColor: '#2E1065' }]}>
+                <Ionicons name="wallet-outline" size={20} color="#C4B5FD" />
+              </View>
+              <Text style={styles.quickActionTitle}>My Wallet</Text>
+              <Text style={styles.quickActionSub}>Payout & history</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -702,6 +745,59 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center'
+  },
+  walletGlanceCard: {
+    backgroundColor: '#1B1530',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#382D67',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  walletGlanceLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12
+  },
+  walletIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#2E1A5A',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  walletGlanceLabel: {
+    color: '#A78BFA',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: 3
+  },
+  walletGlanceAmount: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800'
+  },
+  walletGlanceRight: {
+    justifyContent: 'center'
+  },
+  walletPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4
+  },
+  walletPillText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700'
   },
   availabilityInfo: {
     flex: 1,

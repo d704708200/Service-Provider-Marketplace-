@@ -270,4 +270,28 @@ export const notificationApi = {
   }
 };
 
+// Provider Wallet APIs
+export const walletApi = {
+  getSummary: async () => {
+    const response = await api.get('/provider/wallet/summary');
+    return response.data;
+  },
+  getEarnings: async () => {
+    const response = await api.get('/provider/wallet/earnings');
+    return response.data;
+  },
+  getTransactions: async (params = {}) => {
+    const response = await api.get('/provider/wallet/transactions', { params });
+    return response.data;
+  },
+  requestWithdrawal: async (withdrawalData) => {
+    const response = await api.post('/provider/wallet/withdraw', withdrawalData);
+    return response.data;
+  },
+  getWithdrawals: async (params = {}) => {
+    const response = await api.get('/provider/wallet/withdrawals', { params });
+    return response.data;
+  }
+};
+
 export default api;

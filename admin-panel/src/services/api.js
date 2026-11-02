@@ -423,5 +423,33 @@ export const homeBannerApi = {
   }
 };
 
+// Admin Wallet Management APIs
+export const walletApi = {
+  getWallets: async (params = {}) => {
+    const response = await api.get('/admin/wallets', { params });
+    return response.data;
+  },
+  getWithdrawals: async (params = {}) => {
+    const response = await api.get('/admin/wallets/withdrawals', { params });
+    return response.data;
+  },
+  approveWithdrawal: async (id, note) => {
+    const response = await api.post(`/admin/wallets/withdrawals/${id}/approve`, { note });
+    return response.data;
+  },
+  rejectWithdrawal: async (id, reason) => {
+    const response = await api.post(`/admin/wallets/withdrawals/${id}/reject`, { reason });
+    return response.data;
+  },
+  payoutWithdrawal: async (id, data) => {
+    const response = await api.post(`/admin/wallets/withdrawals/${id}/payout`, data);
+    return response.data;
+  },
+  adjustWallet: async (id, data) => {
+    const response = await api.post(`/admin/wallets/${id}/adjust`, data);
+    return response.data;
+  }
+};
+
 export default api;
 

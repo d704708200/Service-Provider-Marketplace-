@@ -10,6 +10,8 @@ import ServiceAreasScreen from '../screens/profile/ServiceAreasScreen';
 import ProviderServicesScreen from '../screens/services/ProviderServicesScreen';
 import KYCScreen from '../screens/profile/KYCScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
+import WalletScreen from '../screens/wallet/WalletScreen';
+import WithdrawScreen from '../screens/wallet/WithdrawScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -33,6 +35,8 @@ export default function RootNavigator() {
           <Stack.Screen name="ServiceAreas" component={ServiceAreasScreen} />
           <Stack.Screen name="OfferedServices" component={ProviderServicesScreen} />
           <Stack.Screen name="KYC" component={KYCScreen} />
+          <Stack.Screen name="Wallet" component={WalletScreen} />
+          <Stack.Screen name="Withdraw" component={WithdrawScreen} />
         </>
       )}
     </Stack.Navigator>
