@@ -124,10 +124,12 @@ const getTagProviders = async (req, res, next) => {
  */
 const getCategoryTags = async (req, res, next) => {
   try {
-    const result = await tagService.getTagsForCategory(req.params.categoryId);
+    const categoryId = req.params.categoryId || req.params.id || req.params.category;
+    const result = await tagService.getTagsForCategory(categoryId);
     res.status(200).json({
       success: true,
       data: result.tags,
+      tags: result.tags,
       category: result.category,
       subcategories: result.subcategories
     });
@@ -197,13 +199,20 @@ const toggleProviderTagStatus = async (req, res, next) => {
  */
 const getProvidersByCategory = async (req, res, next) => {
   try {
+    const categoryId = req.params.categoryId || req.params.id;
     const result = await tagService.getProvidersByCategoryAndTag(
-      req.params.categoryId,
+      categoryId,
       req.query
     );
     res.status(200).json({
       success: true,
-      data: result.providers,
+      data: {
+        providers: result.providers,
+        category: result.category,
+        tag: result.tag,
+        pagination: result.pagination
+      },
+      providers: result.providers,
       category: result.category,
       tag: result.tag,
       pagination: result.pagination

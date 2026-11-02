@@ -17,7 +17,8 @@ router.get('/', categoryController.getPublicCategories);
 router.get('/admin', authenticate, requireRole('admin'), categoryController.getAdminCategories);
 
 // Retrieve category tags (public discovery)
-router.get(['/:id/tags', '/:categoryId/tags'], tagController.getCategoryTags);
+router.get('/:categoryId/tags', tagController.getCategoryTags);
+router.get('/:id/tags', tagController.getCategoryTags);
 
 // Retrieve single Category Details (public/authenticated)
 router.get('/:id', validateObjectId('id'), categoryController.getCategoryById);

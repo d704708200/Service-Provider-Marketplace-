@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -30,10 +30,14 @@ export default function ProvidersScreen({ route, navigation }) {
     tagId: initialTagId
   } = route?.params || {};
 
-  const activeCategory = initialCategoryId || initialCategory;
-  const activeService = initialServiceId || initialService;
+  const activeCategory =
+    initialCategoryId ||
+    (typeof initialCategory === 'object' ? initialCategory?._id : initialCategory);
+  const activeService =
+    initialServiceId ||
+    (typeof initialService === 'object' ? initialService?._id : initialService);
 
-  // Category tags state
+  // Category & tags state
   const [tags, setTags] = useState([]);
   const [selectedTagId, setSelectedTagId] = useState(initialTagId || 'ALL');
   const [categoryName, setCategoryName] = useState(initialCategoryName || '');
@@ -45,7 +49,30 @@ export default function ProvidersScreen({ route, navigation }) {
   const [switchingTag, setSwitchingTag] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [search, setSearch] = useState('');
+
+  // Search state with debouncing
+  const [searchText, setSearchText] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceTimerRef = useRef(null);
+
+  // Handle search text changes with 250ms debounce
+  const handleSearchChange = (text) => {
+    setSearchText(text);
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(text.trim());
+    }, 250);
+  };
+
+  const handleClearSearch = () => {
+    setSearchText('');
+    setDebouncedSearch('');
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+  };
 
   // 1. Fetch tags for the active category
   const fetchCategoryTags = useCallback(async () => {
@@ -53,16 +80,29 @@ export default function ProvidersScreen({ route, navigation }) {
     setLoadingTags(true);
     try {
       const res = await tagApi.getCategoryTags(activeCategory);
-      if (res?.success && res.data) {
-        if (res.data.category?.name && !categoryName) {
-          setCategoryName(res.data.category.name);
+      if (res?.success) {
+        // Safe extraction whether response format is:
+        // - res.data = [tags]
+        // - res.data.tags = [tags]
+        // - res.tags = [tags]
+        let extractedTags = [];
+        if (Array.isArray(res.data)) {
+          extractedTags = res.data;
+        } else if (Array.isArray(res.data?.tags)) {
+          extractedTags = res.data.tags;
+        } else if (Array.isArray(res.tags)) {
+          extractedTags = res.tags;
         }
-        if (Array.isArray(res.data.tags)) {
-          setTags(res.data.tags);
+
+        const catObj = res.category || res.data?.category;
+        if (catObj?.name && !categoryName) {
+          setCategoryName(catObj.name);
         }
+
+        setTags(extractedTags);
       }
     } catch (err) {
-      console.warn('Error loading category tags:', err.message);
+      console.warn('[ProvidersScreen] Error loading category tags:', err.message);
     } finally {
       setLoadingTags(false);
     }
@@ -72,7 +112,7 @@ export default function ProvidersScreen({ route, navigation }) {
     fetchCategoryTags();
   }, [fetchCategoryTags]);
 
-  // 2. Fetch Providers (either by category + tag or general list)
+  // 2. Fetch Providers (filtered by active category + tag + debounced search)
   const fetchProviders = useCallback(async (isTagSwitch = false) => {
     try {
       setError(null);
@@ -82,23 +122,25 @@ export default function ProvidersScreen({ route, navigation }) {
 
       let list = [];
       if (activeCategory) {
-        // Use dynamic category + tag API
         const params = {};
-        if (search.trim()) params.search = search.trim();
+        if (debouncedSearch) params.search = debouncedSearch;
         if (selectedTagId && selectedTagId !== 'ALL') {
           params.tagId = selectedTagId;
         }
 
         const res = await tagApi.getProvidersByCategoryAndTag(activeCategory, params);
-        if (res?.success && Array.isArray(res.data?.providers)) {
-          list = res.data.providers;
-        } else if (Array.isArray(res?.data)) {
-          list = res.data;
+        if (res?.success) {
+          if (Array.isArray(res.data?.providers)) {
+            list = res.data.providers;
+          } else if (Array.isArray(res.providers)) {
+            list = res.providers;
+          } else if (Array.isArray(res.data)) {
+            list = res.data;
+          }
         }
       } else {
-        // Fallback to general provider search
         const params = {};
-        if (search.trim()) params.search = search.trim();
+        if (debouncedSearch) params.search = debouncedSearch;
         if (activeService) params.service = activeService;
 
         const res = await providerApi.getAll(params);
@@ -107,13 +149,13 @@ export default function ProvidersScreen({ route, navigation }) {
 
       setProviders(list);
     } catch (err) {
-      setError(err.message || 'Unable to load verified providers');
+      setError(err.userMessage || err.message || 'Unable to load verified providers');
     } finally {
       setLoading(false);
       setSwitchingTag(false);
       setRefreshing(false);
     }
-  }, [activeCategory, activeService, selectedTagId, search]);
+  }, [activeCategory, activeService, selectedTagId, debouncedSearch]);
 
   useEffect(() => {
     fetchProviders(false);
@@ -148,20 +190,34 @@ export default function ProvidersScreen({ route, navigation }) {
     ? 'Verified professionals in this category'
     : 'Trusted local service experts';
 
+  // Render individual provider card
   const renderProviderCard = ({ item }) => {
     const businessName = item.businessName || item.user?.name || 'Verified Provider';
-    const cats = item.categories || item.serviceCategories;
-    const categoriesText =
-      Array.isArray(cats) && cats.length > 0
-        ? cats.map((c) => (typeof c === 'object' ? c.name : c)).join(', ')
-        : item.specialization || 'All Services';
-
     const avatarUri = item.avatar || item.user?.avatar;
 
+    // Build categories or specialization text without generic "All Services"
+    const cats = item.categories || item.serviceCategories;
+    let categoriesText = '';
+    if (Array.isArray(cats) && cats.length > 0) {
+      categoriesText = cats
+        .map((c) => (typeof c === 'object' ? c.name : c))
+        .filter((name) => name && name.toLowerCase() !== 'all services')
+        .join(', ');
+    }
+    if (!categoriesText) {
+      categoriesText =
+        item.specialization && item.specialization.toLowerCase() !== 'all services'
+          ? item.specialization
+          : categoryName
+          ? `${categoryName} Specialist`
+          : 'Verified Professional';
+    }
+
     // Determine displayed price: if selected tag has custom rate for this provider, show that
-    let displayPrice = null;
-    let priceLabel = 'Starts at ';
-    if (selectedTagObj && Array.isArray(item.serviceTags)) {
+    let displayPrice = item.servicePrice || null;
+    let priceLabel = item.pricingType === 'hourly' ? 'Rate: ' : 'Fixed: ';
+
+    if (!displayPrice && selectedTagObj && Array.isArray(item.serviceTags)) {
       const matchedTag = item.serviceTags.find(
         (st) => String(st.tag?._id || st.tag) === String(selectedTagObj._id)
       );
@@ -172,14 +228,20 @@ export default function ProvidersScreen({ route, navigation }) {
     }
     if (!displayPrice) {
       displayPrice = item.pricing?.basePrice ?? item.basePrice ?? item.startingPrice;
+      priceLabel = 'Starts at ';
     }
 
-    // Active provider tags pills
-    const providerOfferedTags = Array.isArray(item.serviceTags)
+    // Provider verified active tags
+    const activeTagsList = Array.isArray(item.activeTags) && item.activeTags.length > 0
+      ? item.activeTags
+      : Array.isArray(item.serviceTags)
       ? item.serviceTags
-          .filter((st) => st.isActive !== false)
-          .map((st) => st.tag?.name || st.name)
-          .filter(Boolean)
+          .filter((st) => st.isActive !== false && st.approvalStatus === 'approved')
+          .map((st) => ({
+            _id: st.tag?._id || st.tag,
+            name: st.tag?.name || st.name
+          }))
+          .filter((t) => Boolean(t.name))
       : [];
 
     return (
@@ -224,13 +286,16 @@ export default function ProvidersScreen({ route, navigation }) {
             ) : null}
 
             {/* Provider Dynamic Tag Pills */}
-            {providerOfferedTags.length > 0 && (
+            {activeTagsList.length > 0 && (
               <View style={styles.tagPillsRow}>
-                {providerOfferedTags.slice(0, 3).map((tagName, idx) => {
-                  const isCurrentTag = selectedTagObj && selectedTagObj.name === tagName;
+                {activeTagsList.slice(0, 3).map((tagItem, idx) => {
+                  const isCurrentTag = selectedTagObj && (
+                    String(tagItem._id) === String(selectedTagObj._id) ||
+                    tagItem.name === selectedTagObj.name
+                  );
                   return (
                     <View
-                      key={tagName + idx}
+                      key={(tagItem._id || tagItem.name) + idx}
                       style={[styles.tagPill, isCurrentTag && styles.tagPillActive]}
                     >
                       <Text
@@ -240,13 +305,13 @@ export default function ProvidersScreen({ route, navigation }) {
                         ]}
                         numberOfLines={1}
                       >
-                        {tagName}
+                        {tagItem.name}
                       </Text>
                     </View>
                   );
                 })}
-                {providerOfferedTags.length > 3 && (
-                  <Text style={styles.tagPillMore}>+{providerOfferedTags.length - 3}</Text>
+                {activeTagsList.length > 3 && (
+                  <Text style={styles.tagPillMore}>+{activeTagsList.length - 3}</Text>
                 )}
               </View>
             )}
@@ -310,6 +375,7 @@ export default function ProvidersScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
+      {/* 1. Category Header (Pinned Top) */}
       <Header
         title={titleText}
         subtitle={subtitleText}
@@ -318,72 +384,70 @@ export default function ProvidersScreen({ route, navigation }) {
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
 
-      {/* Search Input Bar */}
+      {/* 2. Provider Search Bar (Pinned Directly Below Header) */}
       <View style={styles.searchSection}>
         <Input
           placeholder="Search by provider name or skill..."
-          value={search}
-          onChangeText={setSearch}
+          value={searchText}
+          onChangeText={handleSearchChange}
           leftIcon="search-outline"
-          rightIcon={search ? 'close-circle' : null}
-          onRightIconPress={() => setSearch('')}
+          rightIcon={searchText ? 'close-circle' : null}
+          onRightIconPress={handleClearSearch}
           containerStyle={styles.searchContainer}
         />
       </View>
 
-      {/* Horizontal Dynamic Service Tags Chip Bar */}
-      {tags.length > 0 && (
-        <View style={styles.tagChipsSection}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tagChipsScroll}
+      {/* 3. Category-Specific Service Tags (Pinned Directly Below Search Bar) */}
+      <View style={styles.tagChipsSection}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tagChipsScroll}
+        >
+          {/* Always Show "All" as First Chip */}
+          <TouchableOpacity
+            style={[
+              styles.tagChip,
+              selectedTagId === 'ALL' && styles.tagChipSelected
+            ]}
+            onPress={() => handleSelectTag('ALL')}
+            activeOpacity={0.7}
           >
-            {/* "All" Tag Chip */}
-            <TouchableOpacity
+            <Text
               style={[
-                styles.tagChip,
-                selectedTagId === 'ALL' && styles.tagChipSelected
+                styles.tagChipText,
+                selectedTagId === 'ALL' && styles.tagChipTextSelected
               ]}
-              onPress={() => handleSelectTag('ALL')}
-              activeOpacity={0.8}
             >
-              <Text
-                style={[
-                  styles.tagChipText,
-                  selectedTagId === 'ALL' && styles.tagChipTextSelected
-                ]}
+              All
+            </Text>
+          </TouchableOpacity>
+
+          {/* Dynamic Service Tag Chips */}
+          {tags.map((tag) => {
+            const isSelected = String(tag._id) === String(selectedTagId);
+            return (
+              <TouchableOpacity
+                key={tag._id}
+                style={[styles.tagChip, isSelected && styles.tagChipSelected]}
+                onPress={() => handleSelectTag(tag._id)}
+                activeOpacity={0.7}
               >
-                All
-              </Text>
-            </TouchableOpacity>
-
-            {/* Individual Service Tag Chips */}
-            {tags.map((tag) => {
-              const isSelected = String(tag._id) === String(selectedTagId);
-              return (
-                <TouchableOpacity
-                  key={tag._id}
-                  style={[styles.tagChip, isSelected && styles.tagChipSelected]}
-                  onPress={() => handleSelectTag(tag._id)}
-                  activeOpacity={0.8}
+                <Text
+                  style={[
+                    styles.tagChipText,
+                    isSelected && styles.tagChipTextSelected
+                  ]}
                 >
-                  <Text
-                    style={[
-                      styles.tagChipText,
-                      isSelected && styles.tagChipTextSelected
-                    ]}
-                  >
-                    {tag.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
+                  {tag.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-      {/* Main List */}
+      {/* 4. Provider List & Available Professionals Header */}
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -422,29 +486,45 @@ export default function ProvidersScreen({ route, navigation }) {
               colors={[colors.primary]}
             />
           }
+          ListHeaderComponent={
+            providers.length > 0 ? (
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionHeading}>Available Professionals</Text>
+                <View style={styles.countBadge}>
+                  <Text style={styles.countBadgeText}>{providers.length}</Text>
+                </View>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <EmptyState
               icon="people-outline"
-              title="No Providers Available"
+              title={
+                selectedTagObj
+                  ? `No Providers for "${selectedTagObj.name}"`
+                  : debouncedSearch
+                  ? 'No Matching Providers'
+                  : 'No Providers Available'
+              }
               description={
                 selectedTagObj
-                  ? `No verified providers are currently offering "${selectedTagObj.name}" in this category. Try choosing "All" or another service tag.`
-                  : search
-                  ? `No verified providers match "${search}". Try searching for something else.`
-                  : 'No verified providers are currently active in this category. Please check back soon.'
+                  ? `No verified professionals are currently offering "${selectedTagObj.name}" in this category. Try choosing "All" or another service tag.`
+                  : debouncedSearch
+                  ? `No verified providers match "${debouncedSearch}". Try searching by another name or skill.`
+                  : `No verified providers are currently active in ${categoryName || 'this category'}. Please check back soon.`
               }
               actionTitle={
                 selectedTagObj
-                  ? 'Show All Providers'
-                  : search
+                  ? `Show All ${categoryName ? categoryName + ' ' : ''}Providers`
+                  : debouncedSearch
                   ? 'Clear Search'
                   : 'Explore Other Categories'
               }
               onAction={
                 selectedTagObj
                   ? () => setSelectedTagId('ALL')
-                  : search
-                  ? () => setSearch('')
+                  : debouncedSearch
+                  ? handleClearSearch
                   : () => navigation.navigate('SearchTab')
               }
             />
@@ -462,10 +542,10 @@ const styles = StyleSheet.create({
   },
   searchSection: {
     backgroundColor: '#161420',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderBottomWidth: 1,
-    borderBottomColor: '#252136'
+    borderBottomColor: '#221E33'
   },
   searchContainer: {
     marginBottom: 0
@@ -477,12 +557,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10
   },
   tagChipsScroll: {
-    paddingHorizontal: spacing.lg,
-    gap: 8
+    paddingHorizontal: spacing.md,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center'
   },
   tagChip: {
     paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderRadius: 20,
     backgroundColor: '#1C1929',
     borderWidth: 1,
@@ -500,6 +582,32 @@ const styles = StyleSheet.create({
   tagChipTextSelected: {
     color: '#FFFFFF',
     fontWeight: '700'
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+    marginTop: spacing.xs
+  },
+  sectionHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#E2E8F0',
+    letterSpacing: 0.2
+  },
+  countBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    backgroundColor: 'rgba(124, 58, 237, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.3)'
+  },
+  countBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#A78BFA'
   },
   loadingContainer: {
     flex: 1,
@@ -543,7 +651,7 @@ const styles = StyleSheet.create({
     fontSize: 13
   },
   listContent: {
-    padding: spacing.lg
+    padding: spacing.md
   },
   card: {
     marginBottom: spacing.md,
@@ -617,7 +725,7 @@ const styles = StyleSheet.create({
   },
   tagPillActive: {
     borderColor: '#7C3AED',
-    backgroundColor: 'rgba(124, 58, 237, 0.2)'
+    backgroundColor: 'rgba(124, 58, 237, 0.25)'
   },
   tagPillText: {
     fontSize: 11,
