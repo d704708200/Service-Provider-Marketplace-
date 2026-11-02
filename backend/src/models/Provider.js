@@ -57,6 +57,52 @@ const providerSchema = new mongoose.Schema(
         ref: 'Category'
       }
     ],
+    // Dynamic Service Tags selected by provider
+    serviceTags: [
+      {
+        tag: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'ServiceTag',
+          required: true
+        },
+        approvalStatus: {
+          type: String,
+          enum: ['pending', 'approved', 'rejected'],
+          default: 'approved'
+        },
+        isActive: {
+          type: Boolean,
+          default: true
+        },
+        basePrice: {
+          type: Number,
+          min: 0,
+          default: 0
+        },
+        pricingType: {
+          type: String,
+          enum: ['fixed', 'hourly', 'quote'],
+          default: 'fixed'
+        },
+        experienceYears: {
+          type: Number,
+          default: 0
+        },
+        addedAt: {
+          type: Date,
+          default: Date.now
+        },
+        reviewedAt: {
+          type: Date,
+          default: null
+        },
+        rejectionReason: {
+          type: String,
+          trim: true,
+          default: null
+        }
+      }
+    ],
     // Legacy compatibility fields
     category: {
       type: mongoose.Schema.Types.Mixed,
@@ -93,12 +139,10 @@ const providerSchema = new mongoose.Schema(
     location: {
       type: {
         type: String,
-        enum: ['Point'],
-        default: 'Point'
+        enum: ['Point']
       },
       coordinates: {
-        type: [Number], // [longitude, latitude]
-        default: undefined
+        type: [Number] // [longitude, latitude]
       }
     },
     documents: [documentSchema],
@@ -203,10 +247,11 @@ const providerSchema = new mongoose.Schema(
 providerSchema.index({ verificationStatus: 1 });
 providerSchema.index({ isAvailable: 1 });
 providerSchema.index({ categories: 1 });
+providerSchema.index({ 'serviceTags.tag': 1, 'serviceTags.isActive': 1, 'serviceTags.approvalStatus': 1 });
 providerSchema.index({ isDeleted: 1 });
 providerSchema.index({ 'rating.average': -1 });
 providerSchema.index({ showInTopRated: 1, topRatedOrder: 1 });
-providerSchema.index({ location: '2dsphere' });
+providerSchema.index({ location: '2dsphere' }, { sparse: true });
 providerSchema.index({ 'businessAddress.city': 1 });
 
 const Provider = mongoose.model('Provider', providerSchema);

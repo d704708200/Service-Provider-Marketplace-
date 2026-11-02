@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const providerController = require('../controllers/providerController');
+const tagController = require('../controllers/tagController');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { uploadSingleAvatar, uploadSingleKYCDocument } = require('../middleware/upload');
 const {
@@ -95,6 +96,29 @@ router.delete(
   requireRole('provider'),
   validateObjectId('id', 'serviceId'),
   providerController.deleteProviderService
+);
+
+// Dynamic Service Tags Self-Management
+router.get(
+  '/me/services/tags',
+  authenticate,
+  requireRole('provider'),
+  tagController.getProviderServicesAndTags
+);
+
+router.put(
+  '/me/services/tags',
+  authenticate,
+  requireRole('provider'),
+  tagController.updateProviderTags
+);
+
+router.patch(
+  '/me/services/tags/:tagId/status',
+  authenticate,
+  requireRole('provider'),
+  validateObjectId('tagId'),
+  tagController.toggleProviderTagStatus
 );
 
 router.get(
@@ -258,6 +282,9 @@ router.delete(
 // 3. PUBLIC DISCOVERY ROUTES (Customers / Unauthenticated)
 // =========================================================
 router.get('/', providerController.getPublicProviders);
+
+// Public Discovery by Category & Tag
+router.get('/by-category/:categoryId', tagController.getProvidersByCategory);
 
 router.get(
   ['/:id/availability-check', '/:providerId/availability-check'],

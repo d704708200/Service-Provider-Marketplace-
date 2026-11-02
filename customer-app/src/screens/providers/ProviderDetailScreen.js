@@ -15,7 +15,15 @@ import { spacing, typography, borderRadius, shadows } from '../../theme';
 
 export default function ProviderDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
-  const { providerId, selectedServiceId, serviceId } = route.params || {};
+  const {
+    providerId,
+    selectedServiceId,
+    serviceId,
+    tagId,
+    tagName,
+    categoryId,
+    categoryName
+  } = route.params || {};
   const targetServiceId = selectedServiceId || serviceId;
 
   const [provider, setProvider] = useState(null);
@@ -401,7 +409,11 @@ export default function ProviderDetailScreen({ route, navigation }) {
               providerId: provider._id,
               provider,
               serviceId: preselectedService?._id,
-              service: preselectedService
+              service: preselectedService,
+              tagId: tagId || undefined,
+              tagName: tagName || undefined,
+              categoryId: categoryId || undefined,
+              categoryName: categoryName || undefined
             });
           }}
           style={styles.actionBtn}

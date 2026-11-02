@@ -294,4 +294,20 @@ export const walletApi = {
   }
 };
 
+// Provider Dynamic Service Tags APIs
+export const providerTagApi = {
+  getMyServicesAndTags: async () => {
+    const response = await api.get('/provider/my-services');
+    return response.data;
+  },
+  updateMyTags: async (tagsPayload) => {
+    const response = await api.put('/provider/my-services/tags', tagsPayload);
+    return response.data;
+  },
+  toggleTagStatus: async (tagId, isActive) => {
+    const response = await api.patch(`/provider/my-services/tags/${tagId}/status`, { isActive });
+    return response.data;
+  }
+};
+
 export default api;

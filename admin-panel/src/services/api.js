@@ -451,5 +451,41 @@ export const walletApi = {
   }
 };
 
+// Admin & Public Service Tags Management APIs
+export const tagApi = {
+  getTags: async (params = {}) => {
+    const response = await api.get('/tags', { params });
+    return response.data;
+  },
+  getTagById: async (id) => {
+    const response = await api.get(`/tags/${id}`);
+    return response.data;
+  },
+  createTag: async (data) => {
+    const response = await api.post('/tags', data);
+    return response.data;
+  },
+  updateTag: async (id, data) => {
+    const response = await api.put(`/tags/${id}`, data);
+    return response.data;
+  },
+  updateStatus: async (id, statusData) => {
+    const response = await api.patch(`/tags/${id}/status`, statusData);
+    return response.data;
+  },
+  deleteTag: async (id) => {
+    const response = await api.delete(`/tags/${id}`);
+    return response.data;
+  },
+  getTagProviders: async (id, params = {}) => {
+    const response = await api.get(`/tags/${id}/providers`, { params });
+    return response.data;
+  },
+  getCategoryTags: async (categoryId) => {
+    const response = await api.get(`/categories/${categoryId}/tags`);
+    return response.data;
+  }
+};
+
 export default api;
 

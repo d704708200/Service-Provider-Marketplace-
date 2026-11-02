@@ -119,6 +119,10 @@ export const categoryApi = {
   getCategoryById: async (id) => {
     const response = await api.get(`/categories/${id}`);
     return response.data;
+  },
+  getCategoryTags: async (categoryId) => {
+    const response = await api.get(`/categories/${categoryId}/tags`);
+    return response.data;
   }
 };
 
@@ -169,6 +173,24 @@ export const providerApi = {
       return { success: false, data: { isAvailable: false, status: 'unavailable' } };
     }
     const response = await api.get(`/providers/${providerId}/availability-check`, { params });
+    return response.data;
+  },
+  getByCategory: async (categoryId, params = {}) => {
+    const response = await api.get(`/providers/by-category/${categoryId}`, { params });
+    return response.data;
+  }
+};
+
+// ==========================================
+// 4b. Dynamic Service Tags APIs
+// ==========================================
+export const tagApi = {
+  getCategoryTags: async (categoryId) => {
+    const response = await api.get(`/categories/${categoryId}/tags`);
+    return response.data;
+  },
+  getProvidersByCategoryAndTag: async (categoryId, params = {}) => {
+    const response = await api.get(`/providers/by-category/${categoryId}`, { params });
     return response.data;
   }
 };

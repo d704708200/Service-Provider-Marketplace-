@@ -7,6 +7,7 @@ const Availability = require('../models/Availability');
 const ServiceArea = require('../models/ServiceArea');
 const Review = require('../models/Review');
 const Booking = require('../models/Booking');
+const ServiceTag = require('../models/ServiceTag');
 
 const escapeRegex = (string) => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -873,6 +874,40 @@ const getPublicProviders = async (query = {}) => {
       }
     } else {
       // Specified service was not found; return empty match
+      filter._id = new mongoose.Types.ObjectId();
+    }
+  }
+
+  // 1c. Resolve Dynamic Service Tag Filter (by tagId or tag name)
+  const requestedTag = query.tagId || query.tag;
+  if (requestedTag && String(requestedTag).trim() && String(requestedTag).trim() !== 'all') {
+    const rawTag = String(requestedTag).trim();
+    let tagDoc = null;
+    if (mongoose.Types.ObjectId.isValid(rawTag)) {
+      tagDoc = await ServiceTag.findOne({
+        _id: rawTag,
+        isActive: true,
+        isCustomerVisible: true,
+        isArchived: false
+      }).lean();
+    } else {
+      tagDoc = await ServiceTag.findOne({
+        name: new RegExp(`^${escapeRegex(rawTag)}$`, 'i'),
+        isActive: true,
+        isCustomerVisible: true,
+        isArchived: false
+      }).lean();
+    }
+
+    if (tagDoc) {
+      filter.serviceTags = {
+        $elemMatch: {
+          tag: tagDoc._id,
+          isActive: true,
+          approvalStatus: 'approved'
+        }
+      };
+    } else {
       filter._id = new mongoose.Types.ObjectId();
     }
   }

@@ -459,8 +459,11 @@ export default function RequestServiceScreen({ route, navigation }) {
 
     try {
       const payload = {
-        serviceId: currentService._id,
+        serviceId: currentService?._id,
         providerId: currentProvider?._id || providerId || currentService?.provider?._id || (typeof currentService?.provider === 'string' ? currentService.provider : undefined),
+        tagId: route.params?.tagId || undefined,
+        categoryId: route.params?.categoryId || undefined,
+        subcategoryId: route.params?.subcategoryId || undefined,
         bookingMode,
         paymentMethod,
         address: {

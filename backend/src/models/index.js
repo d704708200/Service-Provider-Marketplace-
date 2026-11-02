@@ -15,6 +15,7 @@ const HomeBanner = require('./HomeBanner');
 const ProviderWallet = require('./ProviderWallet');
 const WalletTransaction = require('./WalletTransaction');
 const WithdrawalRequest = require('./WithdrawalRequest');
+const ServiceTag = require('./ServiceTag');
 
 module.exports = {
   User,
@@ -22,6 +23,7 @@ module.exports = {
   Provider,
   Category,
   Service,
+  ServiceTag,
   ServiceArea,
   Availability,
   Booking,

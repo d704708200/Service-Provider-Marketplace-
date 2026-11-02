@@ -23,6 +23,23 @@ const bookingSchema = new mongoose.Schema(
       ref: 'Service',
       required: [true, 'Service is required']
     },
+    category: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category',
+      default: null,
+      index: true
+    },
+    subcategory: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    tag: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ServiceTag',
+      default: null,
+      index: true
+    },
     bookingMode: {
       type: String,
       enum: {
@@ -297,6 +314,7 @@ const bookingSchema = new mongoose.Schema(
 bookingSchema.index({ customer: 1, status: 1 });
 bookingSchema.index({ provider: 1, status: 1 });
 bookingSchema.index({ status: 1, bookingMode: 1 });
+bookingSchema.index({ category: 1, tag: 1 });
 bookingSchema.index({ scheduledDate: 1 });
 bookingSchema.index({ 'address.location': '2dsphere' });
 

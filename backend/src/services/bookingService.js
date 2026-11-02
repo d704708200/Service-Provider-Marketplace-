@@ -6,6 +6,7 @@ const Service = require('../models/Service');
 const Category = require('../models/Category');
 const Availability = require('../models/Availability');
 const ServiceArea = require('../models/ServiceArea');
+const ServiceTag = require('../models/ServiceTag');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const paymentService = require('./paymentService');
@@ -84,6 +85,35 @@ const createBooking = async (userId, bookingData) => {
     throw err;
   }
 
+  // 3b. Validate Dynamic Service Tag (if specified)
+  let resolvedTag = null;
+  const tagParam = bookingData.tagId || bookingData.tag;
+  if (tagParam) {
+    if (!mongoose.Types.ObjectId.isValid(tagParam)) {
+      const err = new Error('Invalid service tag ID');
+      err.statusCode = 400;
+      throw err;
+    }
+    resolvedTag = await ServiceTag.findById(tagParam);
+    if (!resolvedTag || resolvedTag.isArchived) {
+      const err = new Error('Selected service tag does not exist or has been archived');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!resolvedTag.isActive || !resolvedTag.isCustomerVisible) {
+      const err = new Error(`Service tag '${resolvedTag.name}' is currently inactive`);
+      err.statusCode = 400;
+      throw err;
+    }
+    if (resolvedTag.category.toString() !== service.category._id.toString()) {
+      const err = new Error(
+        `Service tag '${resolvedTag.name}' does not belong to category '${service.category.name}'`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
   // 4. Validate Provider (if specified by customer)
   let assignedProvider = null;
   let candidateProviders = [];
@@ -137,6 +167,23 @@ const createBooking = async (userId, bookingData) => {
       const err = new Error('The selected provider does not offer this service category');
       err.statusCode = 400;
       throw err;
+    }
+
+    // Verify provider offers exact requested service tag (if tag specified)
+    if (resolvedTag) {
+      const hasApprovedActiveTag = provider.serviceTags?.some(
+        (st) =>
+          st.tag.toString() === resolvedTag._id.toString() &&
+          st.isActive !== false &&
+          st.approvalStatus === 'approved'
+      );
+      if (!hasApprovedActiveTag) {
+        const err = new Error(
+          `Provider '${provider.businessName || 'Selected'}' does not offer active approved service tag '${resolvedTag.name}'`
+        );
+        err.statusCode = 400;
+        throw err;
+      }
     }
 
     // Concurrency lock per provider slot to prevent race conditions on simultaneous booking requests
@@ -251,11 +298,24 @@ const createBooking = async (userId, bookingData) => {
       assignedProvider = provider._id;
     } else {
       // Instant or unassigned broadcast: find candidate eligible providers
-      const eligibleProviders = await Provider.find({
+      const candidateFilter = {
         verificationStatus: 'verified',
         isAvailable: true,
+        isDeleted: { $ne: true },
         categories: service.category._id
-      }).populate('user');
+      };
+
+      if (resolvedTag) {
+        candidateFilter.serviceTags = {
+          $elemMatch: {
+            tag: resolvedTag._id,
+            isActive: true,
+            approvalStatus: 'approved'
+          }
+        };
+      }
+
+      const eligibleProviders = await Provider.find(candidateFilter).populate('user');
 
       candidateProviders = eligibleProviders
         .filter((p) => p.user && p.user.isActive)
@@ -302,6 +362,10 @@ const createBooking = async (userId, bookingData) => {
       customer: customer._id,
       provider: assignedProvider,
       service: service._id,
+      category: service.category._id,
+      subcategory: resolvedTag?.subcategory?.name || bookingData.subcategory || null,
+      tag: resolvedTag?._id || null,
+      candidateProviders: assignedProvider ? [] : candidateProviders,
       bookingMode,
       status: 'pending',
       scheduledDate,
@@ -795,6 +859,21 @@ const acceptBookingByProvider = async (userId, bookingId, teamData = null) => {
     const err = new Error('This booking is assigned to another service provider');
     err.statusCode = 403;
     throw err;
+  }
+
+  // Acceptance-time validation: Provider must offer the exact service tag if booking has a tag specified
+  if (targetBooking.tag) {
+    const hasApprovedActiveTag = provider.serviceTags?.some(
+      (st) =>
+        st.tag.toString() === targetBooking.tag.toString() &&
+        st.isActive !== false &&
+        st.approvalStatus === 'approved'
+    );
+    if (!hasApprovedActiveTag) {
+      const err = new Error('You cannot accept this booking because you do not offer this service tag');
+      err.statusCode = 403;
+      throw err;
+    }
   }
 
   // Acceptance-time validation: provider cannot accept a conflicting second booking if they already have an active booking
