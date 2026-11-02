@@ -20,10 +20,22 @@ const QUICK_AMOUNTS = [500, 1000, 2000];
 export default function WithdrawScreen({ route, navigation }) {
   const { availableBalance = 0, savedPaymentMethods = {} } = route.params || {};
 
+  const [currentBalance, setCurrentBalance] = useState(availableBalance);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('upi'); // 'upi' or 'bank_transfer'
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Fetch fresh wallet balance on mount
+  React.useEffect(() => {
+    walletApi.getSummary()
+      .then((res) => {
+        if (res?.data?.availableBalance !== undefined) {
+          setCurrentBalance(res.data.availableBalance);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Form states
   const [upiId, setUpiId] = useState(savedPaymentMethods?.upi?.upiId || '');
@@ -37,7 +49,7 @@ export default function WithdrawScreen({ route, navigation }) {
 
   const handleQuickAmount = (val) => {
     if (val === 'ALL') {
-      setAmount(Math.floor(availableBalance).toString());
+      setAmount(Math.floor(currentBalance).toString());
     } else {
       setAmount(val.toString());
     }
@@ -53,8 +65,8 @@ export default function WithdrawScreen({ route, navigation }) {
       return;
     }
 
-    if (numAmount > availableBalance) {
-      setErrorMessage(`Insufficient balance. You can withdraw up to ₹${availableBalance.toLocaleString('en-IN')}`);
+    if (numAmount > currentBalance) {
+      setErrorMessage(`Insufficient balance. You can withdraw up to ₹${currentBalance.toLocaleString('en-IN')}`);
       return;
     }
 
@@ -101,16 +113,27 @@ export default function WithdrawScreen({ route, navigation }) {
         payoutDetails
       });
 
-      Alert.alert(
-        'Request Submitted',
-        `Your withdrawal request of ₹${numAmount.toLocaleString('en-IN')} has been submitted successfully.\nRef: ${res?.data?.withdrawalRequest?.requestReference || ''}`,
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack()
-          }
-        ]
-      );
+      const successRef = res?.data?.withdrawalRequest?.requestReference || '';
+      const successMsg = `Your withdrawal request of ₹${numAmount.toLocaleString('en-IN')} has been submitted successfully.\nRef: ${successRef}`;
+
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(successMsg);
+        }
+        navigation.goBack();
+      } else {
+        Alert.alert(
+          'Request Submitted',
+          successMsg,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack()
+            }
+          ],
+          { cancelable: false }
+        );
+      }
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Failed to submit withdrawal request';
       setErrorMessage(msg);
@@ -144,7 +167,7 @@ export default function WithdrawScreen({ route, navigation }) {
             <View>
               <Text style={styles.availableLabel}>Available Balance</Text>
               <Text style={styles.availableValue}>
-                ₹{availableBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                ₹{currentBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </Text>
             </View>
             <Ionicons name="wallet" size={32} color="#8B5CF6" />

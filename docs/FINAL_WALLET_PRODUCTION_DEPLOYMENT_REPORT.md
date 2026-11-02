@@ -79,3 +79,4 @@ The Provider App was verified with the live backend:
   - Earnings Breakdown: Today `₹680.00`, Lifetime `₹680.00`
   - Transactions List: Shows `Service Earnings: #BK-20261101-DKLO` with `+₹680.00` in green.
 - **Pull to Refresh:** Refreshes the balance and transaction list from the live API without altering or duplicating the balance.
+

@@ -220,32 +220,16 @@ const requestWithdrawal = async (providerId, withdrawalData) => {
     throw err;
   }
 
-  if (wallet.availableBalance < numAmount) {
-    const err = new Error(`Insufficient available balance. You have ₹${wallet.availableBalance.toLocaleString('en-IN')}, requested ₹${numAmount.toLocaleString('en-IN')}`);
-    err.statusCode = 400;
-    throw err;
-  }
-
-  // Generate Reference IDs
-  const requestReference = `WDR-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
-  const txnReference = `TXN-WDR-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-  // Balance reservation
-  const balanceBefore = wallet.availableBalance;
-  wallet.availableBalance -= numAmount;
-  wallet.pendingWithdrawal += numAmount;
-  wallet.lastTransactionAt = new Date();
-
-  // Save payment method in wallet for easy future reuse
-  if (!wallet.savedPaymentMethods) wallet.savedPaymentMethods = {};
+  // Prepare updated payment methods
+  const updatedMethods = { ...(wallet.savedPaymentMethods?.toObject?.() || wallet.savedPaymentMethods || {}) };
   if (payoutMethod === 'upi') {
-    wallet.savedPaymentMethods.upi = {
+    updatedMethods.upi = {
       upiId: payoutDetails.upiId,
       name: payoutDetails.accountHolderName || '',
       isDefault: true
     };
   } else {
-    wallet.savedPaymentMethods.bank = {
+    updatedMethods.bank = {
       accountHolderName: payoutDetails.accountHolderName,
       accountNumber: payoutDetails.accountNumber,
       ifscCode: payoutDetails.ifscCode.toUpperCase(),
@@ -255,50 +239,98 @@ const requestWithdrawal = async (providerId, withdrawalData) => {
     };
   }
 
-  await wallet.save();
-
-  // Create WithdrawalRequest record
-  const withdrawalRequest = await WithdrawalRequest.create({
-    requestReference,
-    provider: providerId,
-    wallet: wallet._id,
-    amount: numAmount,
-    payoutMethod,
-    payoutDetails: {
-      accountHolderName: payoutDetails.accountHolderName || '',
-      accountNumber: payoutDetails.accountNumber || '',
-      ifscCode: payoutDetails.ifscCode ? payoutDetails.ifscCode.toUpperCase() : '',
-      bankName: payoutDetails.bankName || '',
-      upiId: payoutDetails.upiId || ''
+  // Atomically reserve funds ONLY IF availableBalance >= numAmount
+  const updatedWallet = await ProviderWallet.findOneAndUpdate(
+    {
+      _id: wallet._id,
+      status: 'active',
+      availableBalance: { $gte: numAmount }
     },
-    status: 'requested'
-  });
+    {
+      $inc: {
+        availableBalance: -numAmount,
+        pendingWithdrawal: numAmount
+      },
+      $set: {
+        savedPaymentMethods: updatedMethods,
+        lastTransactionAt: new Date()
+      }
+    },
+    { new: true }
+  );
 
-  // Create WalletTransaction record
-  const transaction = await WalletTransaction.create({
-    wallet: wallet._id,
-    provider: providerId,
-    transactionReference: txnReference,
-    type: 'withdrawal',
-    amount: numAmount,
-    balanceBefore,
-    balanceAfter: wallet.availableBalance,
-    status: 'pending',
-    withdrawalRequest: withdrawalRequest._id,
-    paymentMethod: payoutMethod,
-    description: `Withdrawal request #${requestReference} via ${payoutMethod === 'upi' ? 'UPI' : 'Bank Transfer'}`,
-    metadata: {
+  if (!updatedWallet) {
+    const freshWallet = await ProviderWallet.findById(wallet._id);
+    const err = new Error(
+      `Insufficient available balance. You have ₹${(freshWallet?.availableBalance || 0).toLocaleString('en-IN')}, requested ₹${numAmount.toLocaleString('en-IN')}`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const balanceBefore = updatedWallet.availableBalance + numAmount;
+  const balanceAfter = updatedWallet.availableBalance;
+
+  // Generate Reference IDs
+  const requestReference = `WDR-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const txnReference = `TXN-WDR-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  let withdrawalRequest;
+  let transaction;
+
+  try {
+    // Create WithdrawalRequest record
+    withdrawalRequest = await WithdrawalRequest.create({
+      requestReference,
+      provider: providerId,
+      wallet: wallet._id,
+      amount: numAmount,
       payoutMethod,
-      destination: payoutMethod === 'upi' ? payoutDetails.upiId : `${payoutDetails.bankName || 'Bank'} A/C ...${payoutDetails.accountNumber.slice(-4)}`
-    }
-  });
+      payoutDetails: {
+        accountHolderName: payoutDetails.accountHolderName || '',
+        accountNumber: payoutDetails.accountNumber || '',
+        ifscCode: payoutDetails.ifscCode ? payoutDetails.ifscCode.toUpperCase() : '',
+        bankName: payoutDetails.bankName || '',
+        upiId: payoutDetails.upiId || ''
+      },
+      status: 'requested'
+    });
+
+    // Create WalletTransaction record
+    transaction = await WalletTransaction.create({
+      wallet: wallet._id,
+      provider: providerId,
+      transactionReference: txnReference,
+      type: 'withdrawal',
+      amount: numAmount,
+      balanceBefore,
+      balanceAfter,
+      status: 'pending',
+      withdrawalRequest: withdrawalRequest._id,
+      paymentMethod: payoutMethod,
+      description: `Withdrawal request #${requestReference} via ${payoutMethod === 'upi' ? 'UPI' : 'Bank Transfer'}`,
+      metadata: {
+        payoutMethod,
+        destination: payoutMethod === 'upi' ? payoutDetails.upiId : `${payoutDetails.bankName || 'Bank'} A/C ...${payoutDetails.accountNumber.slice(-4)}`
+      }
+    });
+  } catch (createErr) {
+    // Rollback balance reservation if record creation failed
+    await ProviderWallet.findByIdAndUpdate(wallet._id, {
+      $inc: {
+        availableBalance: numAmount,
+        pendingWithdrawal: -numAmount
+      }
+    });
+    throw createErr;
+  }
 
   return {
     withdrawalRequest,
     transaction,
     walletSummary: {
-      availableBalance: wallet.availableBalance,
-      pendingWithdrawal: wallet.pendingWithdrawal
+      availableBalance: updatedWallet.availableBalance,
+      pendingWithdrawal: updatedWallet.pendingWithdrawal
     }
   };
 };
@@ -683,39 +715,48 @@ const adminRejectWithdrawal = async (requestId, adminUserId, rejectionReason) =>
     throw err;
   }
 
-  const withdrawal = await WithdrawalRequest.findById(requestId);
-  if (!withdrawal) {
-    const err = new Error(`Withdrawal request ${requestId} not found`);
-    err.statusCode = 404;
-    throw err;
-  }
+  // 1. Atomically transition WithdrawalRequest from requested/approved/processing to rejected
+  const withdrawal = await WithdrawalRequest.findOneAndUpdate(
+    {
+      _id: requestId,
+      status: { $in: ['requested', 'approved', 'processing'] }
+    },
+    {
+      $set: {
+        status: 'rejected',
+        rejectionReason,
+        processedBy: adminUserId,
+        processedAt: new Date()
+      }
+    },
+    { new: false }
+  );
 
-  if (!['requested', 'approved', 'processing'].includes(withdrawal.status)) {
-    const err = new Error(`Cannot reject withdrawal with status '${withdrawal.status}'`);
+  if (!withdrawal) {
+    const fresh = await WithdrawalRequest.findById(requestId);
+    const err = new Error(`Cannot reject withdrawal: current status is '${fresh?.status || 'not found'}'`);
     err.statusCode = 400;
     throw err;
   }
 
-  const wallet = await ProviderWallet.findById(withdrawal.wallet);
-  if (!wallet) {
+  // 2. Atomically refund reserved funds back to available balance exactly once
+  const updatedWallet = await ProviderWallet.findByIdAndUpdate(
+    withdrawal.wallet,
+    {
+      $inc: {
+        pendingWithdrawal: -withdrawal.amount,
+        availableBalance: withdrawal.amount
+      },
+      $set: { lastTransactionAt: new Date() }
+    },
+    { new: true }
+  );
+
+  if (!updatedWallet) {
     const err = new Error('Associated provider wallet not found');
     err.statusCode = 404;
     throw err;
   }
-
-  // Refund reserved funds back to available balance
-  const balanceBefore = wallet.availableBalance;
-  wallet.pendingWithdrawal = Math.max(0, wallet.pendingWithdrawal - withdrawal.amount);
-  wallet.availableBalance += withdrawal.amount;
-  wallet.lastTransactionAt = new Date();
-  await wallet.save();
-
-  // Update Withdrawal Request status
-  withdrawal.status = 'rejected';
-  withdrawal.rejectionReason = rejectionReason;
-  withdrawal.processedBy = adminUserId;
-  withdrawal.processedAt = new Date();
-  await withdrawal.save();
 
   // Update original pending transaction if exists
   await WalletTransaction.findOneAndUpdate(
@@ -726,13 +767,13 @@ const adminRejectWithdrawal = async (requestId, adminUserId, rejectionReason) =>
   // Create refund transaction record
   const refundTxnRef = `TXN-REF-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
   const refundTransaction = await WalletTransaction.create({
-    wallet: wallet._id,
+    wallet: updatedWallet._id,
     provider: withdrawal.provider,
     transactionReference: refundTxnRef,
     type: 'withdrawal_refund',
     amount: withdrawal.amount,
-    balanceBefore,
-    balanceAfter: wallet.availableBalance,
+    balanceBefore: updatedWallet.availableBalance - withdrawal.amount,
+    balanceAfter: updatedWallet.availableBalance,
     status: 'completed',
     withdrawalRequest: withdrawal._id,
     paymentMethod: withdrawal.payoutMethod,
@@ -747,8 +788,8 @@ const adminRejectWithdrawal = async (requestId, adminUserId, rejectionReason) =>
     withdrawal,
     refundTransaction,
     walletSummary: {
-      availableBalance: wallet.availableBalance,
-      pendingWithdrawal: wallet.pendingWithdrawal
+      availableBalance: updatedWallet.availableBalance,
+      pendingWithdrawal: updatedWallet.pendingWithdrawal
     }
   };
 };
@@ -763,40 +804,50 @@ const adminPayoutWithdrawal = async (requestId, adminUserId, { transactionRefere
     throw err;
   }
 
-  const withdrawal = await WithdrawalRequest.findById(requestId);
-  if (!withdrawal) {
-    const err = new Error(`Withdrawal request ${requestId} not found`);
-    err.statusCode = 404;
-    throw err;
-  }
+  // 1. Atomically transition WithdrawalRequest from requested/approved/processing to paid
+  const withdrawal = await WithdrawalRequest.findOneAndUpdate(
+    {
+      _id: requestId,
+      status: { $in: ['requested', 'approved', 'processing'] }
+    },
+    {
+      $set: {
+        status: 'paid',
+        transactionReference,
+        adminNote: adminNote || '',
+        processedBy: adminUserId,
+        processedAt: new Date(),
+        paidAt: new Date()
+      }
+    },
+    { new: false }
+  );
 
-  if (!['requested', 'approved', 'processing'].includes(withdrawal.status)) {
-    const err = new Error(`Cannot complete payout for request in status '${withdrawal.status}'`);
+  if (!withdrawal) {
+    const fresh = await WithdrawalRequest.findById(requestId);
+    const err = new Error(`Cannot complete payout: request status is '${fresh?.status || 'not found'}'`);
     err.statusCode = 400;
     throw err;
   }
 
-  const wallet = await ProviderWallet.findById(withdrawal.wallet);
-  if (!wallet) {
+  // 2. Atomically finalize deduction from pending to totalWithdrawn
+  const updatedWallet = await ProviderWallet.findByIdAndUpdate(
+    withdrawal.wallet,
+    {
+      $inc: {
+        pendingWithdrawal: -withdrawal.amount,
+        totalWithdrawn: withdrawal.amount
+      },
+      $set: { lastTransactionAt: new Date() }
+    },
+    { new: true }
+  );
+
+  if (!updatedWallet) {
     const err = new Error('Associated provider wallet not found');
     err.statusCode = 404;
     throw err;
   }
-
-  // Deduct from pending withdrawal and add to totalWithdrawn
-  wallet.pendingWithdrawal = Math.max(0, wallet.pendingWithdrawal - withdrawal.amount);
-  wallet.totalWithdrawn += withdrawal.amount;
-  wallet.lastTransactionAt = new Date();
-  await wallet.save();
-
-  // Update Withdrawal Request status
-  withdrawal.status = 'paid';
-  withdrawal.transactionReference = transactionReference;
-  withdrawal.adminNote = adminNote || withdrawal.adminNote;
-  withdrawal.processedBy = adminUserId;
-  withdrawal.processedAt = new Date();
-  withdrawal.paidAt = new Date();
-  await withdrawal.save();
 
   // Mark the pending transaction completed
   await WalletTransaction.findOneAndUpdate(
@@ -805,7 +856,7 @@ const adminPayoutWithdrawal = async (requestId, adminUserId, { transactionRefere
       $set: {
         status: 'completed',
         'metadata.payoutReference': transactionReference,
-        'metadata.paidAt': withdrawal.paidAt
+        'metadata.paidAt': new Date()
       }
     }
   );
@@ -813,9 +864,9 @@ const adminPayoutWithdrawal = async (requestId, adminUserId, { transactionRefere
   return {
     withdrawal,
     walletSummary: {
-      availableBalance: wallet.availableBalance,
-      pendingWithdrawal: wallet.pendingWithdrawal,
-      totalWithdrawn: wallet.totalWithdrawn
+      availableBalance: updatedWallet.availableBalance,
+      pendingWithdrawal: updatedWallet.pendingWithdrawal,
+      totalWithdrawn: updatedWallet.totalWithdrawn
     }
   };
 };
