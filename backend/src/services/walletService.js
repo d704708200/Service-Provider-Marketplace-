@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const { ProviderWallet, WalletTransaction, WithdrawalRequest, Provider, Booking } = require('../models');
 
 /**
@@ -634,11 +635,25 @@ const adminListWallets = async (query = {}) => {
  * Admin: List all withdrawal requests
  */
 const adminListWithdrawals = async (query = {}) => {
-  const { status, page = 1, limit = 20 } = query;
+  const { status, page = 1, limit = 20, search } = query;
 
   const filter = {};
   if (status && status !== 'all') {
     filter.status = status;
+  }
+
+  if (search && search.trim()) {
+    const s = search.trim();
+    const orConditions = [
+      { requestReference: { $regex: s, $options: 'i' } },
+      { 'payoutDetails.accountHolderName': { $regex: s, $options: 'i' } },
+      { 'payoutDetails.upiId': { $regex: s, $options: 'i' } },
+      { 'payoutDetails.accountNumber': { $regex: s, $options: 'i' } }
+    ];
+    if (mongoose.Types.ObjectId.isValid(s)) {
+      orConditions.push({ provider: s }, { wallet: s }, { _id: s });
+    }
+    filter.$or = orConditions;
   }
 
   const pageNum = Math.max(1, parseInt(page, 10));
@@ -652,6 +667,7 @@ const adminListWithdrawals = async (query = {}) => {
         select: 'businessName phone user',
         populate: { path: 'user', select: 'name email phone' }
       })
+      .populate('wallet', 'availableBalance pendingWithdrawal totalEarnings totalWithdrawn currency status')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum),

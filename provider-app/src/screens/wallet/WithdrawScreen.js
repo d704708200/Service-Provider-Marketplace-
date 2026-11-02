@@ -34,7 +34,7 @@ export default function WithdrawScreen({ route, navigation }) {
           setCurrentBalance(res.data.availableBalance);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Form states
