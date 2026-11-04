@@ -161,8 +161,8 @@ export default function WalletScreen({ navigation }) {
           type: 'success',
           message: targetAutoDeductValue
             ? (res.data?.deductionResult?.deducted
-                ? `Auto-Deduct activated! Full commission of ₹${res.data.deductionResult.amount?.toLocaleString('en-IN')} was settled from your Available Balance.`
-                : 'Auto-Deduct enabled. Mendroo will settle commission automatically when balance is sufficient.')
+              ? `Auto-Deduct activated! Full commission of ₹${res.data.deductionResult.amount?.toLocaleString('en-IN')} was settled from your Available Balance.`
+              : 'Auto-Deduct enabled. Mendroo will settle commission automatically when balance is sufficient.')
             : 'Auto-Deduct disabled. Manual settlement active.'
         });
         await fetchWalletData();
