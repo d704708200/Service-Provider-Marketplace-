@@ -39,6 +39,9 @@ export default function WalletScreen({ navigation }) {
   const [selectedTxn, setSelectedTxn] = useState(null);
   const [payingCommission, setPayingCommission] = useState(false);
   const [togglingAutoDeduct, setTogglingAutoDeduct] = useState(false);
+  const [autoDeductModalVisible, setAutoDeductModalVisible] = useState(false);
+  const [targetAutoDeductValue, setTargetAutoDeductValue] = useState(false);
+  const [autoDeductFeedback, setAutoDeductFeedback] = useState(null);
   const [commissionModalVisible, setCommissionModalVisible] = useState(false);
 
   const fetchWalletData = useCallback(async () => {
@@ -136,63 +139,47 @@ export default function WalletScreen({ navigation }) {
 
   const handleToggleAutoDeduct = (newValue) => {
     if (togglingAutoDeduct) return;
+    setTargetAutoDeductValue(Boolean(newValue));
+    setAutoDeductModalVisible(true);
+  };
 
-    if (newValue) {
-      Alert.alert(
-        'Enable Auto Deduction?',
-        'Mendroo will automatically settle your entire outstanding commission only when your Available Balance has sufficient positive funds to cover the full amount in one transaction. We will never make your balance negative. You can disable this anytime.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Enable',
-            style: 'default',
-            onPress: async () => {
-              setTogglingAutoDeduct(true);
-              try {
-                const res = await walletApi.toggleAutoDeductCommission(true);
-                if (res?.success) {
-                  Alert.alert('Auto Deduction Enabled', 'Mendroo will automatically deduct commission when sufficient balance is available.');
-                  fetchWalletData();
-                } else {
-                  Alert.alert('Error', res?.message || 'Could not enable automatic deduction');
-                }
-              } catch (err) {
-                Alert.alert('Error', err.response?.data?.message || err.message || 'Failed to update auto deduction');
-              } finally {
-                setTogglingAutoDeduct(false);
-              }
-            }
-          }
-        ]
-      );
-    } else {
-      Alert.alert(
-        'Disable Auto Deduction?',
-        'You will need to manually pay your outstanding commission using "Pay Full Commission Now".',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Disable',
-            style: 'destructive',
-            onPress: async () => {
-              setTogglingAutoDeduct(true);
-              try {
-                const res = await walletApi.toggleAutoDeductCommission(false);
-                if (res?.success) {
-                  Alert.alert('Auto Deduction Disabled', 'Automatic commission deduction has been turned off.');
-                  fetchWalletData();
-                } else {
-                  Alert.alert('Error', res?.message || 'Could not disable automatic deduction');
-                }
-              } catch (err) {
-                Alert.alert('Error', err.response?.data?.message || err.message || 'Failed to update auto deduction');
-              } finally {
-                setTogglingAutoDeduct(false);
-              }
-            }
-          }
-        ]
-      );
+  const executeToggleAutoDeduct = async () => {
+    if (togglingAutoDeduct) return;
+    setTogglingAutoDeduct(true);
+    setAutoDeductFeedback(null);
+    try {
+      const res = await walletApi.toggleAutoDeductCommission(targetAutoDeductValue);
+      if (res?.success) {
+        // Immediate optimistic UI sync
+        if (res.data?.summary) {
+          setSummary(res.data.summary);
+        } else {
+          setSummary((prev) => (prev ? { ...prev, autoDeductCommissionFromWallet: targetAutoDeductValue } : prev));
+        }
+        setAutoDeductModalVisible(false);
+        setAutoDeductFeedback({
+          type: 'success',
+          message: targetAutoDeductValue
+            ? (res.data?.deductionResult?.deducted
+                ? `Auto-Deduct activated! Full commission of ₹${res.data.deductionResult.amount?.toLocaleString('en-IN')} was settled from your Available Balance.`
+                : 'Auto-Deduct enabled. Mendroo will settle commission automatically when balance is sufficient.')
+            : 'Auto-Deduct disabled. Manual settlement active.'
+        });
+        await fetchWalletData();
+      } else {
+        setAutoDeductFeedback({
+          type: 'error',
+          message: res?.message || 'Could not update auto deduction setting'
+        });
+      }
+    } catch (err) {
+      console.error('[TOGGLE_AUTO_DEDUCT_ERROR]', err);
+      setAutoDeductFeedback({
+        type: 'error',
+        message: err.response?.data?.message || err.message || 'Failed to update auto deduction'
+      });
+    } finally {
+      setTogglingAutoDeduct(false);
     }
   };
 
@@ -427,7 +414,11 @@ export default function WalletScreen({ navigation }) {
               <Text style={styles.settlementOptionTitle}>Auto Deduct from Wallet</Text>
             </View>
 
-            <View style={styles.autoDeductRow}>
+            <TouchableOpacity
+              style={styles.autoDeductRow}
+              activeOpacity={0.85}
+              onPress={() => handleToggleAutoDeduct(!autoDeductEnabled)}
+            >
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={styles.autoDeductHeading}>Auto Deduct Commission from Wallet</Text>
                 <Text style={styles.autoDeductDesc}>
@@ -442,9 +433,36 @@ export default function WalletScreen({ navigation }) {
                   onValueChange={handleToggleAutoDeduct}
                   trackColor={{ false: '#374151', true: '#10B981' }}
                   thumbColor={autoDeductEnabled ? '#FFFFFF' : '#9CA3AF'}
+                  disabled={togglingAutoDeduct}
                 />
               )}
-            </View>
+            </TouchableOpacity>
+
+            {/* In-Screen Feedback Notification Banner */}
+            {autoDeductFeedback && (
+              <View style={[
+                styles.feedbackBanner,
+                autoDeductFeedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError
+              ]}>
+                <Ionicons
+                  name={autoDeductFeedback.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
+                  size={16}
+                  color={autoDeductFeedback.type === 'success' ? '#10B981' : '#EF4444'}
+                />
+                <Text style={[
+                  styles.feedbackText,
+                  { color: autoDeductFeedback.type === 'success' ? '#D1FAE5' : '#FEE2E2' }
+                ]}>
+                  {autoDeductFeedback.message}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setAutoDeductFeedback(null)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close" size={16} color="#9CA3AF" />
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Status Display */}
             {autoDeductEnabled ? (
@@ -586,6 +604,70 @@ export default function WalletScreen({ navigation }) {
           </View>
         )}
       </ScrollView>
+
+      {/* Auto Deduct Confirmation Dialog (Cross-Platform Modal) */}
+      <Modal
+        visible={autoDeductModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!togglingAutoDeduct) setAutoDeductModalVisible(false);
+        }}
+      >
+        <View style={styles.confirmModalOverlay}>
+          <View style={styles.confirmModalContent}>
+            <View style={{ alignItems: 'center', marginBottom: 16 }}>
+              <View style={[
+                styles.confirmIconCircle,
+                { backgroundColor: targetAutoDeductValue ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)' }
+              ]}>
+                <Ionicons
+                  name={targetAutoDeductValue ? 'wallet-outline' : 'power-outline'}
+                  size={30}
+                  color={targetAutoDeductValue ? '#10B981' : '#EF4444'}
+                />
+              </View>
+              <Text style={styles.confirmModalTitle}>
+                {targetAutoDeductValue ? 'Enable Auto Deduction?' : 'Disable Auto Deduction?'}
+              </Text>
+              <Text style={styles.confirmModalBody}>
+                {targetAutoDeductValue
+                  ? 'Mendroo will automatically settle your entire outstanding commission in full only when your positive Available Wallet Balance has sufficient funds. We will never make your balance negative. You can disable this anytime.'
+                  : 'Are you sure you want to turn off automatic commission deduction? You will need to manually pay your outstanding commission using "Pay Full Commission Now".'}
+              </Text>
+            </View>
+
+            <View style={styles.confirmActionsRow}>
+              <TouchableOpacity
+                style={styles.confirmCancelBtn}
+                onPress={() => setAutoDeductModalVisible(false)}
+                disabled={togglingAutoDeduct}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.confirmExecuteBtn,
+                  { backgroundColor: targetAutoDeductValue ? '#10B981' : '#EF4444' }
+                ]}
+                onPress={executeToggleAutoDeduct}
+                disabled={togglingAutoDeduct}
+                activeOpacity={0.8}
+              >
+                {togglingAutoDeduct ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.confirmExecuteBtnText}>
+                    {targetAutoDeductValue ? 'Confirm & Enable' : 'Disable'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Commission Payable Details Modal */}
       <Modal
@@ -1357,6 +1439,100 @@ const styles = StyleSheet.create({
   commissionItemDate: {
     color: '#71717A',
     fontSize: 10
+  },
+  // Auto Deduct Confirmation Modal Styles
+  confirmModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20
+  },
+  confirmModalContent: {
+    backgroundColor: '#16141F',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 420,
+    borderWidth: 1,
+    borderColor: '#2D2842'
+  },
+  confirmIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12
+  },
+  confirmModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center'
+  },
+  confirmModalBody: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 19,
+    marginTop: 8
+  },
+  confirmActionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    backgroundColor: '#262238',
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#37324E'
+  },
+  confirmCancelBtnText: {
+    color: '#D1D5DB',
+    fontSize: 14,
+    fontWeight: '600'
+  },
+  confirmExecuteBtn: {
+    flex: 1.2,
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  confirmExecuteBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  // Feedback Banner Styles
+  feedbackBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1
+  },
+  feedbackSuccess: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderColor: 'rgba(16, 185, 129, 0.3)'
+  },
+  feedbackError: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderColor: 'rgba(239, 68, 68, 0.3)'
+  },
+  feedbackText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500'
   }
 });
 

@@ -322,7 +322,11 @@ export const walletApi = {
     return response.data;
   },
   toggleAutoDeductCommission: async (enabled) => {
-    const response = await api.patch('/provider/wallet/commission/auto-deduct', { enabled });
+    const isEnabled = Boolean(enabled);
+    const response = await api.patch('/provider/wallet/commission/auto-deduct', {
+      enabled: isEnabled,
+      autoDeductCommissionFromWallet: isEnabled
+    });
     return response.data;
   }
 };

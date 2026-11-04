@@ -257,7 +257,9 @@ const verifyCommissionPayment = async (req, res, next) => {
 const toggleAutoDeductCommission = async (req, res, next) => {
   try {
     const provider = await getProviderFromUser(req.user._id);
-    const { enabled } = req.body;
+    const enabled = req.body.enabled !== undefined
+      ? req.body.enabled
+      : req.body.autoDeductCommissionFromWallet;
     const result = await walletService.toggleAutoDeductCommission(provider._id, enabled);
 
     res.status(200).json({
