@@ -140,10 +140,60 @@ const verifyWebhookSignature = (bodyString, webhookSignature, secret) => {
   return expectedSignature === String(webhookSignature).trim();
 };
 
+/**
+ * Fetches payment details directly from Razorpay API for server-side verification
+ * @param {string} paymentId
+ * @returns {Promise<Object>}
+ */
+const fetchPayment = async (paymentId) => {
+  if (!paymentId) throw new Error('Payment ID is required to fetch Razorpay payment details');
+  const instance = getRazorpayInstance();
+  return await instance.payments.fetch(String(paymentId).trim());
+};
+
+/**
+ * Fetches order details directly from Razorpay API
+ * @param {string} orderId
+ * @returns {Promise<Object>}
+ */
+const fetchOrder = async (orderId) => {
+  if (!orderId) throw new Error('Order ID is required to fetch Razorpay order details');
+  const instance = getRazorpayInstance();
+  return await instance.orders.fetch(String(orderId).trim());
+};
+
+/**
+ * Captures an authorized Razorpay payment
+ * @param {string} paymentId
+ * @param {number} amountInPaise
+ * @param {string} currency
+ * @returns {Promise<Object>}
+ */
+const capturePayment = async (paymentId, amountInPaise, currency = 'INR') => {
+  if (!paymentId) throw new Error('Payment ID is required to capture payment');
+  const instance = getRazorpayInstance();
+  return await instance.payments.capture(String(paymentId).trim(), amountInPaise, currency);
+};
+
+/**
+ * Fetches all payments associated with an order from Razorpay API
+ * @param {string} orderId
+ * @returns {Promise<Object>}
+ */
+const fetchOrderPayments = async (orderId) => {
+  if (!orderId) throw new Error('Order ID is required to fetch order payments');
+  const instance = getRazorpayInstance();
+  return await instance.orders.fetchPayments(String(orderId).trim());
+};
+
 module.exports = {
   getRazorpayInstance,
   getSanitizedRazorpayConfig,
   createOrder,
   verifyPaymentSignature,
-  verifyWebhookSignature
+  verifyWebhookSignature,
+  fetchPayment,
+  fetchOrder,
+  capturePayment,
+  fetchOrderPayments
 };

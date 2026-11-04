@@ -199,9 +199,102 @@ const uploadSingleBannerImage = (fieldName = 'image') => {
   };
 };
 
+const certAllowedMimeTypes = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/jpg'
+];
+
+const certFileFilter = (req, file, cb) => {
+  const mime = (file.mimetype || '').toLowerCase();
+  const ext = (file.originalname || '').toLowerCase();
+  const isPdf = mime === 'application/pdf' || ext.endsWith('.pdf');
+  const isImage = ['image/jpeg', 'image/png', 'image/jpg'].includes(mime) ||
+                  ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png');
+
+  if (isPdf || isImage) {
+    cb(null, true);
+  } else {
+    const error = new Error('Invalid file type. Only PDF, JPG, JPEG, and PNG files are allowed.');
+    error.statusCode = 400;
+    cb(error, false);
+  }
+};
+
+const certUpload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5 MB limit
+  },
+  fileFilter: certFileFilter
+});
+
+const uploadSingleCertificationDocument = (fieldName = 'document') => {
+  return (req, res, next) => {
+    const contentType = req.headers['content-type'] || '';
+    if (!contentType.toLowerCase().includes('multipart/form-data')) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Invalid request: Content-Type must be multipart/form-data with a valid boundary',
+          statusCode: 400,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+
+    if (!contentType.includes('boundary=')) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Invalid request: Multipart boundary missing from Content-Type header.',
+          statusCode: 400,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+
+    const uploadMiddleware = certUpload.single(fieldName);
+    uploadMiddleware(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            success: false,
+            error: {
+              message: 'Certificate file size exceeds maximum allowed limit of 5MB',
+              statusCode: 400,
+              timestamp: new Date().toISOString()
+            }
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: `Certificate upload error: ${err.message}`,
+            statusCode: 400,
+            timestamp: new Date().toISOString()
+          }
+        });
+      } else if (err) {
+        return res.status(err.statusCode || 400).json({
+          success: false,
+          error: {
+            message: err.message || 'Certificate upload failed',
+            statusCode: err.statusCode || 400,
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
+      next();
+    });
+  };
+};
+
 module.exports = {
   upload,
   uploadSingleAvatar,
   uploadSingleKYCDocument,
-  uploadSingleBannerImage
+  uploadSingleBannerImage,
+  uploadSingleCertificationDocument
 };

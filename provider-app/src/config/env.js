@@ -1,42 +1,39 @@
-import { Platform } from 'react-native';
-
 /**
  * Service Provider Marketplace - Provider App Environment Configuration
  *
- * Target Priority:
- * 1. Explicit `EXPO_PUBLIC_API_URL` set in environment (.env or build configuration)
- *    - If pointing to localhost and in browser development, verify if localhost or cloud backend should be used.
- *    - If running on Android and using localhost, automatically route to development LAN host or Android Emulator (10.0.2.2).
- * 2. Fallback for release builds: Production verified backend host.
- * 3. Fallback for development: Production verified cloud backend (so browser/mobile works even if local node backend is not running).
+ * Production Verified Backend (Render):
+ * https://service-provider-marketplace.onrender.com/api
  */
 
 // Production verified backend host (hosted on Render):
 export const PRODUCTION_API_URL = 'https://service-provider-marketplace.onrender.com/api';
 
-// Android Emulator host loopback alias (for local backend debugging):
-export const ANDROID_EMULATOR_API_URL = 'http://10.0.2.2:5000/api';
-
 /**
  * Resolves the effective base API URL based on runtime environment.
- * Default is ALWAYS the production cloud API URL (Render) so that the app works
- * out of the box without requiring a local backend server to be running.
- *
- * To explicitly use a local backend, set EXPO_PUBLIC_USE_LOCAL_BACKEND=true or
- * EXPO_PUBLIC_API_URL=http://localhost:5000/api in provider-app/.env
+ * Default is ALWAYS the production cloud API URL (Render).
+ * Localhost, emulator loopbacks, and tunnels are explicitly disallowed in production configuration.
  */
 export function getApiBaseUrl() {
   const envUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 
-  // If explicitly configured in environment:
+  // If explicitly configured and valid HTTPS production endpoint:
   if (envUrl && envUrl.length > 0) {
-    if (Platform.OS === 'android' && (envUrl.includes('localhost') || envUrl.includes('127.0.0.1'))) {
-      return ANDROID_EMULATOR_API_URL;
+    const isDisallowed =
+      envUrl.includes('localhost') ||
+      envUrl.includes('127.0.0.1') ||
+      envUrl.includes('10.0.2.2') ||
+      envUrl.includes('trycloudflare') ||
+      envUrl.includes('ngrok');
+
+    if (!isDisallowed) {
+      return envUrl;
     }
-    return envUrl;
+    if (__DEV__) {
+      console.warn(`[Provider App Config] Disallowed local/tunnel URL detected (${envUrl}). Reverting to Render Production URL.`);
+    }
   }
 
-  // Default is ALWAYS the verified Render production cloud backend
+  // Enforce Render Production backend URL as the absolute fallback
   return PRODUCTION_API_URL;
 }
 

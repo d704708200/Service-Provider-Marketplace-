@@ -12,6 +12,14 @@ providerRouter.get('/transactions', walletController.getTransactions);
 providerRouter.post('/withdraw', walletController.requestWithdrawal);
 providerRouter.get('/withdrawals', walletController.getWithdrawals);
 
+// Commission Payable Endpoints (Provider)
+providerRouter.get('/commission', walletController.getCommissionDetails);
+providerRouter.post('/commission/pay', walletController.createPayCommissionOrder);
+providerRouter.post('/commission/cancel', walletController.cancelPayCommissionOrder);
+providerRouter.post('/commission/verify', walletController.verifyCommissionPayment);
+providerRouter.patch('/commission/auto-deduct', walletController.toggleAutoDeductCommission);
+providerRouter.post('/commission/auto-deduct', walletController.toggleAutoDeductCommission);
+
 // Admin Wallet Router
 const adminRouter = express.Router();
 adminRouter.use(authenticate, requireRole('admin'));
@@ -22,6 +30,13 @@ adminRouter.post('/withdrawals/:id/approve', walletController.adminApproveWithdr
 adminRouter.post('/withdrawals/:id/reject', walletController.adminRejectWithdrawal);
 adminRouter.post('/withdrawals/:id/payout', walletController.adminPayoutWithdrawal);
 adminRouter.post('/:id/adjust', walletController.adminAdjustWallet);
+
+// Commission Payable Endpoints (Admin)
+adminRouter.get('/commissions', walletController.adminListCommissions);
+adminRouter.patch('/providers/:id/commission/auto-adjustment', walletController.adminToggleAutoCommissionAdjustment);
+adminRouter.post('/providers/:id/commission/settle', walletController.adminSettleFullCommission);
+adminRouter.post('/providers/:id/commission/waive', walletController.adminWaiveFullCommission);
+adminRouter.post('/providers/:id/commission/adjust', walletController.adminAdjustCommission);
 
 module.exports = {
   providerRouter,

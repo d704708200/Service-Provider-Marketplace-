@@ -29,6 +29,46 @@ const providerWalletSchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
+    commissionDue: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    autoCommissionAdjustment: {
+      type: Boolean,
+      default: false
+    },
+    autoDeductCommissionFromWallet: {
+      type: Boolean,
+      default: false
+    },
+    lastAutoDeductionAt: {
+      type: Date,
+      default: null
+    },
+    reconciliationFlagged: {
+      type: Boolean,
+      default: false
+    },
+    reconciliationReason: {
+      type: String,
+      default: null
+    },
+    activeCommissionOrder: {
+      orderId: { type: String, default: null },
+      amount: { type: Number, default: 0 },
+      amountInPaise: { type: Number, default: 0 },
+      currency: { type: String, default: 'INR' },
+      createdAt: { type: Date, default: null },
+      expiresAt: { type: Date, default: null },
+      status: {
+        type: String,
+        enum: ['none', 'pending', 'settled', 'expired', 'failed', 'cancelled'],
+        default: 'none'
+      },
+      paymentId: { type: String, default: null },
+      settledAt: { type: Date, default: null }
+    },
     currency: {
       type: String,
       default: 'INR'

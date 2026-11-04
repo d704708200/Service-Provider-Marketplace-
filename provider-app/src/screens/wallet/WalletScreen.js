@@ -9,16 +9,21 @@ import {
   RefreshControl,
   ActivityIndicator,
   FlatList,
-  Platform
+  Platform,
+  Alert,
+  Modal,
+  Switch
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { walletApi } from '../../services/api';
+import { openCommissionPaymentCheckout } from '../../services/commissionPaymentService';
 import colors from '../../theme/colors';
 
 const FILTER_TABS = [
   { key: 'all', label: 'All' },
   { key: 'earnings', label: 'Earnings' },
+  { key: 'commission', label: 'Commission' },
   { key: 'withdrawals', label: 'Withdrawals' },
   { key: 'adjustments', label: 'Adjustments' }
 ];
@@ -28,21 +33,27 @@ export default function WalletScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [summary, setSummary] = useState(null);
   const [earnings, setEarnings] = useState(null);
+  const [commissionData, setCommissionData] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedTxn, setSelectedTxn] = useState(null);
+  const [payingCommission, setPayingCommission] = useState(false);
+  const [togglingAutoDeduct, setTogglingAutoDeduct] = useState(false);
+  const [commissionModalVisible, setCommissionModalVisible] = useState(false);
 
   const fetchWalletData = useCallback(async () => {
     try {
-      const [summaryRes, earningsRes, txnsRes] = await Promise.all([
+      const [summaryRes, earningsRes, txnsRes, commRes] = await Promise.all([
         walletApi.getSummary().catch(() => ({ data: null })),
         walletApi.getEarnings().catch(() => ({ data: null })),
-        walletApi.getTransactions({ type: activeFilter, limit: 30 }).catch(() => ({ data: [] }))
+        walletApi.getTransactions({ type: activeFilter, limit: 30 }).catch(() => ({ data: [] })),
+        walletApi.getCommissionDetails().catch(() => ({ data: null }))
       ]);
 
       if (summaryRes?.data) setSummary(summaryRes.data);
       if (earningsRes?.data) setEarnings(earningsRes.data);
       if (txnsRes?.data) setTransactions(txnsRes.data);
+      if (commRes?.data) setCommissionData(commRes.data);
     } catch (err) {
       console.error('[WALLET_FETCH_ERROR]', err);
     } finally {
@@ -62,15 +73,144 @@ export default function WalletScreen({ navigation }) {
     fetchWalletData();
   };
 
+  const handlePayCommissionNow = async () => {
+    const amountToPay = summary?.commissionDue || commissionData?.commissionDue || 0;
+    if (amountToPay <= 0) {
+      Alert.alert('No Due', 'You do not have any outstanding commission payable.');
+      return;
+    }
+
+    Alert.alert(
+      'Pay Full Commission',
+      `You are about to settle the complete outstanding platform commission of ₹${amountToPay.toLocaleString('en-IN', { minimumFractionDigits: 2 })} in one transaction via Razorpay.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: `Pay ₹${amountToPay}`,
+          onPress: async () => {
+            setPayingCommission(true);
+            try {
+              const orderRes = await walletApi.createPayCommissionOrder();
+              if (!orderRes?.success || !orderRes.data) {
+                throw new Error(orderRes?.message || 'Could not initiate payment order');
+              }
+
+              const checkoutResult = await openCommissionPaymentCheckout({
+                orderData: orderRes.data,
+                providerName: 'Mendroo Service Provider'
+              });
+
+              if (!checkoutResult.success) {
+                // Cancel active lock so order can be immediately retried if needed
+                walletApi.cancelPayCommissionOrder().catch(() => { });
+                if (!checkoutResult.isCancelled) {
+                  Alert.alert('Payment Incomplete', checkoutResult.error || 'Payment was not completed. Outstanding commission remains unchanged.');
+                }
+                setPayingCommission(false);
+                return;
+              }
+
+              // Verify on backend
+              const verifyRes = await walletApi.verifyCommissionPayment({
+                razorpayOrderId: checkoutResult.data.razorpayOrderId,
+                razorpayPaymentId: checkoutResult.data.razorpayPaymentId,
+                razorpaySignature: checkoutResult.data.razorpaySignature
+              });
+
+              if (verifyRes?.success) {
+                Alert.alert('Settlement Successful', 'Your platform commission has been settled in full. Commission Payable is now ₹0.');
+                fetchWalletData();
+              } else {
+                Alert.alert('Verification Issue', verifyRes?.message || 'Payment verification could not be confirmed.');
+              }
+            } catch (err) {
+              Alert.alert('Payment Error', err.response?.data?.error?.message || err.message || 'Payment failed');
+            } finally {
+              setPayingCommission(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleToggleAutoDeduct = (newValue) => {
+    if (togglingAutoDeduct) return;
+
+    if (newValue) {
+      Alert.alert(
+        'Enable Auto Deduction?',
+        'Mendroo will automatically settle your entire outstanding commission only when your Available Balance has sufficient positive funds to cover the full amount in one transaction. We will never make your balance negative. You can disable this anytime.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Enable',
+            style: 'default',
+            onPress: async () => {
+              setTogglingAutoDeduct(true);
+              try {
+                const res = await walletApi.toggleAutoDeductCommission(true);
+                if (res?.success) {
+                  Alert.alert('Auto Deduction Enabled', 'Mendroo will automatically deduct commission when sufficient balance is available.');
+                  fetchWalletData();
+                } else {
+                  Alert.alert('Error', res?.message || 'Could not enable automatic deduction');
+                }
+              } catch (err) {
+                Alert.alert('Error', err.response?.data?.message || err.message || 'Failed to update auto deduction');
+              } finally {
+                setTogglingAutoDeduct(false);
+              }
+            }
+          }
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Disable Auto Deduction?',
+        'You will need to manually pay your outstanding commission using "Pay Full Commission Now".',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Disable',
+            style: 'destructive',
+            onPress: async () => {
+              setTogglingAutoDeduct(true);
+              try {
+                const res = await walletApi.toggleAutoDeductCommission(false);
+                if (res?.success) {
+                  Alert.alert('Auto Deduction Disabled', 'Automatic commission deduction has been turned off.');
+                  fetchWalletData();
+                } else {
+                  Alert.alert('Error', res?.message || 'Could not disable automatic deduction');
+                }
+              } catch (err) {
+                Alert.alert('Error', err.response?.data?.message || err.message || 'Failed to update auto deduction');
+              } finally {
+                setTogglingAutoDeduct(false);
+              }
+            }
+          }
+        ]
+      );
+    }
+  };
+
   const getTxnIcon = (type) => {
     switch (type) {
       case 'booking_earning':
         return { name: 'arrow-down-circle', color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)' };
+      case 'CASH_BOOKING_COMMISSION_DUE':
       case 'commission_deduction':
         return { name: 'pie-chart-outline', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.15)' };
+      case 'COMMISSION_PAYMENT':
+      case 'COMMISSION_ADJUSTMENT':
+      case 'COMMISSION_WALLET_AUTO_DEBIT':
+        return { name: 'checkmark-circle-outline', color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)' };
       case 'withdrawal':
         return { name: 'arrow-up-circle', color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.15)' };
       case 'withdrawal_refund':
+      case 'COMMISSION_REFUND':
         return { name: 'refresh-circle', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.15)' };
       case 'adjustment_credit':
         return { name: 'add-circle', color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)' };
@@ -83,7 +223,7 @@ export default function WalletScreen({ navigation }) {
   };
 
   const isCredit = (type) => {
-    return ['booking_earning', 'withdrawal_refund', 'adjustment_credit'].includes(type);
+    return ['booking_earning', 'withdrawal_refund', 'adjustment_credit', 'COMMISSION_REFUND'].includes(type);
   };
 
   const formatDate = (dateString) => {
@@ -108,9 +248,12 @@ export default function WalletScreen({ navigation }) {
   }
 
   const availableBalance = summary?.availableBalance || 0;
+  const pendingEarnings = summary?.pendingBalance || 0;
+  const commissionPayable = summary?.commissionDue || commissionData?.commissionDue || 0;
+  const lifetimeEarnings = summary?.totalEarnings || 0;
   const pendingWithdrawal = summary?.pendingWithdrawal || 0;
-  const totalEarnings = summary?.totalEarnings || 0;
   const totalWithdrawn = summary?.totalWithdrawn || 0;
+  const autoDeductEnabled = summary?.autoDeductCommissionFromWallet ?? commissionData?.autoDeductCommissionFromWallet ?? false;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -175,45 +318,182 @@ export default function WalletScreen({ navigation }) {
           </View>
         </View>
 
-        {/* 4 Overview Quick Stats */}
+        {/* 4 Financial Sections Core Cards */}
         <View style={styles.statsGrid}>
+          {/* 1. Available Balance */}
           <View style={styles.statBox}>
             <View style={[styles.statIconCircle, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-              <Ionicons name="trending-up" size={18} color="#10B981" />
+              <Ionicons name="wallet" size={18} color="#10B981" />
             </View>
-            <Text style={styles.statLabel}>Lifetime Earnings</Text>
-            <Text style={styles.statValue}>₹{totalEarnings.toLocaleString('en-IN')}</Text>
+            <Text style={styles.statLabel}>Available Balance</Text>
+            <Text style={[styles.statValue, { color: '#10B981' }]}>
+              ₹{availableBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+            <Text style={styles.statSubText}>Withdrawable</Text>
           </View>
 
-          <View style={styles.statBox}>
-            <View style={[styles.statIconCircle, { backgroundColor: 'rgba(139, 92, 246, 0.15)' }]}>
-              <Ionicons name="cash-outline" size={18} color="#8B5CF6" />
-            </View>
-            <Text style={styles.statLabel}>Total Withdrawn</Text>
-            <Text style={styles.statValue}>₹{totalWithdrawn.toLocaleString('en-IN')}</Text>
-          </View>
-
-          <View style={styles.statBox}>
-            <View style={[styles.statIconCircle, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
-              <Ionicons name="receipt-outline" size={18} color="#3B82F6" />
-            </View>
-            <Text style={styles.statLabel}>Transactions</Text>
-            <Text style={styles.statValue}>{summary?.totalTransactions || 0}</Text>
-          </View>
-
+          {/* 2. Pending Earnings */}
           <View style={styles.statBox}>
             <View style={[styles.statIconCircle, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
-              <Ionicons name="hourglass-outline" size={18} color="#F59E0B" />
+              <Ionicons name="time" size={18} color="#F59E0B" />
             </View>
-            <Text style={styles.statLabel}>Pending Requests</Text>
-            <Text style={styles.statValue}>{summary?.pendingWithdrawalsCount || 0}</Text>
+            <Text style={styles.statLabel}>Pending Earnings</Text>
+            <Text style={[styles.statValue, { color: '#F59E0B' }]}>
+              ₹{pendingEarnings.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+            <Text style={styles.statSubText}>Awaiting release</Text>
           </View>
+
+          {/* 3. Commission Payable to Mendroo */}
+          <View style={[styles.statBox, commissionPayable > 0 && styles.statBoxAlert]}>
+            <View style={[styles.statIconCircle, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
+              <Ionicons name="alert-circle" size={18} color="#EF4444" />
+            </View>
+            <Text style={styles.statLabel}>Commission Payable to Mendroo</Text>
+            <Text style={[styles.statValue, { color: '#EF4444' }]}>
+              ₹{commissionPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+            <Text style={styles.statSubText}>Cash booking dues</Text>
+          </View>
+
+          {/* 4. Lifetime Earnings */}
+          <View style={styles.statBox}>
+            <View style={[styles.statIconCircle, { backgroundColor: 'rgba(139, 92, 246, 0.15)' }]}>
+              <Ionicons name="trending-up" size={18} color="#8B5CF6" />
+            </View>
+            <Text style={styles.statLabel}>Lifetime Earnings</Text>
+            <Text style={[styles.statValue, { color: '#8B5CF6' }]}>
+              ₹{lifetimeEarnings.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+            <Text style={styles.statSubText}>Total verified earnings</Text>
+          </View>
+        </View>
+
+        {/* Dedicated Commission Payable Section */}
+        <View style={styles.commissionSectionCard}>
+          <View style={styles.commissionSectionHeader}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="receipt" size={18} color="#EF4444" />
+                <Text style={styles.commissionSectionTitle}>Commission Payable to Mendroo</Text>
+              </View>
+              <Text style={styles.commissionSectionDesc}>
+                Outstanding platform commission owed from completed cash bookings.
+              </Text>
+            </View>
+            <Text style={styles.commissionSectionAmount}>
+              ₹{commissionPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+          </View>
+
+          {commissionPayable > 0 ? (
+            <View style={styles.commissionPayActionContainer}>
+              <View style={styles.settlementOptionBadgeRow}>
+                <Text style={styles.settlementOptionBadge}>OPTION 1</Text>
+                <Text style={styles.settlementOptionTitle}>Pay Full Commission Now</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.payCommissionButton}
+                onPress={handlePayCommissionNow}
+                disabled={payingCommission}
+                activeOpacity={0.8}
+              >
+                {payingCommission ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="card" size={18} color="#FFFFFF" />
+                    <Text style={styles.payCommissionButtonText}>
+                      Pay Full Commission ₹{commissionPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <Text style={styles.commissionPayNote}>
+                Full platform commission is settled in one single transaction via Razorpay.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.commissionCleanContainer}>
+              <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+              <Text style={styles.commissionCleanText}>All cash booking commissions are fully settled!</Text>
+            </View>
+          )}
+
+          {/* Option 2: Auto Deduct from Wallet */}
+          <View style={styles.autoDeductCard}>
+            <View style={styles.settlementOptionBadgeRow}>
+              <Text style={[styles.settlementOptionBadge, { backgroundColor: '#3B82F6' }]}>OPTION 2</Text>
+              <Text style={styles.settlementOptionTitle}>Auto Deduct from Wallet</Text>
+            </View>
+
+            <View style={styles.autoDeductRow}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.autoDeductHeading}>Auto Deduct Commission from Wallet</Text>
+                <Text style={styles.autoDeductDesc}>
+                  When your Available Balance is sufficient, Mendroo will automatically deduct your entire outstanding commission in one transaction.
+                </Text>
+              </View>
+              {togglingAutoDeduct ? (
+                <ActivityIndicator size="small" color="#8B5CF6" />
+              ) : (
+                <Switch
+                  value={autoDeductEnabled}
+                  onValueChange={handleToggleAutoDeduct}
+                  trackColor={{ false: '#374151', true: '#10B981' }}
+                  thumbColor={autoDeductEnabled ? '#FFFFFF' : '#9CA3AF'}
+                />
+              )}
+            </View>
+
+            {/* Status Display */}
+            {autoDeductEnabled ? (
+              commissionPayable > 0 && availableBalance < commissionPayable ? (
+                <View style={styles.autoDeductInsufficientBox}>
+                  <Ionicons name="alert-circle" size={16} color="#F59E0B" style={{ marginTop: 2 }} />
+                  <Text style={styles.autoDeductInsufficientText}>
+                    Available Balance (₹{availableBalance.toLocaleString('en-IN')}) is insufficient to cover ₹{commissionPayable.toLocaleString('en-IN')} due. Zero deduction made. The system will automatically settle in full when your balance is replenished.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.autoDeductActiveBox}>
+                  <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                  <Text style={styles.autoDeductActiveText}>
+                    Active – Automatic full settlement enabled
+                  </Text>
+                </View>
+              )
+            ) : (
+              <View style={styles.autoDeductInactiveBox}>
+                <Ionicons name="ellipse-outline" size={12} color="#9CA3AF" />
+                <Text style={styles.autoDeductInactiveText}>Manual payment only</Text>
+              </View>
+            )}
+
+            {/* Overdraft Protection Guarantee Badge */}
+            <View style={styles.protectionGuaranteeBadge}>
+              <Ionicons name="shield-checkmark-outline" size={14} color="#8B5CF6" />
+              <Text style={styles.protectionGuaranteeText}>
+                Protected: Never deducted from Pending Earnings. Never results in a negative balance.
+              </Text>
+            </View>
+          </View>
+
+          {/* Button to open Breakdown Modal */}
+          <TouchableOpacity
+            style={styles.viewCommissionDetailsBtn}
+            onPress={() => setCommissionModalVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.viewCommissionDetailsText}>View Commission Payable Details</Text>
+            <Ionicons name="chevron-forward" size={16} color="#A78BFA" />
+          </TouchableOpacity>
         </View>
 
         {/* Earnings Breakdown */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Earnings Breakdown</Text>
-          <Text style={styles.commissionNote}>85% Provider Net (15% Platform Take-Rate)</Text>
+          <Text style={styles.commissionNote}>{commissionData?.commissionRateText || 'Platform commission'} applies on completed jobs</Text>
         </View>
 
         <View style={styles.breakdownCard}>
@@ -306,6 +586,113 @@ export default function WalletScreen({ navigation }) {
           </View>
         )}
       </ScrollView>
+
+      {/* Commission Payable Details Modal */}
+      <Modal
+        visible={commissionModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setCommissionModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Commission Payable Details</Text>
+                <Text style={styles.modalSubtitle}>Platform commission from completed cash bookings</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setCommissionModalVisible(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Total Due Callout */}
+            <View style={styles.modalDueSummaryBox}>
+              <Text style={styles.modalDueSummaryLabel}>TOTAL OUTSTANDING COMMISSION</Text>
+              <Text style={styles.modalDueSummaryValue}>
+                ₹{commissionPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
+              <Text style={styles.modalDueSummaryNote}>
+                Never deducted from your withdrawable Available Balance. Settled in full via Razorpay or automatic future earnings adjustment.
+              </Text>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginVertical: 12 }}>
+              <Text style={styles.modalListHeading}>Cash Bookings Breakdown</Text>
+              {(!commissionData?.history || commissionData.history.length === 0) ? (
+                <View style={{ padding: 24, alignItems: 'center' }}>
+                  <Ionicons name="receipt-outline" size={36} color="#6B7280" />
+                  <Text style={{ color: '#9CA3AF', fontSize: 13, marginTop: 8 }}>No cash booking commission records found.</Text>
+                </View>
+              ) : (
+                commissionData.history.map((item) => (
+                  <View key={item._id} style={styles.commissionDetailItem}>
+                    <View style={styles.commissionItemTopRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.commissionItemRef}>Booking #{item.bookingReference}</Text>
+                        <Text style={styles.commissionItemService}>{item.serviceName}</Text>
+                      </View>
+                      <View style={[
+                        styles.commissionItemTag,
+                        item.type === 'COMMISSION_PAYMENT' ? { backgroundColor: 'rgba(16, 185, 129, 0.2)' } :
+                          item.type === 'COMMISSION_ADJUSTMENT' ? { backgroundColor: 'rgba(139, 92, 246, 0.2)' } :
+                            { backgroundColor: 'rgba(239, 68, 68, 0.2)' }
+                      ]}>
+                        <Text style={[
+                          styles.commissionItemTagText,
+                          item.type === 'COMMISSION_PAYMENT' ? { color: '#10B981' } :
+                            item.type === 'COMMISSION_ADJUSTMENT' ? { color: '#8B5CF6' } :
+                              { color: '#EF4444' }
+                        ]}>
+                          {item.type === 'COMMISSION_PAYMENT' ? 'SETTLED' :
+                            item.type === 'COMMISSION_ADJUSTMENT' ? 'AUTO-ADJUSTED' : 'DUE'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.commissionItemGrid}>
+                      <View style={styles.commissionGridCol}>
+                        <Text style={styles.commissionGridLabel}>Customer Paid</Text>
+                        <Text style={styles.commissionGridVal}>₹{item.customerPaymentAmount || 0}</Text>
+                      </View>
+                      <View style={styles.commissionGridCol}>
+                        <Text style={styles.commissionGridLabel}>Platform Rate</Text>
+                        <Text style={styles.commissionGridVal}>{item.commissionPercentage}</Text>
+                      </View>
+                      <View style={styles.commissionGridCol}>
+                        <Text style={styles.commissionGridLabel}>Commission Amount</Text>
+                        <Text style={[styles.commissionGridVal, { color: '#EF4444' }]}>₹{item.amount}</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.commissionItemDate}>{formatDate(item.createdAt)}</Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            {commissionPayable > 0 && (
+              <TouchableOpacity
+                style={styles.payCommissionButton}
+                onPress={() => {
+                  setCommissionModalVisible(false);
+                  handlePayCommissionNow();
+                }}
+                disabled={payingCommission}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="card" size={18} color="#FFFFFF" />
+                <Text style={styles.payCommissionButtonText}>
+                  Pay Full Commission ₹{commissionPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -649,6 +1036,327 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontSize: 10,
     marginTop: 2
+  },
+  // Commission Specific Styles
+  statSubText: {
+    color: '#9CA3AF',
+    fontSize: 10,
+    marginTop: 2
+  },
+  statBoxAlert: {
+    borderColor: '#7F1D1D',
+    borderWidth: 1.5
+  },
+  commissionSectionCard: {
+    backgroundColor: '#1E1424',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#3B1F38',
+    marginBottom: 20
+  },
+  commissionSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12
+  },
+  commissionSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  commissionSectionDesc: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2
+  },
+  commissionSectionAmount: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#EF4444',
+    marginLeft: 8
+  },
+  commissionPayActionContainer: {
+    marginTop: 8,
+    marginBottom: 8
+  },
+  payCommissionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EF4444',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    gap: 8
+  },
+  payCommissionButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14
+  },
+  commissionPayNote: {
+    color: '#A1A1AA',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 6
+  },
+  commissionCleanContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    padding: 10,
+    borderRadius: 8,
+    gap: 8,
+    marginBottom: 8
+  },
+  commissionCleanText: {
+    color: '#10B981',
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  settlementOptionBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8
+  },
+  settlementOptionBadge: {
+    backgroundColor: '#EF4444',
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    letterSpacing: 0.5
+  },
+  settlementOptionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#F3F4F6'
+  },
+  autoDeductCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.07)',
+    marginTop: 8,
+    marginBottom: 10
+  },
+  autoDeductRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  autoDeductHeading: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 2
+  },
+  autoDeductDesc: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    lineHeight: 15
+  },
+  autoDeductInsufficientBox: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderRadius: 8,
+    padding: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.25)',
+    marginBottom: 8
+  },
+  autoDeductInsufficientText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#FCD34D',
+    lineHeight: 16
+  },
+  autoDeductActiveBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderRadius: 8,
+    padding: 8,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
+    marginBottom: 8
+  },
+  autoDeductActiveText: {
+    fontSize: 11,
+    color: '#34D399',
+    fontWeight: '600'
+  },
+  autoDeductInactiveBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 8,
+    padding: 8,
+    gap: 6,
+    marginBottom: 8
+  },
+  autoDeductInactiveText: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    fontWeight: '500'
+  },
+  protectionGuaranteeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 4
+  },
+  protectionGuaranteeText: {
+    flex: 1,
+    fontSize: 10,
+    color: '#A78BFA',
+    fontWeight: '500',
+    lineHeight: 14
+  },
+  viewCommissionDetailsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    gap: 4
+  },
+  viewCommissionDetailsText: {
+    color: '#A78BFA',
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'flex-end'
+  },
+  modalContent: {
+    backgroundColor: '#16141F',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#252136'
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    borderBottomWidth: 1,
+    borderBottomColor: '#252136',
+    paddingBottom: 12
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 2
+  },
+  modalCloseBtn: {
+    padding: 4
+  },
+  modalDueSummaryBox: {
+    backgroundColor: '#27151D',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#541C2A'
+  },
+  modalDueSummaryLabel: {
+    color: '#F87171',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5
+  },
+  modalDueSummaryValue: {
+    color: '#EF4444',
+    fontSize: 26,
+    fontWeight: '800',
+    marginVertical: 4
+  },
+  modalDueSummaryNote: {
+    color: '#FDA4AF',
+    fontSize: 11,
+    lineHeight: 15
+  },
+  modalListHeading: {
+    color: '#D1D5DB',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 8
+  },
+  commissionDetailItem: {
+    backgroundColor: '#1E1B2E',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#2E2845'
+  },
+  commissionItemTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8
+  },
+  commissionItemRef: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600'
+  },
+  commissionItemService: {
+    color: '#A78BFA',
+    fontSize: 11,
+    marginTop: 2
+  },
+  commissionItemTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6
+  },
+  commissionItemTagText: {
+    fontSize: 10,
+    fontWeight: '700'
+  },
+  commissionItemGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#28233C',
+    paddingTop: 8,
+    marginBottom: 6
+  },
+  commissionGridCol: {
+    flex: 1
+  },
+  commissionGridLabel: {
+    color: '#9CA3AF',
+    fontSize: 10
+  },
+  commissionGridVal: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2
+  },
+  commissionItemDate: {
+    color: '#71717A',
+    fontSize: 10
   }
 });
 

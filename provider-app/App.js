@@ -9,6 +9,9 @@ import RootNavigator from './src/navigation/RootNavigator';
 import { configureNotificationChannel } from './src/services/notificationService';
 
 export const navigationRef = createNavigationContainerRef();
+if (typeof window !== 'undefined') {
+  window.__navigationRef = navigationRef;
+}
 
 export default function App() {
   useEffect(() => {

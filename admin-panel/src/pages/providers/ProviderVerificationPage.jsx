@@ -18,6 +18,8 @@ import {
   AlertTriangle,
   X,
   Check,
+  Award,
+  Download,
   Ban
 } from 'lucide-react';
 import { providerApi } from '../../services/api';
@@ -47,7 +49,7 @@ const ProviderVerificationPage = () => {
   // Rejection Dialog State (for requiring mandatory rejection reason)
   const [rejectionDialog, setRejectionDialog] = useState({
     isOpen: false,
-    type: 'provider', // 'provider' or 'document'
+    type: 'provider', // 'provider' | 'document' | 'certification'
     documentId: null,
     reason: '',
     error: null
@@ -172,7 +174,21 @@ const ProviderVerificationPage = () => {
 
     setIsActionLoading(true);
     try {
-      if (rejectionDialog.type === 'document') {
+      if (rejectionDialog.type === 'certification') {
+        const response = await providerApi.reviewServiceCertification(
+          reviewingProvider._id,
+          {
+            status: 'REJECTED',
+            rejectionReason: rejectionDialog.reason.trim()
+          }
+        );
+        if (response?.success) {
+          setReviewingProvider(response.data);
+          setSuccessMessage('Professional service certification rejected with mandatory reason.');
+          setRejectionDialog({ isOpen: false, type: 'provider', documentId: null, reason: '', error: null });
+          fetchPendingQueue();
+        }
+      } else if (rejectionDialog.type === 'document') {
         const response = await providerApi.reviewDocument(
           reviewingProvider._id,
           rejectionDialog.documentId,
@@ -208,6 +224,47 @@ const ProviderVerificationPage = () => {
     } finally {
       setIsActionLoading(false);
     }
+  };
+
+  // Action: Verify Service Certification
+  const handleVerifyCertification = () => {
+    if (!reviewingProvider?.serviceCertification?.documentUrl) return;
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Verify Service Certification',
+      message: `Mark the professional certification for '${reviewingProvider.businessName || reviewingProvider.user?.name}' as VERIFIED? This is an independent credential verification.`,
+      confirmText: 'Verify Certificate',
+      confirmVariant: 'primary',
+      isLoading: false,
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+        try {
+          const response = await providerApi.reviewServiceCertification(reviewingProvider._id, {
+            status: 'VERIFIED'
+          });
+          if (response?.success) {
+            setReviewingProvider(response.data);
+            setSuccessMessage('Professional service certification marked as VERIFIED.');
+            setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+            fetchPendingQueue();
+          }
+        } catch (err) {
+          setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+          setApiError(err.userMessage || 'Failed to verify certification.');
+        }
+      }
+    });
+  };
+
+  const handleOpenRejectCertification = () => {
+    setRejectionDialog({
+      isOpen: true,
+      type: 'certification',
+      documentId: null,
+      reason: '',
+      error: null
+    });
   };
 
   // Action: Approve Overall Provider Verification
@@ -753,6 +810,116 @@ const ProviderVerificationPage = () => {
                 {reviewingProvider.kycRejectionReason && (
                   <div className="text-xs text-rose-700 bg-rose-50 p-2.5 rounded-lg border border-rose-200 mt-2">
                     <strong>Current KYC Rejection Note:</strong> {reviewingProvider.kycRejectionReason}
+                  </div>
+                )}
+              </div>
+
+              {/* Dedicated Professional Service Certification (Optional Credential) */}
+              <div className="p-4 rounded-xl bg-purple-50/50 border border-purple-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Award className="w-4 h-4 text-purple-600" />
+                    <span className="text-xs font-bold text-purple-950 uppercase tracking-wider">
+                      Professional Service Certification (Optional)
+                    </span>
+                  </div>
+                  <Badge
+                    variant={
+                      !reviewingProvider.serviceCertification?.documentUrl
+                        ? 'default'
+                        : reviewingProvider.serviceCertification.verificationStatus === 'VERIFIED'
+                        ? 'success'
+                        : reviewingProvider.serviceCertification.verificationStatus === 'REJECTED'
+                        ? 'danger'
+                        : 'warning'
+                    }
+                  >
+                    {!reviewingProvider.serviceCertification?.documentUrl
+                      ? 'Not Uploaded'
+                      : reviewingProvider.serviceCertification.verificationStatus === 'VERIFIED'
+                      ? 'Verified'
+                      : reviewingProvider.serviceCertification.verificationStatus === 'REJECTED'
+                      ? 'Rejected'
+                      : 'Pending Review'}
+                  </Badge>
+                </div>
+
+                {reviewingProvider.serviceCertification?.documentUrl ? (
+                  <div className="p-3.5 rounded-lg bg-white border border-slate-200 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <span className="text-slate-500 font-medium block">Related Category:</span>
+                        <span className="font-semibold text-slate-900 block mt-0.5">
+                          {reviewingProvider.serviceCertification.category?.name || 'General Service'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 font-medium block">Related Service Tag:</span>
+                        <span className="font-semibold text-slate-900 block mt-0.5">
+                          {reviewingProvider.serviceCertification.tag?.name || 'Service Tag'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 font-medium block">Original File Name:</span>
+                        <span className="font-mono text-slate-800 text-[11px] block mt-0.5 truncate">
+                          {reviewingProvider.serviceCertification.originalFileName || 'certificate'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 font-medium block">Upload Date:</span>
+                        <span className="text-slate-700 block mt-0.5">
+                          {reviewingProvider.serviceCertification.uploadedAt
+                            ? new Date(reviewingProvider.serviceCertification.uploadedAt).toLocaleString()
+                            : 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {reviewingProvider.serviceCertification.rejectionReason && (
+                      <div className="text-xs text-rose-700 bg-rose-50 p-2 rounded-md border border-rose-200">
+                        <strong>Certification Rejection Reason:</strong> {reviewingProvider.serviceCertification.rejectionReason}
+                      </div>
+                    )}
+
+                    {/* Actions: View / Verify / Reject */}
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                      <a
+                        href={reviewingProvider.serviceCertification.documentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Inspect / Download Certificate</span>
+                      </a>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={isActionLoading || reviewingProvider.serviceCertification.verificationStatus === 'REJECTED'}
+                          onClick={handleOpenRejectCertification}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg border border-rose-200 transition-colors disabled:opacity-40"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Reject Certificate</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isActionLoading || reviewingProvider.serviceCertification.verificationStatus === 'VERIFIED'}
+                          onClick={handleVerifyCertification}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors disabled:opacity-40"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Verify Certificate</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-lg bg-white border border-dashed border-slate-200 text-xs text-slate-500 flex items-center gap-2">
+                    <Award className="w-4 h-4 text-slate-400" />
+                    <span>No service certification uploaded. This optional credential does not block provider verification.</span>
                   </div>
                 )}
               </div>

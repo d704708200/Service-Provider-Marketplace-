@@ -149,13 +149,14 @@ async function runRegressionSuite() {
       paymentMethod: 'cash'
     });
 
+    // Under Commission Payable separation:
     // Previous balance = 850. Cash booking = 400. 15% commission = 60.
-    // Provider keeps 400 cash. Platform deducts 60 from wallet.
-    // New balance = 850 - 60 = 790. Lifetime earnings increases by net 340 (850 + 340 = 1190).
+    // Provider keeps 400 cash. Platform adds 60 to commissionDue (NEVER negative, separate from availableBalance).
+    // Available balance remains 850. commissionDue = 60.
     const res4 = await walletService.creditBookingEarnings(cashBooking._id);
-    console.log('[REGRESSION 4 PASSED] Deducted ₹60 cash commission. Balance:', res4.balanceAfter);
-    if (res4.balanceAfter !== 790 || res4.platformCommission !== 60) {
-      throw new Error(`Expected balance 790, got ${res4.balanceAfter}`);
+    console.log('[REGRESSION 4 PASSED] Recorded ₹60 cash commission payable. Balance:', res4.balanceAfter, 'CommissionDue:', res4.commissionDue);
+    if (res4.balanceAfter !== 850 || res4.platformCommission !== 60 || res4.commissionDue !== 60) {
+      throw new Error(`Expected balance 850 and commissionDue 60, got balance: ${res4.balanceAfter}, commDue: ${res4.commissionDue}`);
     }
 
     // -------------------------------------------------------------
@@ -165,7 +166,7 @@ async function runRegressionSuite() {
     const res5 = await walletService.creditBookingEarnings(paidBooking._id);
     console.log('[REGRESSION 5 PASSED] Duplicate skipped cleanly:', res5.message);
     const walletAfterDup = await ProviderWallet.findOne({ provider: testProvider._id });
-    if (walletAfterDup.availableBalance !== 790) {
+    if (walletAfterDup.availableBalance !== 850) {
       throw new Error(`Balance altered on duplicate call! Balance: ${walletAfterDup.availableBalance}`);
     }
 
@@ -176,7 +177,7 @@ async function runRegressionSuite() {
     const res6 = await walletService.creditBookingEarnings(cashBooking._id);
     console.log('[REGRESSION 6 PASSED] Repeated webhook skipped cleanly:', res6.message);
     const walletAfterWebhook = await ProviderWallet.findOne({ provider: testProvider._id });
-    if (walletAfterWebhook.availableBalance !== 790) {
+    if (walletAfterWebhook.availableBalance !== 850) {
       throw new Error(`Balance altered on webhook re-entry! Balance: ${walletAfterWebhook.availableBalance}`);
     }
 
@@ -208,15 +209,15 @@ async function runRegressionSuite() {
     ]);
 
     // Total gross = 200, 15% comm = 30, net = 170.
-    // Previous balance = 790. New balance = 790 + 170 = 960.
+    // Previous balance = 850. New balance = 850 + 170 = 1020.
     const walletAfterConcurrent = await ProviderWallet.findOne({ provider: testProvider._id });
     const concTxns = await WalletTransaction.find({ booking: concurrentBooking._id, type: 'booking_earning' });
     console.log(`[REGRESSION 7 PASSED] Concurrency handled safely. Transactions created: ${concTxns.length}, Final Balance: ₹${walletAfterConcurrent.availableBalance}`);
     if (concTxns.length !== 1) {
       throw new Error(`Expected exactly 1 transaction for concurrent booking, got ${concTxns.length}`);
     }
-    if (walletAfterConcurrent.availableBalance !== 960) {
-      throw new Error(`Expected balance 960, got ${walletAfterConcurrent.availableBalance}`);
+    if (walletAfterConcurrent.availableBalance !== 1020) {
+      throw new Error(`Expected balance 1020, got ${walletAfterConcurrent.availableBalance}`);
     }
 
     // -------------------------------------------------------------
@@ -230,12 +231,14 @@ async function runRegressionSuite() {
     console.log('[REGRESSION 8 PASSED] Summary verified:', {
       availableBalance: summary.availableBalance,
       totalEarnings: summary.totalEarnings,
+      commissionDue: summary.commissionDue,
       totalTransactions: summary.totalTransactions,
       todayEarnings: earnings.today.amount,
       txnsCount: txns.transactions.length
     });
 
-    if (summary.availableBalance !== 960) throw new Error('Summary balance mismatch');
+    if (summary.availableBalance !== 1020) throw new Error('Summary balance mismatch');
+    if (summary.commissionDue !== 60) throw new Error('Summary commissionDue mismatch');
     if (summary.totalTransactions !== 3) throw new Error('Transaction count mismatch');
 
     // Clean up test bookings

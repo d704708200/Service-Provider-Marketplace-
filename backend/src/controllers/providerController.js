@@ -612,6 +612,82 @@ const deleteProviderByAdmin = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/providers/me/certification
+ * Authenticated provider uploads or replaces their service certification
+ */
+const uploadServiceCertification = async (req, res, next) => {
+  try {
+    const { categoryId, tagId } = req.body;
+    const result = await providerService.uploadServiceCertification(
+      req.user._id,
+      req.file,
+      { categoryId, tagId }
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Service certification uploaded successfully',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/providers/me/certification
+ * Authenticated provider fetches their service certification
+ */
+const getServiceCertification = async (req, res, next) => {
+  try {
+    const result = await providerService.getServiceCertification(req.user._id);
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/providers/me/certification
+ * Authenticated provider removes their optional service certification
+ */
+const removeServiceCertification = async (req, res, next) => {
+  try {
+    const result = await providerService.removeServiceCertification(req.user._id);
+    res.status(200).json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/providers/admin/:id/certification/review
+ * Admin verifies or rejects optional service certification
+ */
+const reviewServiceCertification = async (req, res, next) => {
+  try {
+    const { status, rejectionReason } = req.body;
+    const result = await providerService.reviewServiceCertification(
+      req.params.id,
+      req.user._id,
+      { status, rejectionReason }
+    );
+    res.status(200).json({
+      success: true,
+      message: `Service certification ${status === 'VERIFIED' ? 'verified' : 'rejected'} successfully`,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getProviderMe,
   updateProviderMe,
@@ -632,6 +708,10 @@ module.exports = {
   submitKYC,
   reviewKYC,
   deleteDocument,
+  uploadServiceCertification,
+  getServiceCertification,
+  removeServiceCertification,
+  reviewServiceCertification,
   getPublicProviders,
   getPublicProviderById,
   checkProviderSlotAvailability,

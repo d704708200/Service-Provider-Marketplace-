@@ -124,9 +124,12 @@ async function runWalletLifecycleTests() {
 
     const cashResult = await walletService.creditBookingEarnings(cashBooking._id);
     console.log('[TEST 4 PASSED] Cash booking commission deducted:', cashResult);
-    // Commission is 15% of 500 = 75. Provider's balance should be 850 - 75 = 775.
+    // Under Commission Payable to Mendroo separation:
+    // Commission is 15% of 500 = 75 recorded in commissionDue.
+    // Provider's availableBalance is untouched (850) and commissionDue is 75.
     if (cashResult.platformCommission !== 75) throw new Error(`Expected ₹75 commission, got ${cashResult.platformCommission}`);
-    if (cashResult.balanceAfter !== 775) throw new Error(`Expected balance ₹775, got ${cashResult.balanceAfter}`);
+    if (cashResult.balanceAfter !== 850) throw new Error(`Expected balance ₹850, got ${cashResult.balanceAfter}`);
+    if (cashResult.commissionDue !== 75) throw new Error(`Expected commissionDue ₹75, got ${cashResult.commissionDue}`);
 
     // 7. Test Withdrawal Request
     // Minimum check: < 100 must fail
@@ -152,7 +155,7 @@ async function runWalletLifecycleTests() {
       availableBalance: withdrawResult.walletSummary.availableBalance,
       pendingWithdrawal: withdrawResult.walletSummary.pendingWithdrawal
     });
-    if (withdrawResult.walletSummary.availableBalance !== 475) throw new Error('Expected available balance ₹475');
+    if (withdrawResult.walletSummary.availableBalance !== 550) throw new Error('Expected available balance ₹550');
     if (withdrawResult.walletSummary.pendingWithdrawal !== 300) throw new Error('Expected pending withdrawal ₹300');
 
     // 8. Test Admin Rejection & Full Refund
@@ -166,7 +169,7 @@ async function runWalletLifecycleTests() {
       availableBalance: rejectResult.walletSummary.availableBalance,
       pendingWithdrawal: rejectResult.walletSummary.pendingWithdrawal
     });
-    if (rejectResult.walletSummary.availableBalance !== 775) throw new Error('Expected available balance restored to ₹775');
+    if (rejectResult.walletSummary.availableBalance !== 850) throw new Error('Expected available balance restored to ₹850');
     if (rejectResult.walletSummary.pendingWithdrawal !== 0) throw new Error('Expected pending withdrawal 0');
 
     // 9. Test New Withdrawal Request & Admin Approval & Payout
@@ -203,7 +206,7 @@ async function runWalletLifecycleTests() {
       totalWithdrawn: payoutResult.walletSummary.totalWithdrawn,
       status: payoutResult.withdrawal.status
     });
-    if (payoutResult.walletSummary.availableBalance !== 575) throw new Error('Expected available balance ₹575');
+    if (payoutResult.walletSummary.availableBalance !== 650) throw new Error('Expected available balance ₹650');
     if (payoutResult.walletSummary.totalWithdrawn !== 200) throw new Error('Expected totalWithdrawn ₹200');
 
     // 10. Test Admin Manual Adjustment
@@ -213,7 +216,7 @@ async function runWalletLifecycleTests() {
       { type: 'credit', amount: 50, reason: 'Promotional onboarding incentive' }
     );
     console.log('[TEST 9 PASSED] Admin credit adjustment: balance is now ₹' + creditAdjustment.wallet.availableBalance);
-    if (creditAdjustment.wallet.availableBalance !== 625) throw new Error('Expected ₹625 balance');
+    if (creditAdjustment.wallet.availableBalance !== 700) throw new Error('Expected ₹700 balance');
 
     const debitAdjustment = await walletService.adminAdjustWallet(
       initialWallet._id,
@@ -221,7 +224,7 @@ async function runWalletLifecycleTests() {
       { type: 'debit', amount: 25, reason: 'Customer compensation dispute resolution' }
     );
     console.log('[TEST 10 PASSED] Admin debit adjustment: balance is now ₹' + debitAdjustment.wallet.availableBalance);
-    if (debitAdjustment.wallet.availableBalance !== 600) throw new Error('Expected ₹600 balance');
+    if (debitAdjustment.wallet.availableBalance !== 675) throw new Error('Expected ₹675 balance');
 
     // 11. Test Earnings Breakdown and Summary
     const summary = await walletService.getWalletSummary(testProvider._id);
@@ -238,7 +241,7 @@ async function runWalletLifecycleTests() {
       txnsFetched: txns.transactions.length
     });
 
-    if (summary.availableBalance !== 600) throw new Error('Expected final balance ₹600');
+    if (summary.availableBalance !== 675) throw new Error('Expected final balance ₹675');
 
     // Clean up test bookings
     await Booking.deleteMany({ _id: { $in: [onlineBooking._id, cashBooking._id] } });

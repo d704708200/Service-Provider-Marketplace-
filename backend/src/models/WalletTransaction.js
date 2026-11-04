@@ -23,13 +23,19 @@ const walletTransactionSchema = new mongoose.Schema(
     type: {
       type: String,
       enum: [
-        'booking_earning',      // Service earnings credited to wallet
-        'commission_deduction', // Platform commission deduction (for cash bookings)
-        'withdrawal',           // Debit / Reserved for payout
-        'withdrawal_refund',    // Refund on rejection of withdrawal
-        'adjustment_credit',    // Admin manual adjustment (+)
-        'adjustment_debit',     // Admin manual adjustment (-)
-        'penalty'               // Penalty deduction
+        'booking_earning',               // Service earnings credited to wallet
+        'commission_deduction',          // Platform commission deduction (legacy)
+        'withdrawal',                    // Debit / Reserved for payout
+        'withdrawal_refund',             // Refund on rejection of withdrawal
+        'adjustment_credit',             // Admin manual adjustment (+)
+        'adjustment_debit',              // Admin manual adjustment (-)
+        'penalty',                       // Penalty deduction
+        'CASH_BOOKING_COMMISSION_DUE',   // Platform commission due recorded on cash booking
+        'COMMISSION_PAYMENT',            // Direct Razorpay settlement of outstanding commission
+        'COMMISSION_ADJUSTMENT',         // Automatic deduction from eligible online earning (legacy)
+        'COMMISSION_WALLET_AUTO_DEBIT',  // Automatic deduction from positive available wallet balance
+        'COMMISSION_WAIVER',             // Explicit administrative write-off / waiver of entire commission
+        'COMMISSION_REFUND'              // Commission reversal/refund where applicable
       ],
       required: true,
       index: true
@@ -45,6 +51,14 @@ const walletTransactionSchema = new mongoose.Schema(
     balanceAfter: {
       type: Number,
       required: true
+    },
+    commissionDueBefore: {
+      type: Number,
+      default: null
+    },
+    commissionDueAfter: {
+      type: Number,
+      default: null
     },
     status: {
       type: String,
@@ -90,7 +104,30 @@ walletTransactionSchema.index(
     unique: true,
     partialFilterExpression: {
       booking: { $exists: true, $type: 'objectId' },
-      type: { $in: ['booking_earning', 'commission_deduction'] }
+      type: { $in: ['booking_earning', 'commission_deduction', 'CASH_BOOKING_COMMISSION_DUE'] }
+    }
+  }
+);
+
+// Prevent duplicate settlement for the same Razorpay payment ID under concurrent requests or duplicate webhooks
+walletTransactionSchema.index(
+  { 'metadata.razorpayPaymentId': 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      'metadata.razorpayPaymentId': { $exists: true, $type: 'string' }
+    }
+  }
+);
+
+// Prevent two different payment IDs from settling the same Razorpay order twice
+walletTransactionSchema.index(
+  { 'metadata.razorpayOrderId': 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      'metadata.razorpayOrderId': { $exists: true, $type: 'string' },
+      type: 'COMMISSION_PAYMENT'
     }
   }
 );

@@ -27,6 +27,8 @@ const getProviderProfileByUserId = async (userId) => {
     .populate('user', 'name email phone avatar role isActive isVerified createdAt')
     .populate('categories', 'name slug icon isActive')
     .populate('serviceAreas', 'name city zipCodes isActive')
+    .populate('serviceCertification.category', 'name slug icon')
+    .populate('serviceCertification.tag', 'name slug subcategory')
     .lean();
 
   if (!provider) {
@@ -1435,6 +1437,8 @@ const getAdminProviders = async (query = {}) => {
     Provider.find(filter)
       .populate('user', 'name email phone avatar role isActive isVerified isDeleted createdAt')
       .populate('categories', 'name slug icon isActive')
+      .populate('serviceCertification.category', 'name slug icon')
+      .populate('serviceCertification.tag', 'name slug subcategory')
       .sort({ showInTopRated: -1, topRatedOrder: 1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -1461,6 +1465,9 @@ const getAdminProviderById = async (providerId) => {
     .populate('user', 'name email phone avatar role isActive isVerified createdAt')
     .populate('categories', 'name slug icon isActive')
     .populate('serviceAreas', 'name city zipCodes')
+    .populate('serviceCertification.category', 'name slug icon')
+    .populate('serviceCertification.tag', 'name slug subcategory')
+    .populate('serviceCertification.reviewedBy', 'name email')
     .lean();
 
   if (!provider) {
@@ -1693,6 +1700,208 @@ const deleteProviderByAdmin = async (identifier, adminUserId) => {
   };
 };
 
+/**
+ * Upload or replace optional service certification document
+ */
+const uploadServiceCertification = async (userId, file, { categoryId, tagId }) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (!file) {
+    const err = new Error('No certificate file provided');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!categoryId || !tagId) {
+    const err = new Error('Category ID and Service Tag ID are required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Validate Category exists
+  const category = await Category.findById(categoryId);
+  if (!category) {
+    const err = new Error('Selected category not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Validate ServiceTag exists and belongs to the selected Category
+  const serviceTag = await ServiceTag.findById(tagId);
+  if (!serviceTag) {
+    const err = new Error('Selected service tag not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (serviceTag.category.toString() !== category._id.toString()) {
+    const err = new Error('Selected service tag does not belong to the selected category');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Validate Provider has this category or service tag selected
+  const hasCategory = (provider.categories || []).some(
+    (c) => c.toString() === category._id.toString()
+  );
+  const hasTag = (provider.serviceTags || []).some(
+    (st) => st.tag && st.tag.toString() === serviceTag._id.toString()
+  );
+
+  // If provider has configured categories or tags, ensure association matches provider's services
+  if (!hasCategory && !hasTag && (provider.categories?.length > 0 || provider.serviceTags?.length > 0)) {
+    const err = new Error('Cannot upload certification for a service category or tag you do not provide');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // If replacing an existing certificate, clean up the previous asset
+  if (provider.serviceCertification?.publicId) {
+    const { deleteAsset } = require('../config/cloudinary');
+    const isOldPdf = (provider.serviceCertification.originalFileName || '').toLowerCase().endsWith('.pdf');
+    await deleteAsset(provider.serviceCertification.publicId, isOldPdf ? 'raw' : 'auto');
+  }
+
+  const { uploadDocument } = require('../config/cloudinary');
+  const uploadResult = await uploadDocument(file, {
+    folder: 'marketplace/certifications',
+    public_id: `cert_${provider._id}_${Date.now()}`
+  });
+
+  provider.serviceCertification = {
+    documentUrl: uploadResult.url,
+    publicId: uploadResult.public_id,
+    originalFileName: file.originalname || 'certificate',
+    category: category._id,
+    tag: serviceTag._id,
+    uploadedAt: new Date(),
+    verificationStatus: 'PENDING',
+    rejectionReason: null,
+    reviewedAt: null,
+    reviewedBy: null
+  };
+
+  await provider.save();
+
+  return await Provider.findById(provider._id)
+    .populate('serviceCertification.category', 'name slug icon')
+    .populate('serviceCertification.tag', 'name slug subcategory')
+    .select('serviceCertification')
+    .lean();
+};
+
+/**
+ * Get current provider's service certification
+ */
+const getServiceCertification = async (userId) => {
+  const provider = await Provider.findOne({ user: userId })
+    .populate('serviceCertification.category', 'name slug icon')
+    .populate('serviceCertification.tag', 'name slug subcategory')
+    .select('serviceCertification')
+    .lean();
+
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  return provider.serviceCertification || null;
+};
+
+/**
+ * Remove optional service certification
+ */
+const removeServiceCertification = async (userId) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (!provider.serviceCertification?.documentUrl) {
+    return { message: 'No certification document to remove' };
+  }
+
+  if (provider.serviceCertification?.publicId) {
+    const { deleteAsset } = require('../config/cloudinary');
+    const isPdf = (provider.serviceCertification.originalFileName || '').toLowerCase().endsWith('.pdf');
+    await deleteAsset(provider.serviceCertification.publicId, isPdf ? 'raw' : 'auto');
+  }
+
+  provider.serviceCertification = {
+    documentUrl: null,
+    publicId: null,
+    originalFileName: null,
+    category: null,
+    tag: null,
+    uploadedAt: null,
+    verificationStatus: 'PENDING',
+    rejectionReason: null,
+    reviewedAt: null,
+    reviewedBy: null
+  };
+
+  await provider.save();
+
+  return { message: 'Certification document removed successfully' };
+};
+
+/**
+ * Admin: Review / Verify service certification
+ */
+const reviewServiceCertification = async (providerId, adminUserId, { status, rejectionReason }) => {
+  const provider = await Provider.findById(providerId);
+  if (!provider) {
+    const err = new Error(`Provider not found with ID '${providerId}'`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (!provider.serviceCertification?.documentUrl) {
+    const err = new Error('Provider does not have an uploaded service certification to review');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!['VERIFIED', 'REJECTED'].includes(status)) {
+    const err = new Error("Status must be either 'VERIFIED' or 'REJECTED'");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (status === 'REJECTED') {
+    if (!rejectionReason || typeof rejectionReason !== 'string' || !rejectionReason.trim()) {
+      const err = new Error('Rejection reason is mandatory when rejecting a certification');
+      err.statusCode = 400;
+      throw err;
+    }
+    provider.serviceCertification.verificationStatus = 'REJECTED';
+    provider.serviceCertification.rejectionReason = rejectionReason.trim();
+  } else {
+    provider.serviceCertification.verificationStatus = 'VERIFIED';
+    provider.serviceCertification.rejectionReason = null;
+  }
+
+  provider.serviceCertification.reviewedAt = new Date();
+  provider.serviceCertification.reviewedBy = adminUserId;
+
+  // IMPORTANT: Do not modify provider.kycStatus or provider.verificationStatus
+  await provider.save();
+
+  return await Provider.findById(provider._id)
+    .populate('serviceCertification.category', 'name slug icon')
+    .populate('serviceCertification.tag', 'name slug subcategory')
+    .populate('serviceCertification.reviewedBy', 'name email')
+    .lean();
+};
+
 module.exports = {
   getProviderProfileByUserId,
   updateProviderProfileByUserId,
@@ -1711,6 +1920,10 @@ module.exports = {
   submitKYCDocuments,
   reviewKYC,
   deleteDocument,
+  uploadServiceCertification,
+  getServiceCertification,
+  removeServiceCertification,
+  reviewServiceCertification,
   getPublicProviders,
   getPublicProviderById,
   getProviderSlotAvailability,

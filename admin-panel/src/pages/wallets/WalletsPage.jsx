@@ -28,14 +28,15 @@ import {
   User,
   Phone,
   Mail,
-  Calendar
+  Calendar,
+  Percent
 } from 'lucide-react';
 import { walletApi } from '../../services/api';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
 
 const WalletsPage = () => {
-  const [activeTab, setActiveTab] = useState('withdrawals'); // 'withdrawals' | 'wallets'
+  const [activeTab, setActiveTab] = useState('withdrawals'); // 'withdrawals' | 'wallets' | 'commissions'
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [apiError, setApiError] = useState(null);
@@ -62,6 +63,16 @@ const WalletsPage = () => {
   const [wallets, setWallets] = useState([]);
   const [walletSearch, setWalletSearch] = useState('');
   const [walletPagination, setWalletPagination] = useState({ page: 1, limit: 15, total: 0, pages: 1 });
+
+  // Commissions State
+  const [commissions, setCommissions] = useState([]);
+  const [commissionSummary, setCommissionSummary] = useState({ totalOutstandingCommission: 0, providersWithOutstandingCount: 0 });
+  const [commissionStatusFilter, setCommissionStatusFilter] = useState('all'); // 'all' | 'outstanding' | 'settled'
+  const [commissionPagination, setCommissionPagination] = useState({ page: 1, limit: 15, total: 0, pages: 1 });
+
+  // Separate Settle & Waive Modals (Strictly full-amount only, zero partial settlement inputs)
+  const [settleModal, setSettleModal] = useState({ isOpen: false, item: null, reason: '', isSubmitting: false, error: '' });
+  const [waiveModal, setWaiveModal] = useState({ isOpen: false, item: null, reason: '', isSubmitting: false, error: '' });
 
   // Modals & Drawers
   const [viewModal, setViewModal] = useState({ isOpen: false, item: null, showAccountNumber: false });
@@ -111,6 +122,17 @@ const WalletsPage = () => {
         if (wltRes?.stats) {
           setStats(wltRes.stats);
         }
+      } else if (activeTab === 'commissions') {
+        const commRes = await walletApi.getCommissions({
+          status: commissionStatusFilter,
+          page: commissionPagination.page,
+          limit: 15
+        });
+        if (commRes?.data) {
+          setCommissions(commRes.data.wallets || commRes.data.commissions || []);
+          setCommissionSummary(commRes.data.summary || { totalOutstandingCommission: 0, providersWithOutstandingCount: 0 });
+          setCommissionPagination(commRes.data.pagination || { page: 1, limit: 15, total: 0, pages: 1 });
+        }
       } else {
         const wltRes = await walletApi.getWallets({
           search: walletSearch.trim() || undefined,
@@ -132,7 +154,7 @@ const WalletsPage = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeTab, withdrawalStatus, withdrawalPagination.page, withdrawalSearch, walletSearch, walletPagination.page]);
+  }, [activeTab, withdrawalStatus, withdrawalPagination.page, withdrawalSearch, walletSearch, walletPagination.page, commissionStatusFilter, commissionPagination.page]);
 
   useEffect(() => {
     fetchData();
@@ -141,6 +163,57 @@ const WalletsPage = () => {
   const handleRefresh = () => {
     setRefreshing(true);
     fetchData();
+  };
+
+  const handleToggleAutoDeduct = async (providerId, currentVal, businessName) => {
+    if (!currentVal) {
+      alert('Admin cannot enable automatic deduction. Provider consent is required from the Provider App.');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to disable automatic commission deduction for "${businessName || 'this provider'}"? The provider will have to manually pay their commission or re-enable it in their app.`)) {
+      return;
+    }
+    try {
+      await walletApi.toggleAutoCommissionAdjustment(providerId, false);
+      showNotification(`Automatic commission deduction disabled for ${businessName || 'provider'}`);
+      fetchData();
+    } catch (err) {
+      setApiError(err.message || 'Failed to update auto-deduction setting');
+    }
+  };
+
+  const handleConfirmSettleFull = async () => {
+    if (!settleModal.item) return;
+    if (!settleModal.reason.trim() || settleModal.reason.trim().length < 5) {
+      setSettleModal(p => ({ ...p, error: 'A mandatory audit reason (min 5 characters) is required' }));
+      return;
+    }
+    setSettleModal(p => ({ ...p, isSubmitting: true, error: '' }));
+    try {
+      await walletApi.settleCommission(settleModal.item.providerId, { reason: settleModal.reason.trim() });
+      showNotification(`Full commission of ₹${settleModal.item.commissionDue} settled successfully`);
+      setSettleModal({ isOpen: false, item: null, reason: '', isSubmitting: false, error: '' });
+      fetchData();
+    } catch (err) {
+      setSettleModal(p => ({ ...p, isSubmitting: false, error: err.message || 'Failed to settle commission' }));
+    }
+  };
+
+  const handleConfirmWaiveFull = async () => {
+    if (!waiveModal.item) return;
+    if (!waiveModal.reason.trim() || waiveModal.reason.trim().length < 5) {
+      setWaiveModal(p => ({ ...p, error: 'A mandatory audit reason (min 5 characters) is required' }));
+      return;
+    }
+    setWaiveModal(p => ({ ...p, isSubmitting: true, error: '' }));
+    try {
+      await walletApi.waiveCommission(waiveModal.item.providerId, { reason: waiveModal.reason.trim() });
+      showNotification(`Full commission of ₹${waiveModal.item.commissionDue} waived successfully`);
+      setWaiveModal({ isOpen: false, item: null, reason: '', isSubmitting: false, error: '' });
+      fetchData();
+    } catch (err) {
+      setWaiveModal(p => ({ ...p, isSubmitting: false, error: err.message || 'Failed to waive commission' }));
+    }
   };
 
   // Filtered & Sorted Withdrawals (for instant responsive UX)
@@ -455,20 +528,18 @@ const WalletsPage = () => {
       <div className="flex border-b border-slate-200 gap-8">
         <button
           onClick={() => setActiveTab('withdrawals')}
-          className={`pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2 ${
-            activeTab === 'withdrawals'
+          className={`pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2 ${activeTab === 'withdrawals'
               ? 'text-indigo-600'
               : 'text-slate-500 hover:text-slate-700'
-          }`}
+            }`}
         >
           <span>Withdrawal Requests</span>
           {withdrawalPagination.total > 0 && (
             <span
-              className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                activeTab === 'withdrawals'
+              className={`px-2 py-0.5 rounded-full text-xs font-semibold ${activeTab === 'withdrawals'
                   ? 'bg-indigo-100 text-indigo-700'
                   : 'bg-slate-100 text-slate-600'
-              }`}
+                }`}
             >
               {withdrawalPagination.total}
             </span>
@@ -480,25 +551,47 @@ const WalletsPage = () => {
 
         <button
           onClick={() => setActiveTab('wallets')}
-          className={`pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2 ${
-            activeTab === 'wallets'
+          className={`pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2 ${activeTab === 'wallets'
               ? 'text-indigo-600'
               : 'text-slate-500 hover:text-slate-700'
-          }`}
+            }`}
         >
           <span>Provider Wallets & Ledgers</span>
           {walletPagination.total > 0 && (
             <span
-              className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                activeTab === 'wallets'
+              className={`px-2 py-0.5 rounded-full text-xs font-semibold ${activeTab === 'wallets'
                   ? 'bg-indigo-100 text-indigo-700'
                   : 'bg-slate-100 text-slate-600'
-              }`}
+                }`}
             >
               {walletPagination.total}
             </span>
           )}
           {activeTab === 'wallets' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('commissions')}
+          className={`pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2 ${activeTab === 'commissions'
+              ? 'text-indigo-600'
+              : 'text-slate-500 hover:text-slate-700'
+            }`}
+        >
+          <Percent className="h-4 w-4" />
+          <span>Commission Payable to Mendroo</span>
+          {commissionSummary.providersWithOutstandingCount > 0 && (
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-semibold ${activeTab === 'commissions'
+                  ? 'bg-amber-100 text-amber-800'
+                  : 'bg-slate-100 text-slate-600'
+                }`}
+            >
+              ₹{commissionSummary.totalOutstandingCommission.toLocaleString('en-IN')}
+            </span>
+          )}
+          {activeTab === 'commissions' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
           )}
         </button>
@@ -528,20 +621,18 @@ const WalletsPage = () => {
                       setWithdrawalStatus(st.key);
                       setWithdrawalPagination((p) => ({ ...p, page: 1 }));
                     }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-                      withdrawalStatus === st.key
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${withdrawalStatus === st.key
                         ? 'bg-indigo-600 text-white shadow-xs'
                         : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                    }`}
+                      }`}
                   >
                     <span>{st.label}</span>
                     {count !== undefined && count !== null && count > 0 && (
                       <span
-                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                          withdrawalStatus === st.key
+                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${withdrawalStatus === st.key
                             ? 'bg-indigo-700 text-indigo-100'
                             : 'bg-slate-100 text-slate-600'
-                        }`}
+                          }`}
                       >
                         {count}
                       </span>
@@ -1042,6 +1133,287 @@ const WalletsPage = () => {
         </div>
       )}
 
+            {/* ========================================================= */}
+      {/* TAB 3: COMMISSION PAYABLE TO MENDROO                      */}
+      {/* ========================================================= */}
+      {activeTab === 'commissions' && (
+        <div className="space-y-6">
+          {/* Strict Full Settlement Rule Alert */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+            <Percent className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+            <div>
+              <div className="text-sm font-bold text-amber-900">
+                Strict Settlement Rule: Mendroo Platform Commission
+              </div>
+              <div className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                Platform commission on completed bookings must ALWAYS be settled in full in ONE transaction.
+                Partial payments, installments, and partial adjustments are strictly blocked.
+              </div>
+            </div>
+          </div>
+
+          {/* Metrics summary */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
+              <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Outstanding Due</div>
+              <div className="text-2xl font-bold text-amber-600 mt-1 font-sans">
+                ₹{(commissionSummary.totalOutstandingCommission || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-xs text-slate-500 mt-1">Owed across all active providers</div>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
+              <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Providers With Due</div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">
+                {commissionSummary.providersWithOutstandingCount || 0}
+              </div>
+              <div className="text-xs text-slate-500 mt-1">Providers with balance &gt; ₹0</div>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
+              <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Standard Commission Rate</div>
+              <div className="text-2xl font-bold text-indigo-600 mt-1">
+                15%
+              </div>
+              <div className="text-xs text-slate-500 mt-1">Configured platform take-rate</div>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCommissionStatusFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                    commissionStatusFilter === 'all'
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  All Providers
+                </button>
+                <button
+                  onClick={() => setCommissionStatusFilter('outstanding')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                    commissionStatusFilter === 'outstanding'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  Outstanding Only
+                </button>
+              </div>
+              <div className="text-xs text-slate-500">
+                Total Listed: <strong className="text-slate-800">{commissions.length}</strong>
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="py-20 flex justify-center">
+                <LoadingSpinner size="lg" />
+              </div>
+            ) : commissions.length === 0 ? (
+              <div className="p-8">
+                <EmptyState
+                  icon={Percent}
+                  title="No Commission Records"
+                  description="No providers found matching your filter criteria."
+                />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/80">
+                      <th className="py-3 px-4">Provider</th>
+                      <th className="py-3 px-4">Available Balance</th>
+                      <th className="py-3 px-4">Commission Payable to Mendroo</th>
+                      <th className="py-3 px-4">Auto Deduct from Wallet</th>
+                      <th className="py-3 px-4">Last Auto-Deduction</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-sm">
+                    {commissions.map((c) => (
+                      <tr key={c.walletId} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3.5 px-4 min-w-[200px]">
+                          <div className="font-semibold text-slate-900">{c.businessName}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">{c.providerPhone}</div>
+                        </td>
+                        <td className="py-3.5 px-4 font-bold text-emerald-700 font-sans">
+                          ₹{(c.availableBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-3.5 px-4 font-bold font-sans">
+                          {c.commissionDue > 0 ? (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                              ₹{(c.commissionDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-normal">₹0.00 (Settled)</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          {c.autoDeductCommissionFromWallet || c.autoCommissionAdjustment ? (
+                            <button
+                              onClick={() => handleToggleAutoDeduct(c.providerId, true, c.businessName)}
+                              title="Click to disable automatic deduction for this provider"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                            >
+                              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                              <span>Active (Provider Opted-In)</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleToggleAutoDeduct(c.providerId, false, c.businessName)}
+                              title="Admin cannot enable automatic deduction. Provider consent is required from the Provider App."
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200 transition-colors cursor-pointer"
+                            >
+                              <Lock className="h-3 w-3 text-slate-400" />
+                              <span>Disabled</span>
+                            </button>
+                          )}
+                          {c.reconciliationFlagged && (
+                            <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                              <AlertCircle className="h-3 w-3 text-amber-600" />
+                              <span>Reconciliation Flagged</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-xs text-slate-500">
+                          {c.lastAutoDeductionAt
+                            ? new Date(c.lastAutoDeductionAt).toLocaleDateString('en-IN', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })
+                            : 'Never'}
+                        </td>
+                        <td className="py-3.5 px-4 text-right whitespace-nowrap space-x-2">
+                          {c.commissionDue > 0 ? (
+                            <>
+                              <button
+                                onClick={() => setSettleModal({ isOpen: true, item: c, reason: 'Offline bank transfer collected & verified by admin', isSubmitting: false, error: '' })}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold transition-colors"
+                              >
+                                Settle Full (₹{c.commissionDue})
+                              </button>
+                              <button
+                                onClick={() => setWaiveModal({ isOpen: true, item: c, reason: '', isSubmitting: false, error: '' })}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 text-xs font-semibold transition-colors"
+                              >
+                                Waive Full
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">No Due</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SETTLE FULL COMMISSION MODAL */}
+      {settleModal.isOpen && settleModal.item && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 space-y-4">
+            <h3 className="text-base font-bold text-slate-900">Settle Full Commission (Offline Payment)</h3>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1">
+              <div>Provider: <strong>{settleModal.item.businessName}</strong></div>
+              <div>Outstanding Amount: <strong className="text-amber-700 font-sans">₹{settleModal.item.commissionDue}</strong></div>
+              <div className="text-slate-500 text-[11px]">Strict Full Settlement: Entire outstanding balance will be settled to ₹0.</div>
+            </div>
+            {settleModal.error && (
+              <div className="text-xs text-rose-600 bg-rose-50 p-2.5 rounded-lg border border-rose-200 font-medium">
+                {settleModal.error}
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Mandatory Audit Reason (min 5 chars)</label>
+              <textarea
+                rows={3}
+                value={settleModal.reason}
+                onChange={e => setSettleModal(p => ({ ...p, reason: e.target.value }))}
+                placeholder="e.g. Offline bank transfer collected and verified on bank statement..."
+                className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setSettleModal({ isOpen: false, item: null, reason: '', isSubmitting: false, error: '' })}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={settleModal.isSubmitting}
+                onClick={handleConfirmSettleFull}
+                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50"
+              >
+                {settleModal.isSubmitting ? 'Settling...' : `Confirm Settle ₹${settleModal.item.commissionDue}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WAIVE FULL COMMISSION MODAL */}
+      {waiveModal.isOpen && waiveModal.item && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 space-y-4">
+            <h3 className="text-base font-bold text-rose-900">Waive Full Commission (Audit Required)</h3>
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs space-y-1 text-rose-800">
+              <div>Provider: <strong>{waiveModal.item.businessName}</strong></div>
+              <div>Amount to Waive: <strong className="font-sans">₹{waiveModal.item.commissionDue}</strong></div>
+              <div className="text-[11px]">Notice: This write-off creates a permanent COMMISSION_WAIVER audit ledger transaction.</div>
+            </div>
+            {waiveModal.error && (
+              <div className="text-xs text-rose-600 bg-rose-50 p-2.5 rounded-lg border border-rose-200 font-medium">
+                {waiveModal.error}
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Audited Justification Reason (min 5 chars)</label>
+              <textarea
+                rows={3}
+                value={waiveModal.reason}
+                onChange={e => setWaiveModal(p => ({ ...p, reason: e.target.value }))}
+                placeholder="e.g. Authorized customer goodwill dispute resolution; platform waived platform take-rate."
+                className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-rose-500"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setWaiveModal({ isOpen: false, item: null, reason: '', isSubmitting: false, error: '' })}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={waiveModal.isSubmitting}
+                onClick={handleConfirmWaiveFull}
+                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg disabled:opacity-50"
+              >
+                {waiveModal.isSubmitting ? 'Waiving...' : `Confirm Waive ₹${waiveModal.item.commissionDue}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 1: COMPLETE WITHDRAWAL DETAILS VIEW DRAWER / MODAL    */}
+
       {/* ========================================================= */}
       {/* MODAL 1: COMPLETE WITHDRAWAL DETAILS VIEW DRAWER / MODAL    */}
       {/* ========================================================= */}
@@ -1404,13 +1776,12 @@ const WalletsPage = () => {
                   {/* Step 2: Administrative Review */}
                   <div className="flex items-start gap-3">
                     <div
-                      className={`p-1 rounded-full mt-0.5 ${
-                        viewModal.item.status === 'requested'
+                      className={`p-1 rounded-full mt-0.5 ${viewModal.item.status === 'requested'
                           ? 'bg-amber-100 text-amber-700'
                           : viewModal.item.status === 'rejected'
-                          ? 'bg-rose-100 text-rose-700'
-                          : 'bg-emerald-100 text-emerald-700'
-                      }`}
+                            ? 'bg-rose-100 text-rose-700'
+                            : 'bg-emerald-100 text-emerald-700'
+                        }`}
                     >
                       {viewModal.item.status === 'requested' ? (
                         <Clock className="h-3 w-3" />
@@ -1425,8 +1796,8 @@ const WalletsPage = () => {
                         {viewModal.item.status === 'requested'
                           ? 'Awaiting Administrative Review'
                           : viewModal.item.status === 'rejected'
-                          ? 'Withdrawal Request Rejected'
-                          : 'Approved by Administrator'}
+                            ? 'Withdrawal Request Rejected'
+                            : 'Approved by Administrator'}
                       </div>
                       {viewModal.item.adminNote && (
                         <div className="text-slate-600 mt-0.5 italic">Note: "{viewModal.item.adminNote}"</div>
@@ -1442,11 +1813,10 @@ const WalletsPage = () => {
                   {/* Step 3: Disbursement */}
                   <div className="flex items-start gap-3">
                     <div
-                      className={`p-1 rounded-full mt-0.5 ${
-                        viewModal.item.status === 'paid'
+                      className={`p-1 rounded-full mt-0.5 ${viewModal.item.status === 'paid'
                           ? 'bg-emerald-100 text-emerald-700'
                           : 'bg-slate-100 text-slate-400'
-                      }`}
+                        }`}
                     >
                       {viewModal.item.status === 'paid' ? (
                         <Check className="h-3 w-3" />
@@ -1804,22 +2174,20 @@ const WalletsPage = () => {
                   <button
                     type="button"
                     onClick={() => setAdjustModal((p) => ({ ...p, type: 'credit' }))}
-                    className={`py-2 text-xs font-bold rounded-lg border transition-colors ${
-                      adjustModal.type === 'credit'
+                    className={`py-2 text-xs font-bold rounded-lg border transition-colors ${adjustModal.type === 'credit'
                         ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
                         : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
-                    }`}
+                      }`}
                   >
                     + Credit Balance
                   </button>
                   <button
                     type="button"
                     onClick={() => setAdjustModal((p) => ({ ...p, type: 'debit' }))}
-                    className={`py-2 text-xs font-bold rounded-lg border transition-colors ${
-                      adjustModal.type === 'debit'
+                    className={`py-2 text-xs font-bold rounded-lg border transition-colors ${adjustModal.type === 'debit'
                         ? 'bg-rose-50 border-rose-500 text-rose-700'
                         : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
-                    }`}
+                      }`}
                   >
                     - Debit Balance
                   </button>

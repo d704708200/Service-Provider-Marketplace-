@@ -3,7 +3,7 @@ const router = express.Router();
 const providerController = require('../controllers/providerController');
 const tagController = require('../controllers/tagController');
 const { authenticate, requireRole } = require('../middleware/auth');
-const { uploadSingleAvatar, uploadSingleKYCDocument } = require('../middleware/upload');
+const { uploadSingleAvatar, uploadSingleKYCDocument, uploadSingleCertificationDocument } = require('../middleware/upload');
 const {
   validateObjectId,
   validateUpdateProviderProfile,
@@ -192,6 +192,29 @@ router.post(
   providerController.submitKYC
 );
 
+// Optional Professional Service Certification Routes
+router.post(
+  '/me/certification',
+  authenticate,
+  requireRole('provider'),
+  uploadSingleCertificationDocument('document'),
+  providerController.uploadServiceCertification
+);
+
+router.get(
+  '/me/certification',
+  authenticate,
+  requireRole('provider'),
+  providerController.getServiceCertification
+);
+
+router.delete(
+  '/me/certification',
+  authenticate,
+  requireRole('provider'),
+  providerController.removeServiceCertification
+);
+
 router.delete(
   '/me/documents/:documentId',
   authenticate,
@@ -203,6 +226,14 @@ router.delete(
 // =========================================================
 // 2. ADMIN VERIFICATION & DIRECTORY ROUTES (role: admin)
 // =========================================================
+router.patch(
+  '/admin/:id/certification/review',
+  authenticate,
+  requireRole('admin'),
+  validateObjectId('id'),
+  providerController.reviewServiceCertification
+);
+
 router.patch(
   '/admin/:id/kyc/review',
   authenticate,

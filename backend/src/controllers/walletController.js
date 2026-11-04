@@ -197,12 +197,180 @@ const adminAdjustWallet = async (req, res, next) => {
   }
 };
 
+const getCommissionDetails = async (req, res, next) => {
+  try {
+    const provider = await getProviderFromUser(req.user._id);
+    const details = await walletService.getCommissionDetails(provider._id);
+
+    res.status(200).json({
+      success: true,
+      data: details
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const createPayCommissionOrder = async (req, res, next) => {
+  try {
+    const provider = await getProviderFromUser(req.user._id);
+    const order = await walletService.createPayCommissionOrder(provider._id);
+
+    res.status(200).json({
+      success: true,
+      data: order
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const cancelPayCommissionOrder = async (req, res, next) => {
+  try {
+    const provider = await getProviderFromUser(req.user._id);
+    const result = await walletService.cancelActiveCommissionOrder(provider._id);
+
+    res.status(200).json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const verifyCommissionPayment = async (req, res, next) => {
+  try {
+    const provider = await getProviderFromUser(req.user._id);
+    const result = await walletService.verifyAndSettleCommissionPayment(provider._id, req.body);
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const toggleAutoDeductCommission = async (req, res, next) => {
+  try {
+    const provider = await getProviderFromUser(req.user._id);
+    const { enabled } = req.body;
+    const result = await walletService.toggleAutoDeductCommission(provider._id, enabled);
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const adminListCommissions = async (req, res, next) => {
+  try {
+    const result = await walletService.adminListCommissions(req.query);
+
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const adminToggleAutoCommissionAdjustment = async (req, res, next) => {
+  try {
+    const result = await walletService.adminToggleAutoCommissionAdjustment(
+      req.params.id,
+      req.body.enabled,
+      req.user._id
+    );
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const adminSettleFullCommission = async (req, res, next) => {
+  try {
+    const result = await walletService.adminSettleFullCommission(
+      req.params.id,
+      req.body,
+      req.user._id
+    );
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const adminWaiveFullCommission = async (req, res, next) => {
+  try {
+    const result = await walletService.adminWaiveFullCommission(
+      req.params.id,
+      req.body,
+      req.user._id
+    );
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const adminAdjustCommission = async (req, res, next) => {
+  try {
+    const result = await walletService.adminAdjustCommission(
+      req.params.id,
+      req.body,
+      req.user._id
+    );
+
+    res.status(200).json({
+      success: true,
+      message: result.message || 'Commission adjusted successfully',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getSummary,
   getEarnings,
   getTransactions,
   requestWithdrawal,
   getWithdrawals,
+  getCommissionDetails,
+  createPayCommissionOrder,
+  cancelPayCommissionOrder,
+  verifyCommissionPayment,
+  toggleAutoDeductCommission,
+  adminListCommissions,
+  adminToggleAutoCommissionAdjustment,
+  adminSettleFullCommission,
+  adminWaiveFullCommission,
+  adminAdjustCommission,
   adminListWallets,
   adminListWithdrawals,
   adminApproveWithdrawal,

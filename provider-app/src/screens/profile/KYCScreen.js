@@ -14,8 +14,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { useAuth } from '../../context/AuthContext';
-import { providerApi } from '../../services/api';
+import { providerApi, providerTagApi } from '../../services/api';
 import { Card, Button, Header } from '../../components/common';
 import API_CONFIG from '../../config/env';
 import colors from '../../theme/colors';
@@ -41,6 +42,15 @@ export default function KYCScreen({ navigation, route }) {
   // Review modal before final submission
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
 
+  // Optional Service Certification states
+  const [certification, setCertification] = useState(profile?.serviceCertification || null);
+  const [availableServices, setAvailableServices] = useState([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [selectedTagId, setSelectedTagId] = useState('');
+  const [isCertUploading, setIsCertUploading] = useState(false);
+  const [certActionLoading, setCertActionLoading] = useState(false);
+  const [serviceSelectModalVisible, setServiceSelectModalVisible] = useState(false);
+
   useEffect(() => {
     providerApi.getProfile()
       .then((res) => {
@@ -50,6 +60,24 @@ export default function KYCScreen({ navigation, route }) {
           if (res.data.aadhaarBackImage) setAadhaarBack(res.data.aadhaarBackImage);
           if (res.data.panFrontImage) setPanFront(res.data.panFrontImage);
           if (res.data.panBackImage) setPanBack(res.data.panBackImage);
+          if (res.data.serviceCertification) {
+            setCertification(res.data.serviceCertification);
+            if (res.data.serviceCertification.category?._id) {
+              setSelectedCategoryId(res.data.serviceCertification.category._id);
+            }
+            if (res.data.serviceCertification.tag?._id) {
+              setSelectedTagId(res.data.serviceCertification.tag._id);
+            }
+          }
+        }
+      })
+      .catch(() => {});
+
+    // Fetch provider's configured services and approved tags to populate Related Service dropdown
+    providerTagApi.getMyServicesAndTags()
+      .then((res) => {
+        if (res?.success && Array.isArray(res.data)) {
+          setAvailableServices(res.data);
         }
       })
       .catch(() => {});
@@ -178,6 +206,133 @@ export default function KYCScreen({ navigation, route }) {
       case 'pan_back': return 'PAN Card (Back)';
       default: return 'Document';
     }
+  };
+
+  const handlePickCertification = async () => {
+    if (!selectedCategoryId || !selectedTagId) {
+      Alert.alert('Select Related Service', 'Please select a Related Service & Tag from the dropdown before uploading your certificate.');
+      return;
+    }
+
+    Alert.alert(
+      'Upload Service Certificate',
+      'Choose certificate file type:',
+      [
+        {
+          text: 'PDF Document',
+          onPress: async () => {
+            try {
+              const docRes = await DocumentPicker.getDocumentAsync({
+                type: ['application/pdf'],
+                copyToCacheDirectory: true
+              });
+
+              if (docRes.canceled || !docRes.assets || docRes.assets.length === 0) return;
+              const asset = docRes.assets[0];
+              await uploadCertificationAsset(asset, 'application/pdf');
+            } catch (err) {
+              Alert.alert('Upload Error', err.message || 'Failed to select document');
+            }
+          }
+        },
+        {
+          text: 'Photo (JPG/PNG)',
+          onPress: async () => {
+            try {
+              const libPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+              if (!libPerm.granted) {
+                Alert.alert('Permission Denied', 'Media library permission is required.');
+                return;
+              }
+              const imgRes = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                quality: 0.8
+              });
+              if (imgRes.canceled || !imgRes.assets || imgRes.assets.length === 0) return;
+              const asset = imgRes.assets[0];
+              const mime = asset.mimeType || (asset.uri?.endsWith('.png') ? 'image/png' : 'image/jpeg');
+              await uploadCertificationAsset(asset, mime);
+            } catch (err) {
+              Alert.alert('Upload Error', err.message || 'Failed to select photo');
+            }
+          }
+        },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  };
+
+  const uploadCertificationAsset = async (asset, mimeType) => {
+    setIsCertUploading(true);
+    setErrorMsg(null);
+    try {
+      const formData = new FormData();
+      formData.append('categoryId', selectedCategoryId);
+      formData.append('tagId', selectedTagId);
+
+      const uri = asset.uri;
+      const isPdf = mimeType.includes('pdf') || (asset.name || '').endsWith('.pdf');
+      const safeFilename = asset.name || `cert_${Date.now()}.${isPdf ? 'pdf' : 'jpg'}`;
+
+      if (Platform.OS === 'web') {
+        if (asset.file instanceof Blob) {
+          formData.append('document', asset.file, safeFilename);
+        } else {
+          const fetchRes = await fetch(uri);
+          const blob = await fetchRes.blob();
+          const file = new File([blob], safeFilename, { type: mimeType });
+          formData.append('document', file, safeFilename);
+        }
+      } else {
+        formData.append('document', {
+          uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
+          name: safeFilename,
+          type: mimeType
+        });
+      }
+
+      const res = await providerApi.uploadCertification(formData);
+      if (res?.success && res.data?.serviceCertification) {
+        setCertification(res.data.serviceCertification);
+        Alert.alert('Success', 'Professional service certification uploaded successfully! Verification is pending admin review.');
+      }
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.message || 'Failed to upload certification';
+      Alert.alert('Upload Failed', msg);
+    } finally {
+      setIsCertUploading(false);
+    }
+  };
+
+  const handleRemoveCertification = () => {
+    Alert.alert(
+      'Remove Certification',
+      'Are you sure you want to remove your uploaded certification? This will not affect your mandatory KYC verification or registration.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setCertActionLoading(true);
+            try {
+              const res = await providerApi.removeCertification();
+              if (res?.success) {
+                setCertification(null);
+                setSelectedCategoryId('');
+                setSelectedTagId('');
+                Alert.alert('Removed', 'Service certification has been removed.');
+              }
+            } catch (err) {
+              Alert.alert('Error', err.response?.data?.error?.message || err.message || 'Failed to remove certification');
+            } finally {
+              setCertActionLoading(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const validateKYCPackage = () => {
@@ -372,6 +527,165 @@ export default function KYCScreen({ navigation, route }) {
           />
         </View>
 
+        {/* Section 3: Optional Professional Service Certification */}
+        <View style={[styles.sectionHeader, { marginTop: spacing.xl }]}>
+          <View style={[styles.sectionBadge, { backgroundColor: '#3B82F6' }]}>
+            <Text style={styles.sectionBadgeText}>Step 3</Text>
+          </View>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.sectionHeading}>Professional Service Certification</Text>
+            <View style={[styles.badge, styles.badgeOptional]}>
+              <Text style={styles.badgeText}>OPTIONAL</Text>
+            </View>
+          </View>
+        </View>
+        <Text style={styles.sectionSub}>
+          Upload a certificate, professional qualification, or training document related to the services you provide. This document is optional and will not block registration or KYC verification.
+        </Text>
+
+        <Card style={styles.certCard}>
+          {/* Related Service Selector Button */}
+          <Text style={styles.certFieldLabel}>Related Service & Tag</Text>
+          <TouchableOpacity
+            style={styles.certSelectorBtn}
+            onPress={() => setServiceSelectModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="pricetag-outline" size={18} color="#A78BFA" />
+            <Text style={styles.certSelectorText} numberOfLines={1}>
+              {(() => {
+                if (selectedCategoryId && selectedTagId) {
+                  for (const cat of availableServices) {
+                    if (cat.category?._id === selectedCategoryId) {
+                      const tag = (cat.tags || []).find((t) => t.tag?._id === selectedTagId);
+                      if (tag) return `${cat.category?.name || 'Category'} → ${tag.tag?.name || 'Tag'}`;
+                    }
+                  }
+                  if (certification?.category?.name && certification?.tag?.name) {
+                    return `${certification.category.name} → ${certification.tag.name}`;
+                  }
+                }
+                return 'Select Category & Service Tag...';
+              })()}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color="#9CA3AF" />
+          </TouchableOpacity>
+
+          {/* Current Certification Status Banner */}
+          <View style={styles.certStatusRow}>
+            <Text style={styles.certStatusLabel}>Verification Status:</Text>
+            <View
+              style={[
+                styles.certStatusBadge,
+                !certification?.documentUrl
+                  ? { backgroundColor: '#374151' }
+                  : certification.verificationStatus === 'VERIFIED'
+                  ? { backgroundColor: '#065F46' }
+                  : certification.verificationStatus === 'REJECTED'
+                  ? { backgroundColor: '#991B1B' }
+                  : { backgroundColor: '#92400E' }
+              ]}
+            >
+              <Text style={styles.certStatusBadgeText}>
+                {!certification?.documentUrl
+                  ? 'Not Uploaded'
+                  : certification.verificationStatus === 'VERIFIED'
+                  ? 'Verified'
+                  : certification.verificationStatus === 'REJECTED'
+                  ? 'Rejected'
+                  : 'Pending Verification'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Rejection Note Display if rejected */}
+          {certification?.documentUrl && certification.verificationStatus === 'REJECTED' && certification.rejectionReason && (
+            <View style={styles.certRejectionBox}>
+              <Ionicons name="alert-circle" size={16} color="#F87171" style={{ marginTop: 1 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.certRejectionTitle}>Admin Rejection Reason:</Text>
+                <Text style={styles.certRejectionText}>{certification.rejectionReason}</Text>
+                <Text style={styles.certRejectionSub}>You can replace this certificate with an updated document below.</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Document Preview & Details */}
+          {certification?.documentUrl ? (
+            <View style={styles.certPreviewBox}>
+              <View style={styles.certFileIconBox}>
+                <Ionicons
+                  name={
+                    (certification.originalFileName || '').toLowerCase().endsWith('.pdf') ||
+                    (certification.documentUrl || '').toLowerCase().includes('.pdf')
+                      ? 'document-text'
+                      : 'image'
+                  }
+                  size={28}
+                  color="#A78BFA"
+                />
+              </View>
+              <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                <Text style={styles.certFileName} numberOfLines={1}>
+                  {certification.originalFileName || 'Service Certificate'}
+                </Text>
+                <Text style={styles.certFileMeta}>
+                  {certification.uploadedAt ? `Uploaded ${new Date(certification.uploadedAt).toLocaleDateString()}` : 'Uploaded'}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.certPlaceholderBox}>
+              <Ionicons name="ribbon-outline" size={32} color="#6B7280" />
+              <Text style={styles.certPlaceholderText}>No certificate uploaded (Optional)</Text>
+              <Text style={styles.certPlaceholderSub}>Supports PDF, JPG, PNG up to 5 MB</Text>
+            </View>
+          )}
+
+          {/* Upload Progress State */}
+          {isCertUploading && (
+            <View style={styles.certUploadingBar}>
+              <ActivityIndicator size="small" color="#A78BFA" />
+              <Text style={styles.certUploadingText}>Uploading certificate to secure storage...</Text>
+            </View>
+          )}
+
+          {/* Certification Actions Row */}
+          <View style={styles.certActionsRow}>
+            <TouchableOpacity
+              style={[
+                styles.certActionBtn,
+                { backgroundColor: '#7C3AED', flex: 1 },
+                (!selectedCategoryId || !selectedTagId) && { opacity: 0.6 }
+              ]}
+              onPress={handlePickCertification}
+              disabled={isCertUploading || certActionLoading}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={certification?.documentUrl ? 'sync-outline' : 'cloud-upload-outline'}
+                size={16}
+                color="#FFFFFF"
+              />
+              <Text style={styles.certActionBtnText}>
+                {certification?.documentUrl ? 'Replace Certificate' : 'Upload Certificate'}
+              </Text>
+            </TouchableOpacity>
+
+            {certification?.documentUrl ? (
+              <TouchableOpacity
+                style={[styles.certActionBtn, { backgroundColor: '#374151', marginLeft: spacing.sm }]}
+                onPress={handleRemoveCertification}
+                disabled={isCertUploading || certActionLoading}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="trash-outline" size={16} color="#F87171" />
+                <Text style={[styles.certActionBtnText, { color: '#F87171' }]}>Remove</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </Card>
+
         {/* Submission Action */}
         <View style={styles.actionContainer}>
           <Button
@@ -442,6 +756,89 @@ export default function KYCScreen({ navigation, route }) {
                 style={{ flex: 1, backgroundColor: '#7C3AED' }}
               />
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Service & Tag Picker Modal */}
+      <Modal
+        visible={serviceSelectModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setServiceSelectModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Select Related Service</Text>
+                <Text style={styles.modalSubtitle}>Link your certificate to your active service tag</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setServiceSelectModalVisible(false)}
+                style={styles.closeBtn}
+              >
+                <Ionicons name="close" size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginVertical: spacing.md }}>
+              {availableServices.length === 0 ? (
+                <View style={{ padding: spacing.lg, alignItems: 'center' }}>
+                  <Ionicons name="alert-circle-outline" size={36} color="#9CA3AF" />
+                  <Text style={{ color: '#D1D5DB', fontSize: 13, marginTop: spacing.sm, textAlign: 'center' }}>
+                    No services found. Add your services in "My Services" first to link certifications.
+                  </Text>
+                </View>
+              ) : (
+                availableServices.map((catGroup) => (
+                  <View key={catGroup.category?._id} style={{ marginBottom: spacing.md }}>
+                    <Text style={styles.pickerCategoryTitle}>
+                      {catGroup.category?.name || 'Category'}
+                    </Text>
+                    <View style={{ gap: spacing.xs, marginTop: 4 }}>
+                      {(catGroup.tags || []).map((tItem) => {
+                        const isSelected =
+                          selectedCategoryId === catGroup.category?._id &&
+                          selectedTagId === tItem.tag?._id;
+                        return (
+                          <TouchableOpacity
+                            key={tItem.tag?._id}
+                            style={[
+                              styles.pickerTagItem,
+                              isSelected && styles.pickerTagItemSelected
+                            ]}
+                            onPress={() => {
+                              setSelectedCategoryId(catGroup.category._id);
+                              setSelectedTagId(tItem.tag._id);
+                              setServiceSelectModalVisible(false);
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons
+                              name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                              size={18}
+                              color={isSelected ? '#A78BFA' : '#6B7280'}
+                            />
+                            <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                              <Text style={[styles.pickerTagName, isSelected && { color: '#FFFFFF' }]}>
+                                {tItem.tag?.name}
+                              </Text>
+                              {tItem.tag?.subcategory?.name ? (
+                                <Text style={styles.pickerTagSub}>{tItem.tag.subcategory.name}</Text>
+                              ) : null}
+                            </View>
+                            {isSelected && (
+                              <Ionicons name="checkmark-circle" size={18} color="#A78BFA" />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -834,5 +1231,200 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#252136',
     paddingTop: spacing.md
+  },
+  // Service Certification Card Styles
+  certCard: {
+    backgroundColor: '#1E1B2E',
+    borderRadius: 14,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: '#2D2845',
+    marginTop: spacing.xs
+  },
+  certFieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D1D5DB',
+    marginBottom: 6
+  },
+  certSelectorBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161324',
+    borderWidth: 1,
+    borderColor: '#373052',
+    borderRadius: 10,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 12,
+    marginBottom: spacing.md
+  },
+  certSelectorText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#F3F4F6',
+    fontWeight: '500',
+    marginHorizontal: spacing.xs
+  },
+  certStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.sm
+  },
+  certStatusLabel: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '500'
+  },
+  certStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6
+  },
+  certStatusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  certRejectionBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#2D151B',
+    borderWidth: 1,
+    borderColor: '#7F1D1D',
+    borderRadius: 8,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    gap: spacing.xs
+  },
+  certRejectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#F87171'
+  },
+  certRejectionText: {
+    fontSize: 12,
+    color: '#FECACA',
+    marginTop: 2
+  },
+  certRejectionSub: {
+    fontSize: 10,
+    color: '#FCA5A5',
+    marginTop: 4,
+    fontStyle: 'italic'
+  },
+  certPreviewBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161324',
+    borderWidth: 1,
+    borderColor: '#2E2848',
+    borderRadius: 10,
+    padding: spacing.sm,
+    marginBottom: spacing.md
+  },
+  certFileIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: '#272042',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  certFileName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF'
+  },
+  certFileMeta: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2
+  },
+  certPlaceholderBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#161324',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#373052',
+    borderRadius: 10,
+    paddingVertical: spacing.lg,
+    marginBottom: spacing.md
+  },
+  certPlaceholderText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '500',
+    marginTop: 6
+  },
+  certPlaceholderSub: {
+    fontSize: 10,
+    color: '#6B7280',
+    marginTop: 2
+  },
+  certUploadingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: '#251F3D',
+    borderRadius: 8,
+    padding: spacing.sm,
+    marginBottom: spacing.md
+  },
+  certUploadingText: {
+    fontSize: 11,
+    color: '#A78BFA',
+    fontWeight: '500'
+  },
+  certActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  certActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: spacing.md,
+    borderRadius: 8,
+    gap: 6
+  },
+  certActionBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF'
+  },
+  pickerCategoryTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#A78BFA',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4
+  },
+  pickerTagItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1F1B2E',
+    borderWidth: 1,
+    borderColor: '#2E2845',
+    borderRadius: 8,
+    padding: spacing.sm
+  },
+  pickerTagItemSelected: {
+    borderColor: '#7C3AED',
+    backgroundColor: '#272042'
+  },
+  pickerTagName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#D1D5DB'
+  },
+  pickerTagSub: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2
   }
 });

@@ -146,6 +146,55 @@ const providerSchema = new mongoose.Schema(
       }
     },
     documents: [documentSchema],
+    // Optional Professional Service Certification
+    serviceCertification: {
+      documentUrl: {
+        type: String,
+        default: null
+      },
+      publicId: {
+        type: String,
+        default: null
+      },
+      originalFileName: {
+        type: String,
+        trim: true,
+        default: null
+      },
+      category: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Category',
+        default: null
+      },
+      tag: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'ServiceTag',
+        default: null
+      },
+      uploadedAt: {
+        type: Date,
+        default: null
+      },
+      verificationStatus: {
+        type: String,
+        enum: ['PENDING', 'VERIFIED', 'REJECTED'],
+        default: 'PENDING'
+      },
+      rejectionReason: {
+        type: String,
+        trim: true,
+        default: null
+      },
+      reviewedAt: {
+        type: Date,
+        default: null
+      },
+      reviewedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+      }
+    },
     // KYC Document Fields
     aadhaarFrontImage: {
       type: String,

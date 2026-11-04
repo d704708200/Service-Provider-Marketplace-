@@ -207,6 +207,13 @@ export const providerApi = {
     );
     return response.data;
   },
+  reviewServiceCertification: async (providerId, reviewData) => {
+    const response = await api.patch(
+      `/providers/admin/${providerId}/certification/review`,
+      reviewData
+    );
+    return response.data;
+  },
   updateVerification: async (providerId, verificationData) => {
     const response = await api.patch(
       `/providers/admin/${providerId}/verification`,
@@ -451,6 +458,27 @@ export const walletApi = {
   },
   adjustWallet: async (id, data) => {
     const response = await api.post(`/admin/wallets/${id}/adjust`, data);
+    return response.data;
+  },
+  // Commission Payable Endpoints
+  getCommissions: async (params = {}) => {
+    const response = await api.get('/admin/wallets/commissions', { params });
+    return response.data;
+  },
+  toggleAutoCommissionAdjustment: async (providerId, enabled) => {
+    const response = await api.patch(`/admin/wallets/providers/${providerId}/commission/auto-adjustment`, { enabled });
+    return response.data;
+  },
+  settleCommission: async (providerId, data) => {
+    const response = await api.post(`/admin/wallets/providers/${providerId}/commission/settle`, data);
+    return response.data;
+  },
+  waiveCommission: async (providerId, data) => {
+    const response = await api.post(`/admin/wallets/providers/${providerId}/commission/waive`, data);
+    return response.data;
+  },
+  adjustCommission: async (providerId, data) => {
+    const response = await api.post(`/admin/wallets/providers/${providerId}/commission/adjust`, data);
     return response.data;
   }
 };

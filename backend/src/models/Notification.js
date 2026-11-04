@@ -1,4 +1,4 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 const notificationSchema = new mongoose.Schema(
   {
@@ -19,7 +19,7 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['booking', 'system', 'promotion', 'payment', 'review'],
+      enum: ['booking', 'system', 'promotion', 'payment', 'review', 'wallet'],
       default: 'system'
     },
     data: {

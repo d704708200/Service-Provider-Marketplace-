@@ -41,9 +41,8 @@ export default function ProfileScreen({ navigation }) {
     if (!avatarPath) return null;
     let url = avatarPath;
     if (url.startsWith('/')) {
-      const baseUrl = process.env.EXPO_PUBLIC_API_URL
-        ? process.env.EXPO_PUBLIC_API_URL.replace(/\/api\/?$/, '')
-        : 'http://localhost:5000';
+      const baseUrl = (process.env.EXPO_PUBLIC_API_URL || 'https://service-provider-marketplace.onrender.com/api')
+        .replace(/\/api\/?$/, '');
       url = `${baseUrl}${url}`;
     }
     // Append cache buster to prevent stale image caching
@@ -591,7 +590,7 @@ export default function ProfileScreen({ navigation }) {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>API Endpoint</Text>
             <Text style={styles.detailValue} numberOfLines={1}>
-              {process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api'}
+              {process.env.EXPO_PUBLIC_API_URL || 'https://service-provider-marketplace.onrender.com/api'}
             </Text>
           </View>
         </Card>

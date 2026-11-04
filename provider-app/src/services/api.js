@@ -183,6 +183,19 @@ export const providerApi = {
   submitKYCDocuments: async (kycData) => {
     const response = await api.post('/providers/me/kyc/submit', kycData);
     return response.data;
+  },
+  // Optional Professional Service Certification APIs
+  uploadCertification: async (formData) => {
+    const response = await api.post('/providers/me/certification', formData);
+    return response.data;
+  },
+  getCertification: async () => {
+    const response = await api.get('/providers/me/certification');
+    return response.data;
+  },
+  removeCertification: async () => {
+    const response = await api.delete('/providers/me/certification');
+    return response.data;
   }
 };
 
@@ -290,6 +303,26 @@ export const walletApi = {
   },
   getWithdrawals: async (params = {}) => {
     const response = await api.get('/provider/wallet/withdrawals', { params });
+    return response.data;
+  },
+  getCommissionDetails: async () => {
+    const response = await api.get('/provider/wallet/commission');
+    return response.data;
+  },
+  createPayCommissionOrder: async () => {
+    const response = await api.post('/provider/wallet/commission/pay');
+    return response.data;
+  },
+  cancelPayCommissionOrder: async () => {
+    const response = await api.post('/provider/wallet/commission/cancel');
+    return response.data;
+  },
+  verifyCommissionPayment: async (paymentData) => {
+    const response = await api.post('/provider/wallet/commission/verify', paymentData);
+    return response.data;
+  },
+  toggleAutoDeductCommission: async (enabled) => {
+    const response = await api.patch('/provider/wallet/commission/auto-deduct', { enabled });
     return response.data;
   }
 };
