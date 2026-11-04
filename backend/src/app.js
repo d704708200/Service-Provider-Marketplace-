@@ -27,11 +27,16 @@ initializeFirebase();
 
 const app = express();
 
-// Security headers
-app.use(helmet());
-
-// Cross-Origin Resource Sharing
+// Cross-Origin Resource Sharing (CORS) & Preflight Handling (mounted first)
 app.use(corsMiddleware);
+app.options('*', corsMiddleware);
+
+// Security headers (configured to allow cross-origin assets)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' }
+  })
+);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));

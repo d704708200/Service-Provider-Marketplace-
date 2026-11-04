@@ -1,4 +1,6 @@
-﻿// Not Found Handler
+const { isOriginAllowed } = require('../config/cors');
+
+// Not Found Handler
 const notFoundHandler = (req, res, next) => {
   const error = new Error(`Resource not found: ${req.method} ${req.originalUrl}`);
   error.statusCode = 404;
@@ -7,8 +9,21 @@ const notFoundHandler = (req, res, next) => {
 
 // Centralized Error Handler
 const errorHandler = (err, req, res, next) => {
+  // Ensure CORS headers are attached on error responses if request origin is valid
+  const origin = req.headers?.origin;
+  if (origin && isOriginAllowed && isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  }
+
   let statusCode = err.statusCode || (res.statusCode !== 200 && res.statusCode !== 204 ? res.statusCode : 500);
   let message = err.message || 'Internal Server Error';
+
+  // Handle CORS blocked origin errors with 403 Forbidden instead of 500
+  if (err.message && err.message.startsWith('CORS blocked')) {
+    statusCode = 403;
+  }
 
   // Handle Mongoose CastError (invalid ObjectId)
   if (err.name === 'CastError') {
