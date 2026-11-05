@@ -95,6 +95,21 @@ const getProviderPublicReviews = async (req, res, next) => {
   }
 };
 
+const getProviderReviews = async (req, res, next) => {
+  try {
+    const result = await reviewService.getProviderReviews(req.user._id, req.query);
+    res.status(200).json({
+      success: true,
+      message: 'Provider reviews retrieved successfully',
+      data: result.reviews,
+      stats: result.stats,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getAdminReviews,
   updateReviewVisibility,
@@ -102,5 +117,6 @@ module.exports = {
   createCustomerReview,
   getCustomerReviews,
   getBookingReview,
-  getProviderPublicReviews
+  getProviderPublicReviews,
+  getProviderReviews
 };

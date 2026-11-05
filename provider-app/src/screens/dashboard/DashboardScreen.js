@@ -413,15 +413,23 @@ export default function DashboardScreen({ navigation }) {
               <Text style={styles.statLabel}>Completed Jobs</Text>
             </TouchableOpacity>
 
-            <View style={styles.statCard}>
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => navigation.navigate('Reviews')}
+              activeOpacity={0.7}
+            >
               <View style={styles.statIconBadge}>
                 <Ionicons name="star" size={18} color="#F59E0B" />
               </View>
               <Text style={styles.statNumber}>
-                {profile?.rating?.average ? Number(profile.rating.average).toFixed(1) : '5.0'}
+                {profile?.rating?.average
+                  ? Number(profile.rating.average).toFixed(1)
+                  : typeof profile?.rating === 'number' && profile.rating > 0
+                  ? Number(profile.rating).toFixed(1)
+                  : '5.0'}
               </Text>
               <Text style={styles.statLabel}>Client Rating</Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 

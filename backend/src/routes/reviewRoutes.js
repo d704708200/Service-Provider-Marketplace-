@@ -55,6 +55,14 @@ router.get(
   reviewController.getBookingReview
 );
 
+// Provider: Get authenticated provider's reviews, rating stats, and distribution
+router.get(
+  '/provider/me',
+  authenticate,
+  requireRole('provider'),
+  reviewController.getProviderReviews
+);
+
 // Public: Get reviews for a provider
 router.get(
   '/provider/:providerId',

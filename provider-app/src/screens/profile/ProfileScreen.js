@@ -347,8 +347,8 @@ export default function ProfileScreen({ navigation }) {
                   verificationStatus === 'verified'
                     ? 'success'
                     : verificationStatus === 'pending'
-                    ? 'warning'
-                    : 'danger'
+                      ? 'warning'
+                      : 'danger'
                 }
                 size="sm"
                 style={{ marginTop: 6 }}
@@ -445,8 +445,8 @@ export default function ProfileScreen({ navigation }) {
               <View style={[
                 styles.kycNavBadge,
                 verificationStatus === 'verified' ? styles.kycNavBadgeVerified :
-                verificationStatus === 'rejected' ? styles.kycNavBadgeRejected :
-                styles.kycNavBadgePending
+                  verificationStatus === 'rejected' ? styles.kycNavBadgeRejected :
+                    styles.kycNavBadgePending
               ]}>
                 <Text style={styles.kycNavBadgeText}>
                   {verificationStatus.toUpperCase()}
@@ -485,15 +485,23 @@ export default function ProfileScreen({ navigation }) {
               <Text style={styles.statLabel}>Completed Jobs</Text>
             </View>
 
-            <View style={styles.statBox}>
+            <TouchableOpacity
+              style={styles.statBox}
+              onPress={() => navigation.navigate('Reviews')}
+              activeOpacity={0.7}
+            >
               <View style={styles.ratingRow}>
                 <Ionicons name="star" size={15} color="#F59E0B" />
                 <Text style={styles.statVal}>
-                  {profile?.rating?.average ? Number(profile.rating.average).toFixed(1) : '5.0'}
+                  {profile?.rating?.average
+                    ? Number(profile.rating.average).toFixed(1)
+                    : typeof profile?.rating === 'number' && profile.rating > 0
+                      ? Number(profile.rating).toFixed(1)
+                      : '5.0'}
                 </Text>
               </View>
               <Text style={styles.statLabel}>Rating</Text>
-            </View>
+            </TouchableOpacity>
 
             <View style={styles.statBox}>
               <Text style={styles.statVal}>{profile?.experienceYears || 1}+ yrs</Text>

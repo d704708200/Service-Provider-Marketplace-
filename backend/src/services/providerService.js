@@ -8,6 +8,15 @@ const ServiceArea = require('../models/ServiceArea');
 const Review = require('../models/Review');
 const Booking = require('../models/Booking');
 const ServiceTag = require('../models/ServiceTag');
+const ProviderSlotReservation = require('../models/ProviderSlotReservation');
+const {
+  parseTimeToMinutes,
+  minutesToHHmm,
+  normalizeTimeSlot,
+  doIntervalsOverlap,
+  generateSlotTicks,
+  formatDateToDateStr
+} = require('../utils/timeSlotUtils');
 
 const escapeRegex = (string) => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1236,12 +1245,23 @@ const getProviderSlotAvailability = async ({ providerId, date, startTime, endTim
     throw err;
   }
 
+  const dateStr = formatDateToDateStr(targetDate);
   const startOfDay = new Date(targetDate);
   startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(targetDate);
   endOfDay.setHours(23, 59, 59, 999);
 
   const dayOfWeek = targetDate.getDay();
+
+  // Normalize requested slot
+  const normSlot = normalizeTimeSlot({ startTime, endTime });
+  const reqStartMin = normSlot?.startMinutes ?? parseTimeToMinutes(startTime);
+  const reqEndMin = normSlot?.endMinutes ?? parseTimeToMinutes(endTime);
+  const canonicalStart = normSlot?.startTime || startTime;
+  const canonicalEnd = normSlot?.endTime || endTime;
+  const requestedTicks = (reqStartMin !== null && reqEndMin !== null)
+    ? generateSlotTicks(reqStartMin, reqEndMin)
+    : [];
 
   // 1. Check working hours schedule in Availability collection
   const availabilityDoc = await Availability.findOne({
@@ -1257,9 +1277,14 @@ const getProviderSlotAvailability = async ({ providerId, date, startTime, endTim
       isWorkingHours = false;
       workingHoursReason = `Provider is off duty on this day of the week`;
     } else if (availabilityDoc.slots && availabilityDoc.slots.length > 0) {
-      const slotMatch = availabilityDoc.slots.some(
-        (slot) => startTime >= slot.startTime && startTime < slot.endTime
-      );
+      const slotMatch = availabilityDoc.slots.some((slot) => {
+        const sMin = parseTimeToMinutes(slot.startTime);
+        const eMin = parseTimeToMinutes(slot.endTime);
+        if (sMin !== null && eMin !== null && reqStartMin !== null) {
+          return reqStartMin >= sMin && reqStartMin < eMin;
+        }
+        return canonicalStart >= slot.startTime && canonicalStart < slot.endTime;
+      });
       if (!slotMatch) {
         isWorkingHours = false;
         workingHoursReason = `The requested time ${startTime} is outside provider's scheduled working hours`;
@@ -1267,19 +1292,40 @@ const getProviderSlotAvailability = async ({ providerId, date, startTime, endTim
     }
   }
 
-  // 2. Check for overlapping active bookings
-  const conflictingBookings = await Booking.find({
+  // 2. Check for overlapping active bookings and slot reservations
+  const activeBookings = await Booking.find({
     provider: provider._id,
     status: { $in: ['pending', 'accepted', 'in_progress'] },
     bookingMode: 'scheduled',
-    scheduledDate: { $gte: startOfDay, $lte: endOfDay },
-    'scheduledTimeSlot.startTime': { $lt: endTime },
-    'scheduledTimeSlot.endTime': { $gt: startTime }
+    scheduledDate: { $gte: startOfDay, $lte: endOfDay }
   })
     .select('bookingReference status scheduledDate scheduledTimeSlot service')
     .lean();
 
-  const hasBookingConflict = conflictingBookings.length > 0;
+  const conflictingBookings = activeBookings.filter((b) => {
+    if (!b.scheduledTimeSlot) return false;
+    const bSlot = normalizeTimeSlot(b.scheduledTimeSlot);
+    if (bSlot && reqStartMin !== null && reqEndMin !== null) {
+      return doIntervalsOverlap(reqStartMin, reqEndMin, bSlot.startMinutes, bSlot.endMinutes);
+    }
+    const bStart = (b.scheduledTimeSlot.startTime || '').trim();
+    const bEnd = (b.scheduledTimeSlot.endTime || '').trim();
+    return bStart < canonicalEnd && bEnd > canonicalStart;
+  });
+
+  let hasReservationConflict = false;
+  if (requestedTicks.length > 0) {
+    const existingReservation = await ProviderSlotReservation.findOne({
+      provider: provider._id,
+      dateStr,
+      timeSlot: { $in: requestedTicks }
+    }).lean();
+    if (existingReservation) {
+      hasReservationConflict = true;
+    }
+  }
+
+  const hasBookingConflict = conflictingBookings.length > 0 || hasReservationConflict;
   const isAvailable = provider.isAvailable && isWorkingHours && !hasBookingConflict;
 
   let busyReason = null;
@@ -1288,7 +1334,7 @@ const getProviderSlotAvailability = async ({ providerId, date, startTime, endTim
   } else if (!isWorkingHours) {
     busyReason = workingHoursReason || 'Outside working hours';
   } else if (hasBookingConflict) {
-    busyReason = `The selected provider already has a booking during this time (${conflictingBookings[0].scheduledTimeSlot.startTime} - ${conflictingBookings[0].scheduledTimeSlot.endTime}).`;
+    busyReason = 'This provider is already booked for the selected time. Please choose another time or provider.';
   }
 
   // 3. If busy/unavailable, find alternatives from the EXACT SAME category
@@ -1336,23 +1382,44 @@ const getProviderSlotAvailability = async ({ providerId, date, startTime, endTim
         continue;
       }
       if (altAvail && altAvail.slots && altAvail.slots.length > 0) {
-        const slotMatch = altAvail.slots.some(
-          (s) => startTime >= s.startTime && startTime < s.endTime
-        );
+        const slotMatch = altAvail.slots.some((s) => {
+          const sMin = parseTimeToMinutes(s.startTime);
+          const eMin = parseTimeToMinutes(s.endTime);
+          if (sMin !== null && eMin !== null && reqStartMin !== null) {
+            return reqStartMin >= sMin && reqStartMin < eMin;
+          }
+          return canonicalStart >= s.startTime && canonicalStart < s.endTime;
+        });
         if (!slotMatch) continue;
       }
 
       // Check overlapping bookings
-      const altConflicts = await Booking.countDocuments({
+      const altBookings = await Booking.find({
         provider: alt._id,
         status: { $in: ['pending', 'accepted', 'in_progress'] },
         bookingMode: 'scheduled',
-        scheduledDate: { $gte: startOfDay, $lte: endOfDay },
-        'scheduledTimeSlot.startTime': { $lt: endTime },
-        'scheduledTimeSlot.endTime': { $gt: startTime }
+        scheduledDate: { $gte: startOfDay, $lte: endOfDay }
+      }).select('scheduledTimeSlot').lean();
+
+      const altHasConflict = altBookings.some((b) => {
+        if (!b.scheduledTimeSlot) return false;
+        const bSlot = normalizeTimeSlot(b.scheduledTimeSlot);
+        if (bSlot && reqStartMin !== null && reqEndMin !== null) {
+          return doIntervalsOverlap(reqStartMin, reqEndMin, bSlot.startMinutes, bSlot.endMinutes);
+        }
+        return (b.scheduledTimeSlot.startTime || '') < canonicalEnd && (b.scheduledTimeSlot.endTime || '') > canonicalStart;
       });
 
-      if (altConflicts === 0) {
+      if (!altHasConflict) {
+        if (requestedTicks.length > 0) {
+          const resConflict = await ProviderSlotReservation.findOne({
+            provider: alt._id,
+            dateStr,
+            timeSlot: { $in: requestedTicks }
+          }).lean();
+          if (resConflict) continue;
+        }
+
         // Compute starting price
         const altService = await Service.findOne({
           $or: [
@@ -1368,6 +1435,14 @@ const getProviderSlotAvailability = async ({ providerId, date, startTime, endTim
         alternativeProviders.push({
           _id: alt._id,
           businessName: alt.businessName || alt.user?.name || 'Verified Provider',
+          avatar: alt.user?.avatar || null,
+          rating: alt.rating || 0,
+          reviewCount: alt.reviewCount || 0,
+          startingPrice: altService ? altService.price : null
+        });
+      }
+    }
+  }
           avatar: alt.user?.avatar || null,
           experienceYears: alt.experienceYears || 0,
           categories: alt.categories,

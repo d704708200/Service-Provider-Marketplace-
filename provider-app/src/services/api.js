@@ -351,4 +351,12 @@ export const providerTagApi = {
   }
 };
 
+// Provider Reviews & Ratings API
+export const reviewApi = {
+  getProviderReviews: async (params = {}) => {
+    const response = await api.get('/reviews/provider/me', { params });
+    return response.data;
+  }
+};
+
 export default api;

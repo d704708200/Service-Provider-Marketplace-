@@ -394,6 +394,95 @@ const getProviderPublicReviews = async (providerId, query = {}) => {
   };
 };
 
+/**
+ * Get authenticated provider's reviews, rating stats, and star distribution
+ */
+const getProviderReviews = async (userId, query = {}) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const limit = Math.max(1, Math.min(50, parseInt(query.limit, 10) || 10));
+  const skip = (page - 1) * limit;
+
+  const queryFilter = { provider: provider._id };
+
+  // Star Rating filter
+  if (query.rating && query.rating !== 'all') {
+    const r = parseInt(query.rating, 10);
+    if (!isNaN(r) && r >= 1 && r <= 5) {
+      queryFilter.rating = r;
+    }
+  }
+
+  // Aggregate stats across ALL reviews for this provider
+  const statsAgg = await Review.aggregate([
+    { $match: { provider: provider._id } },
+    {
+      $group: {
+        _id: '$rating',
+        count: { $sum: 1 }
+      }
+    }
+  ]);
+
+  const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let sumScore = 0;
+  let totalReviewsCount = 0;
+
+  statsAgg.forEach((item) => {
+    if (item._id && distribution.hasOwnProperty(item._id)) {
+      distribution[item._id] = item.count;
+      sumScore += item._id * item.count;
+      totalReviewsCount += item.count;
+    }
+  });
+
+  const averageRating = totalReviewsCount > 0 ? Number((sumScore / totalReviewsCount).toFixed(1)) : 0;
+
+  // Auto-sync Provider model aggregate if differs
+  if (provider.rating?.average !== averageRating || provider.rating?.count !== totalReviewsCount) {
+    await Provider.findByIdAndUpdate(provider._id, {
+      'rating.average': averageRating,
+      'rating.count': totalReviewsCount
+    });
+  }
+
+  const [reviews, total] = await Promise.all([
+    Review.find(queryFilter)
+      .populate({
+        path: 'customer',
+        populate: { path: 'user', select: 'name email phone avatar' }
+      })
+      .populate('service', 'name price category')
+      .populate('booking', 'bookingReference status pricing scheduledDate createdAt')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Review.countDocuments(queryFilter)
+  ]);
+
+  return {
+    reviews,
+    stats: {
+      total: totalReviewsCount,
+      averageRating,
+      distribution
+    },
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1
+    }
+  };
+};
+
 module.exports = {
   getAdminReviews,
   updateReviewVisibilityByAdmin,
@@ -402,5 +491,6 @@ module.exports = {
   createReviewByCustomer,
   getBookingReview,
   getCustomerReviews,
-  getProviderPublicReviews
+  getProviderPublicReviews,
+  getProviderReviews
 };
