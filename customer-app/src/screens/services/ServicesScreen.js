@@ -142,7 +142,7 @@ export default function ServicesScreen({ navigation }) {
         />
 
         {/* Categories Chips */}
-        <ScrollView
+        <ScrollView showsVerticalScrollIndicator={false}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipsScroll}
@@ -184,7 +184,7 @@ export default function ServicesScreen({ navigation }) {
       ) : error ? (
         <ErrorView message={error} onRetry={fetchServices} />
       ) : (
-        <FlatList
+        <FlatList showsHorizontalScrollIndicator={false}
           data={services}
           keyExtractor={(item) => item._id}
           renderItem={renderServiceCard}

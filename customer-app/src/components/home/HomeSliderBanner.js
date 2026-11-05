@@ -256,7 +256,7 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
   return (
     <View style={styles.container} onLayout={onLayout}>
       <View style={[styles.carouselClipWrap, { width: containerWidth, height: bannerHeight }]}>
-        <FlatList
+        <FlatList showsVerticalScrollIndicator={false}
           ref={flatListRef}
           data={validBanners}
           renderItem={renderItem}

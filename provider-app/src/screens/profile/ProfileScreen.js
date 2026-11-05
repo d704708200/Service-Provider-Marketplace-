@@ -245,7 +245,7 @@ export default function ProfileScreen({ navigation }) {
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
 
-      <ScrollView
+      <ScrollView showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xxl }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -572,7 +572,7 @@ export default function ProfileScreen({ navigation }) {
       {/* Edit Profile Modal */}
       <Modal visible={editModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScroll}>
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Edit Provider Profile</Text>

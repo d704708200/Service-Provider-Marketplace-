@@ -295,7 +295,7 @@ export default function DashboardScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView
+      <ScrollView showsHorizontalScrollIndicator={false}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}

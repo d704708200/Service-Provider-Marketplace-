@@ -443,7 +443,7 @@ export default function ProviderServicesScreen({ navigation }) {
       ) : activeTab === 'tags' ? (
         // DYNAMIC SERVICE TAGS TAB
         <View style={{ flex: 1 }}>
-          <ScrollView
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
             style={styles.contentScroll}
             contentContainerStyle={styles.scrollContent}
             refreshControl={
@@ -502,7 +502,7 @@ export default function ProviderServicesScreen({ navigation }) {
             </View>
 
             {/* Category Filter Chips */}
-            <ScrollView
+            <ScrollView showsVerticalScrollIndicator={false}
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.categoryChipsContainer}
@@ -736,7 +736,7 @@ export default function ProviderServicesScreen({ navigation }) {
         </View>
       ) : (
         // LEGACY CUSTOM SERVICES TAB
-        <ScrollView
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
           style={styles.contentScroll}
           contentContainerStyle={styles.scrollContent}
           refreshControl={
@@ -909,7 +909,7 @@ export default function ProviderServicesScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsHorizontalScrollIndicator={false} showsVerticalScrollIndicator={false}>
               <Text style={styles.modalInputLabel}>Service Name</Text>
               <TextInput
                 style={styles.modalInput}
@@ -920,7 +920,7 @@ export default function ProviderServicesScreen({ navigation }) {
               />
 
               <Text style={styles.modalInputLabel}>Category</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
                 {categories.map((c) => (
                   <TouchableOpacity
                     key={c._id}

@@ -141,7 +141,7 @@ export default function HistoryScreen({ navigation }) {
       />
 
       <View style={styles.filterSection}>
-        <ScrollView
+        <ScrollView showsVerticalScrollIndicator={false}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterScroll}
@@ -174,7 +174,7 @@ export default function HistoryScreen({ navigation }) {
       ) : error ? (
         <ErrorView message={error} onRetry={fetchHistory} />
       ) : (
-        <FlatList
+        <FlatList showsHorizontalScrollIndicator={false}
           data={bookings}
           keyExtractor={(item) => item._id}
           renderItem={renderBookingCard}

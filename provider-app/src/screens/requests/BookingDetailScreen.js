@@ -562,7 +562,7 @@ export default function BookingDetailScreen({ route, navigation }) {
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
 
-      <ScrollView
+      <ScrollView showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 140 }]}
         showsVerticalScrollIndicator={false}
       >
@@ -1034,7 +1034,7 @@ export default function BookingDetailScreen({ route, navigation }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            <ScrollView showsHorizontalScrollIndicator={false} style={styles.modalBody} showsVerticalScrollIndicator={false}>
               {partsList.length === 0 ? (
                 <View style={styles.emptyPartsModalBox}>
                   <Ionicons name="construct-outline" size={26} color="#A78BFA" />
@@ -1247,7 +1247,7 @@ export default function BookingDetailScreen({ route, navigation }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            <ScrollView showsHorizontalScrollIndicator={false} style={styles.modalBody} showsVerticalScrollIndicator={false}>
               {/* Stepper for Total Team Count */}
               <View style={{ backgroundColor: '#161420', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#252136', marginBottom: 16 }}>
                 <Text style={{ color: '#E2E8F0', fontSize: 14, fontWeight: '700', marginBottom: 4 }}>

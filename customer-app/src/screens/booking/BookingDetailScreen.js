@@ -298,7 +298,7 @@ export default function BookingDetailScreen({ route, navigation }) {
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
 
-      <ScrollView
+      <ScrollView showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 120 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={

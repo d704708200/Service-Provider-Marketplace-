@@ -95,7 +95,7 @@ export default function RegisterScreen({ navigation }) {
       style={styles.keyboardContainer}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView
+      <ScrollView showsHorizontalScrollIndicator={false}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xl }

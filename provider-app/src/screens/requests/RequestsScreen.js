@@ -221,7 +221,7 @@ export default function RequestsScreen({ navigation }) {
       ) : error ? (
         <ErrorView message={error} onRetry={fetchRequests} />
       ) : (
-        <FlatList
+        <FlatList showsHorizontalScrollIndicator={false}
           data={requests}
           keyExtractor={(item) => item._id}
           renderItem={renderRequestCard}

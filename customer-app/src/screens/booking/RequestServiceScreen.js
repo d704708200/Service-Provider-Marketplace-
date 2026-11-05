@@ -619,7 +619,7 @@ export default function RequestServiceScreen({ route, navigation }) {
 
     return (
       <View style={[styles.confirmContainer, { paddingTop: insets.top }]}>
-        <ScrollView
+        <ScrollView showsHorizontalScrollIndicator={false}
           contentContainerStyle={[
             styles.confirmScrollContent,
             { paddingBottom: insets.bottom + spacing.xl }
@@ -877,7 +877,7 @@ export default function RequestServiceScreen({ route, navigation }) {
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
 
-      <ScrollView
+      <ScrollView showsHorizontalScrollIndicator={false}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingBottom: insets.bottom + spacing.xxl }
@@ -1064,7 +1064,7 @@ export default function RequestServiceScreen({ route, navigation }) {
             )}
 
             {/* Interactive 14-day horizontal calendar chip list */}
-            <ScrollView
+            <ScrollView showsVerticalScrollIndicator={false}
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.dateChipsScroll}
@@ -1247,7 +1247,7 @@ export default function RequestServiceScreen({ route, navigation }) {
           {savedAddresses.length > 0 && (
             <View style={{ marginBottom: spacing.md }}>
               <Text style={styles.subSectionTitle}>Choose from Saved Addresses</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: 4 }}>
+              <ScrollView showsVerticalScrollIndicator={false} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: 4 }}>
                 {savedAddresses.map((addr) => {
                   const isSelected = selectedAddressId === addr._id && !useCustomAddress;
                   return (

@@ -259,7 +259,7 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView
+      <ScrollView showsHorizontalScrollIndicator={false}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}

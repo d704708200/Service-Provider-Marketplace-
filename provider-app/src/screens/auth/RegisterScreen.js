@@ -192,7 +192,7 @@ export default function RegisterScreen({ navigation }) {
       style={styles.keyboardContainer}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView
+      <ScrollView showsHorizontalScrollIndicator={false}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xl }
@@ -558,7 +558,7 @@ export default function RegisterScreen({ navigation }) {
                       <Text style={styles.modalEmptyText}>No categories match "{searchQuery}"</Text>
                     </View>
                   ) : (
-                    <ScrollView
+                    <ScrollView showsHorizontalScrollIndicator={false}
                       style={styles.categoryScrollView}
                       contentContainerStyle={styles.categoryScrollContent}
                       keyboardShouldPersistTaps="handled"

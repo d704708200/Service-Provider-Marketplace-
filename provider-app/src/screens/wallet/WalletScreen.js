@@ -263,7 +263,7 @@ export default function WalletScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
+      <ScrollView showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#8B5CF6" />
@@ -702,7 +702,7 @@ export default function WalletScreen({ navigation }) {
               </Text>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ marginVertical: 12 }}>
+            <ScrollView showsHorizontalScrollIndicator={false} showsVerticalScrollIndicator={false} style={{ marginVertical: 12 }}>
               <Text style={styles.modalListHeading}>Cash Bookings Breakdown</Text>
               {(!commissionData?.history || commissionData.history.length === 0) ? (
                 <View style={{ padding: 24, alignItems: 'center' }}>

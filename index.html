@@ -11,6 +11,11 @@
 
     * {
       font-family: 'Inter', sans-serif;
+    /* Smooth Scrolling & Cross-Browser Scrollbar Hiding */
+    html { scroll-behavior: smooth; }
+    @media (prefers-reduced-motion: reduce) { html, :root, * { scroll-behavior: auto !important; } }
+    html, body, *, *::before, *::after { scrollbar-width: none; -ms-overflow-style: none; }
+    *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
     }
 
     /* ── Animated Background ─────────────────────── */

@@ -377,7 +377,7 @@ export default function ProfileScreen({ navigation }) {
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
 
-      <ScrollView
+      <ScrollView showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + spacing.xxl }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -671,7 +671,7 @@ export default function ProfileScreen({ navigation }) {
       {/* Add / Edit Address Modal */}
       <Modal visible={isAddressModalOpen} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScrollContent}>
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>

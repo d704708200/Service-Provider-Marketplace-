@@ -9,8 +9,12 @@ import { NotificationProvider } from './src/context/NotificationContext';
 import LocationPermissionModal from './src/components/common/LocationPermissionModal';
 import RootNavigator from './src/navigation/RootNavigator';
 import { configureNotificationChannel } from './src/services/notificationService';
+import { setupGlobalScrollbars } from './src/utils/scrollbars';
 
 export const navigationRef = createNavigationContainerRef();
+
+// Initialize global scrollbar hiding and smooth scrolling
+setupGlobalScrollbars();
 
 if (__DEV__ && Platform.OS === 'web' && typeof window !== 'undefined') {
   window.__navigationRef = navigationRef;

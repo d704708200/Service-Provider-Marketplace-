@@ -1,3 +1,77 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ==========================================================================
+   Global Smooth Scrolling Architecture
+   Respects user's motion preferences for accessibility (prefers-reduced-motion)
+   ========================================================================== */
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html,
+  :root,
+  * {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
+   Global Scrollbar-Hiding Architecture
+   Hides visible vertical and horizontal scrollbars cross-browser:
+   - WebKit / Chromium (Chrome, Edge, Safari, Opera) via ::-webkit-scrollbar
+   - Firefox via scrollbar-width: none
+   - IE 10+ and legacy Edge via -ms-overflow-style: none
+   
+   CRITICAL PRESERVATION:
+   - Does NOT use overflow: hidden as a global workaround.
+   - Mouse wheel, trackpad, touchscreen swipe, keyboard (PageUp/Down, arrows,
+     spacebar), and programmatic scrolling remain 100% functional.
+   - Sidebar and main page content remain independently scrollable.
+   - Tables and wide components retain full horizontal scrolling.
+   - Modals, dropdowns, and nested scrollable containers remain fully scrollable.
+   ========================================================================== */
+
+/* Universal application to all scrollable elements and containers */
+html,
+body,
+#root,
+*,
+*::before,
+*::after {
+  /* Firefox */
+  scrollbar-width: none;
+  /* IE 10+ & Legacy Edge */
+  -ms-overflow-style: none;
+}
+
+/* WebKit (Chrome, Safari, Edge, Opera) */
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+  -webkit-appearance: none !important;
+}
+
+*::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  display: none !important;
+  background: transparent !important;
+}
+
+/* Reusable Tailwind utilities */
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+}

@@ -149,7 +149,7 @@ export default function CategoryServicesScreen({ route, navigation }) {
       ) : error ? (
         <ErrorView message={error} onRetry={fetchServices} />
       ) : (
-        <FlatList
+        <FlatList showsHorizontalScrollIndicator={false}
           data={services}
           keyExtractor={(item) => item._id}
           renderItem={renderServiceItem}

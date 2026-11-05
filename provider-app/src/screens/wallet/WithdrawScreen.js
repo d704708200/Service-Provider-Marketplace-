@@ -161,7 +161,7 @@ export default function WithdrawScreen({ route, navigation }) {
           <View style={{ width: 38 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {/* Available Balance Banner */}
           <View style={styles.availableBox}>
             <View>

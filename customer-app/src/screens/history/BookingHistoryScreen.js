@@ -718,7 +718,7 @@ export default function BookingHistoryScreen({ navigation }) {
       {loading ? (
         <ActivityIndicator size="small" color="#7C3AED" style={{ marginTop: 40 }} />
       ) : !fetchError && (
-        <FlatList
+        <FlatList showsHorizontalScrollIndicator={false}
           data={filteredData}
           keyExtractor={(item) => item._id}
           renderItem={renderBookingCard}
@@ -772,7 +772,7 @@ export default function BookingHistoryScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            <ScrollView showsHorizontalScrollIndicator={false} style={styles.modalBody} showsVerticalScrollIndicator={false}>
               {/* Status Notice */}
               <View
                 style={[
@@ -1092,7 +1092,7 @@ export default function BookingHistoryScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            <ScrollView showsHorizontalScrollIndicator={false} style={styles.modalBody} showsVerticalScrollIndicator={false}>
               {/* Target Service & Provider Card */}
               <View style={styles.reviewTargetCard}>
                 <View style={styles.reviewTargetIconBox}>
@@ -1224,7 +1224,7 @@ export default function BookingHistoryScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            <ScrollView showsHorizontalScrollIndicator={false} style={styles.modalBody} showsVerticalScrollIndicator={false}>
               <View style={styles.reviewTargetCard}>
                 <View style={styles.reviewTargetIconBox}>
                   <Ionicons name="ribbon-outline" size={20} color="#10B981" />
@@ -1312,7 +1312,7 @@ export default function BookingHistoryScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            <ScrollView showsHorizontalScrollIndicator={false} style={styles.modalBody} showsVerticalScrollIndicator={false}>
               {/* Status Header Badge */}
               <View
                 style={{

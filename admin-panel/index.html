@@ -1,9 +1,29 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" style="scroll-behavior: smooth;">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Service Provider Marketplace — Administration Console</title>
+    <style>
+      /* Pre-hydration smooth scrolling & scrollbar hiding */
+      html {
+        scroll-behavior: smooth;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html, :root, * {
+          scroll-behavior: auto !important;
+        }
+      }
+      html, body, #root, *, *::before, *::after {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      *::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

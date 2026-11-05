@@ -399,7 +399,7 @@ export default function ProvidersScreen({ route, navigation }) {
 
       {/* 3. Category-Specific Service Tags (Pinned Directly Below Search Bar) */}
       <View style={styles.tagChipsSection}>
-        <ScrollView
+        <ScrollView showsVerticalScrollIndicator={false}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.tagChipsScroll}
@@ -470,7 +470,7 @@ export default function ProvidersScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
       ) : (
-        <FlatList
+        <FlatList showsHorizontalScrollIndicator={false}
           data={providers}
           keyExtractor={(item) => item._id}
           renderItem={renderProviderCard}

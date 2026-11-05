@@ -7,11 +7,15 @@ import { NotificationProvider } from './src/context/NotificationContext';
 import { RequestProvider } from './src/context/RequestContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { configureNotificationChannel } from './src/services/notificationService';
+import { setupGlobalScrollbars } from './src/utils/scrollbars';
 
 export const navigationRef = createNavigationContainerRef();
 if (typeof window !== 'undefined') {
   window.__navigationRef = navigationRef;
 }
+
+// Initialize global scrollbar hiding and smooth scrolling
+setupGlobalScrollbars();
 
 export default function App() {
   useEffect(() => {

@@ -214,7 +214,7 @@ export default function SearchScreen({ navigation }) {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Scrollable Container with Search Header */}
-      <ScrollView
+      <ScrollView showsHorizontalScrollIndicator={false}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -252,7 +252,7 @@ export default function SearchScreen({ navigation }) {
         </View>
 
         {/* Filter Pills Horizontal Row */}
-        <ScrollView
+        <ScrollView showsVerticalScrollIndicator={false}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterPillsScroll}
@@ -362,7 +362,7 @@ export default function SearchScreen({ navigation }) {
             <ActivityIndicator size="small" color="#7C3AED" style={{ marginVertical: 24 }} />
           ) : (
             <>
-              <FlatList
+              <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
                 data={providers}
                 keyExtractor={(item) => item._id}
                 renderItem={renderProviderCard}

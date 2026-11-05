@@ -400,7 +400,7 @@ export default function KYCScreen({ navigation, route }) {
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
 
-      <ScrollView
+      <ScrollView showsHorizontalScrollIndicator={false}
         contentContainerStyle={[
           styles.scroll,
           { paddingBottom: insets.bottom + spacing.xxl }
@@ -718,7 +718,7 @@ export default function KYCScreen({ navigation, route }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ marginVertical: spacing.md }}>
+            <ScrollView showsHorizontalScrollIndicator={false} showsVerticalScrollIndicator={false} style={{ marginVertical: spacing.md }}>
               {/* Applicant Snapshot */}
               <View style={styles.snapshotCard}>
                 <Text style={styles.snapshotLabel}>Provider Business:</Text>
@@ -782,7 +782,7 @@ export default function KYCScreen({ navigation, route }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ marginVertical: spacing.md }}>
+            <ScrollView showsHorizontalScrollIndicator={false} showsVerticalScrollIndicator={false} style={{ marginVertical: spacing.md }}>
               {availableServices.length === 0 ? (
                 <View style={{ padding: spacing.lg, alignItems: 'center' }}>
                   <Ionicons name="alert-circle-outline" size={36} color="#9CA3AF" />

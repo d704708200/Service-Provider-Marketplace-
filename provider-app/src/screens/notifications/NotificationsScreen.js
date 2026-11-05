@@ -176,7 +176,7 @@ export default function NotificationsScreen({ navigation }) {
           <ActivityIndicator size="large" color="#8B5CF6" />
         </View>
       ) : (
-        <FlatList
+        <FlatList showsHorizontalScrollIndicator={false}
           data={notifications}
           keyExtractor={(item) => item._id || item.id}
           renderItem={renderItem}
