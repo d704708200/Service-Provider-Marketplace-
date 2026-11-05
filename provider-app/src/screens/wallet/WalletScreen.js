@@ -43,6 +43,8 @@ export default function WalletScreen({ navigation }) {
   const [commissionPayMessage, setCommissionPayMessage] = useState('');
   const [commissionPayError, setCommissionPayError] = useState('');
   const [commissionPayFeedback, setCommissionPayFeedback] = useState(null);
+  const [pendingPaymentDetails, setPendingPaymentDetails] = useState(null);
+  const [reconciling, setReconciling] = useState(false);
   const [togglingAutoDeduct, setTogglingAutoDeduct] = useState(false);
   const [autoDeductModalVisible, setAutoDeductModalVisible] = useState(false);
   const [targetAutoDeductValue, setTargetAutoDeductValue] = useState(false);
@@ -155,7 +157,7 @@ export default function WalletScreen({ navigation }) {
       });
 
       if (!checkoutResult.success) {
-        // Unlock order on server so it can be retried immediately
+        // Unlock order on server only if cancelled before payment
         walletApi.cancelPayCommissionOrder().catch(() => {});
 
         if (checkoutResult.isCancelled) {
@@ -169,54 +171,89 @@ export default function WalletScreen({ navigation }) {
         } else {
           if (__DEV__) console.log('[WalletScreen] Payment checkout failed:', checkoutResult.error);
           setCommissionPayStep('error');
-          setCommissionPayError(checkoutResult.error || 'Payment was not completed. Outstanding commission remains unchanged.');
+          setCommissionPayError(checkoutResult.error || 'Payment failed — safe retry available.');
           setCommissionPayFeedback({
             type: 'error',
-            message: checkoutResult.error || 'Payment was not completed. Outstanding commission remains unchanged.'
+            message: checkoutResult.error || 'Payment failed — safe retry available.'
           });
         }
         setPayingCommission(false);
         return;
       }
 
+      // Razorpay checkout returned successful payment details
+      const paymentData = {
+        razorpayOrderId: checkoutResult.data?.razorpayOrderId || orderRes.data.orderId,
+        razorpayPaymentId: checkoutResult.data?.razorpayPaymentId,
+        razorpaySignature: checkoutResult.data?.razorpaySignature
+      };
+      setPendingPaymentDetails(paymentData);
+
       // Verify on backend
-      setCommissionPayMessage('Verifying payment with server...');
+      setCommissionPayMessage('Verifying payment and settling commission...');
       if (__DEV__) {
-        console.log('[WalletScreen] Gateway payment successful. Verifying server-side signature...');
+        console.log('[WalletScreen] Gateway payment successful. Verifying server-side signature for payment:', paymentData.razorpayPaymentId);
       }
 
-      const verifyRes = await walletApi.verifyCommissionPayment({
-        razorpayOrderId: checkoutResult.data.razorpayOrderId,
-        razorpayPaymentId: checkoutResult.data.razorpayPaymentId,
-        razorpaySignature: checkoutResult.data.razorpaySignature
-      });
+      try {
+        const verifyRes = await walletApi.verifyCommissionPayment(paymentData);
 
-      if (verifyRes?.success) {
-        if (__DEV__) console.log('[WalletScreen] Commission payment verified & settled in full!');
-        setCommissionPayStep('success');
-        setCommissionPayMessage('Commission payment successful. Your platform commission has been settled in full.');
+        if (verifyRes?.success) {
+          if (__DEV__) console.log('[WalletScreen] Commission payment verified & settled in full!');
+          setCommissionPayStep('success');
+          setCommissionPayMessage(verifyRes.message || 'Payment verified and commission settled.');
+          setCommissionPayFeedback({
+            type: 'success',
+            message: 'Payment verified and commission settled.'
+          });
+          setPendingPaymentDetails(null);
+          fetchWalletData();
+          return;
+        } else {
+          throw new Error(verifyRes?.message || 'Verification could not be confirmed.');
+        }
+      } catch (verifyErr) {
+        console.warn('[WalletScreen] Verification call failed, attempting automatic server reconciliation...', verifyErr);
+        // CRITICAL: DO NOT CANCEL THE ORDER ON SERVER! The provider's money was charged at gateway.
+        setCommissionPayMessage('Checking payment settlement with server...');
+
+        try {
+          const recRes = await walletApi.reconcileCommissionPayment();
+          if (recRes?.success && recRes.settled) {
+            setCommissionPayStep('success');
+            setCommissionPayMessage(recRes.message || 'Payment verified and commission settled.');
+            setCommissionPayFeedback({
+              type: 'success',
+              message: 'Payment verified and commission settled.'
+            });
+            setPendingPaymentDetails(null);
+            fetchWalletData();
+            return;
+          }
+        } catch (recErr) {
+          console.warn('[WalletScreen] Auto-reconcile call error:', recErr);
+        }
+
+        const isNetworkErr = !verifyErr.response || /network|timeout|connection/i.test(verifyErr.message || '');
+        const friendlyMessage = isNetworkErr
+          ? 'Network unavailable while confirming settlement. Your payment was captured by Razorpay — please do NOT pay again. Click Check Payment Status to update.'
+          : (verifyErr.response?.data?.error?.message || verifyErr.response?.data?.message || verifyErr.message || 'Payment received but verification pending — do not pay again.');
+
+        setCommissionPayStep('verification_pending');
+        setCommissionPayMessage(friendlyMessage);
         setCommissionPayFeedback({
-          type: 'success',
-          message: 'Commission payment successful. Your platform commission has been settled in full.'
-        });
-        fetchWalletData();
-      } else {
-        if (__DEV__) console.warn('[WalletScreen] Verification issue:', verifyRes?.message);
-        setCommissionPayStep('error');
-        setCommissionPayError(verifyRes?.message || 'Payment verification could not be confirmed by the server.');
-        setCommissionPayFeedback({
-          type: 'error',
-          message: verifyRes?.message || 'Payment verification could not be confirmed by the server.'
+          type: 'warning',
+          message: 'Payment received but verification pending — do not pay again.'
         });
       }
     } catch (err) {
-      console.error('[WalletScreen] Payment exception:', err);
-      // Cancel pending lock so provider can retry
+      console.error('[WalletScreen] Payment order exception:', err);
+      // Cancel pending lock only if order creation itself failed
       walletApi.cancelPayCommissionOrder().catch(() => {});
 
       const errorMsg =
-        err.response?.data?.message ||
         err.response?.data?.error?.message ||
+        err.response?.data?.message ||
         err.message ||
         'Payment request failed. Please check your network and try again.';
 
@@ -228,6 +265,46 @@ export default function WalletScreen({ navigation }) {
       });
     } finally {
       setPayingCommission(false);
+    }
+  };
+
+  const handleReconcileCommissionPayment = async () => {
+    if (reconciling) return;
+    setReconciling(true);
+    setCommissionPayMessage('Checking payment status with gateway...');
+    try {
+      const recRes = await walletApi.reconcileCommissionPayment();
+      if (recRes?.success && recRes.settled) {
+        setCommissionPayStep('success');
+        setCommissionPayMessage(recRes.message || 'Payment verified and commission settled.');
+        setCommissionPayFeedback({
+          type: 'success',
+          message: 'Payment verified and commission settled.'
+        });
+        setPendingPaymentDetails(null);
+        fetchWalletData();
+      } else if (recRes?.status === 'failed' || recRes?.status === 'expired') {
+        setCommissionPayStep('error');
+        setCommissionPayError(recRes.message || 'Payment failed — safe retry available.');
+        setCommissionPayFeedback({
+          type: 'error',
+          message: recRes.message || 'Payment failed — safe retry available.'
+        });
+        setPendingPaymentDetails(null);
+        fetchWalletData();
+      } else {
+        const msg = recRes?.message || 'Payment is still being processed by the gateway. Please wait a moment and check again.';
+        setCommissionPayMessage(msg);
+      }
+    } catch (err) {
+      const errMsg =
+        err.response?.data?.error?.message ||
+        err.response?.data?.message ||
+        err.message ||
+        'Could not reach server to check payment status.';
+      setCommissionPayMessage(`Network unavailable: ${errMsg}. Please click Check Payment Status again.`);
+    } finally {
+      setReconciling(false);
     }
   };
 
@@ -471,26 +548,40 @@ export default function WalletScreen({ navigation }) {
             <View style={[
               styles.feedbackBanner,
               commissionPayFeedback.type === 'success' ? styles.feedbackSuccess :
+              commissionPayFeedback.type === 'warning' ? styles.feedbackWarning :
               commissionPayFeedback.type === 'info' ? styles.feedbackInfo : styles.feedbackError,
               { marginBottom: 12 }
             ]}>
               <Ionicons
                 name={
                   commissionPayFeedback.type === 'success' ? 'checkmark-circle' :
+                  commissionPayFeedback.type === 'warning' ? 'time' :
                   commissionPayFeedback.type === 'info' ? 'information-circle' : 'alert-circle'
                 }
                 size={16}
                 color={
                   commissionPayFeedback.type === 'success' ? '#10B981' :
+                  commissionPayFeedback.type === 'warning' ? '#F59E0B' :
                   commissionPayFeedback.type === 'info' ? '#3B82F6' : '#EF4444'
                 }
               />
               <Text style={[
                 styles.feedbackBannerText,
-                { flex: 1, color: commissionPayFeedback.type === 'success' ? '#10B981' : commissionPayFeedback.type === 'info' ? '#60A5FA' : '#F87171' }
+                { flex: 1, color: commissionPayFeedback.type === 'success' ? '#10B981' : commissionPayFeedback.type === 'warning' ? '#FBBF24' : commissionPayFeedback.type === 'info' ? '#60A5FA' : '#F87171' }
               ]}>
                 {commissionPayFeedback.message}
               </Text>
+              {commissionPayFeedback.type === 'warning' && (
+                <TouchableOpacity
+                  onPress={handleReconcileCommissionPayment}
+                  disabled={reconciling}
+                  style={{ backgroundColor: '#F59E0B', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginRight: 4 }}
+                >
+                  <Text style={{ color: '#000000', fontSize: 11, fontWeight: '700' }}>
+                    {reconciling ? 'Checking...' : 'Check Status'}
+                  </Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity onPress={() => setCommissionPayFeedback(null)} style={{ padding: 4 }}>
                 <Ionicons name="close" size={14} color="#9CA3AF" />
               </TouchableOpacity>
@@ -980,6 +1071,51 @@ export default function WalletScreen({ navigation }) {
                 <Text style={[styles.confirmModalBody, { fontSize: 11, color: '#6B7280', marginTop: 4 }]}>
                   Please do not close this window or navigate away.
                 </Text>
+              </View>
+            )}
+
+            {commissionPayStep === 'verification_pending' && (
+              <View style={{ alignItems: 'center', width: '100%' }}>
+                <View style={[styles.confirmIconCircle, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+                  <Ionicons name="time-outline" size={32} color="#F59E0B" />
+                </View>
+                <Text style={styles.confirmModalTitle}>Verification Pending</Text>
+                <Text style={[styles.confirmModalBody, { color: '#FCD34D', fontWeight: '700', marginTop: 8 }]}>
+                  Payment received but verification pending — do NOT pay again.
+                </Text>
+                <Text style={[styles.confirmModalBody, { fontSize: 12, color: '#D1D5DB', marginTop: 6 }]}>
+                  {commissionPayMessage || 'Your payment was captured by the payment gateway, but server verification is pending.'}
+                </Text>
+                {pendingPaymentDetails?.razorpayPaymentId ? (
+                  <View style={{ backgroundColor: '#1E1B2E', padding: 10, borderRadius: 8, marginTop: 12, width: '100%', borderWidth: 1, borderColor: '#2E2845' }}>
+                    <Text style={{ fontSize: 11, color: '#A78BFA', fontWeight: '600' }}>Payment Reference</Text>
+                    <Text style={{ fontSize: 11, color: '#E2E8F0', marginTop: 2 }}>ID: {pendingPaymentDetails.razorpayPaymentId}</Text>
+                    {pendingPaymentDetails?.razorpayOrderId ? (
+                      <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>Order: {pendingPaymentDetails.razorpayOrderId}</Text>
+                    ) : null}
+                  </View>
+                ) : null}
+                <View style={[styles.confirmActionsRow, { width: '100%', marginTop: 20 }]}>
+                  <TouchableOpacity
+                    style={styles.confirmCancelBtn}
+                    onPress={() => setCommissionPayModalVisible(false)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.confirmCancelBtnText}>Dismiss</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.confirmExecuteBtn, { backgroundColor: '#F59E0B' }]}
+                    onPress={handleReconcileCommissionPayment}
+                    disabled={reconciling}
+                    activeOpacity={0.8}
+                  >
+                    {reconciling ? (
+                      <ActivityIndicator size="small" color="#000000" />
+                    ) : (
+                      <Text style={[styles.confirmExecuteBtnText, { color: '#000000', fontWeight: '700' }]}>Check Payment Status</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
@@ -1843,6 +1979,14 @@ const styles = StyleSheet.create({
   feedbackSuccess: {
     backgroundColor: 'rgba(16, 185, 129, 0.12)',
     borderColor: 'rgba(16, 185, 129, 0.3)'
+  },
+  feedbackWarning: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderColor: 'rgba(245, 158, 11, 0.3)'
+  },
+  feedbackInfo: {
+    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+    borderColor: 'rgba(59, 130, 246, 0.3)'
   },
   feedbackError: {
     backgroundColor: 'rgba(239, 68, 68, 0.12)',

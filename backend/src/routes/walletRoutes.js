@@ -17,6 +17,8 @@ providerRouter.get('/commission', walletController.getCommissionDetails);
 providerRouter.post('/commission/pay', walletController.createPayCommissionOrder);
 providerRouter.post('/commission/cancel', walletController.cancelPayCommissionOrder);
 providerRouter.post('/commission/verify', walletController.verifyCommissionPayment);
+providerRouter.post('/commission/reconcile', walletController.reconcileCommissionPayment);
+providerRouter.get('/commission/reconcile', walletController.reconcileCommissionPayment);
 providerRouter.patch('/commission/auto-deduct', walletController.toggleAutoDeductCommission);
 providerRouter.post('/commission/auto-deduct', walletController.toggleAutoDeductCommission);
 

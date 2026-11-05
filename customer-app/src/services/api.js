@@ -251,6 +251,10 @@ export const bookingApi = {
     const response = await api.patch(`/bookings/customer/${id}/cash/confirm`);
     return response.data;
   },
+  selectPostServicePaymentChoice: async (id, choice) => {
+    const response = await api.patch(`/bookings/customer/${id}/payment-choice`, { choice });
+    return response.data;
+  },
   reportCashPaymentDispute: async (id, disputeReason) => {
     const response = await api.post(`/bookings/customer/${id}/cash/dispute`, { disputeReason });
     return response.data;

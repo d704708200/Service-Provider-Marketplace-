@@ -9,6 +9,10 @@ const notFoundHandler = (req, res, next) => {
 
 // Centralized Error Handler
 const errorHandler = (err, req, res, next) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+
   // Ensure CORS headers are attached on error responses if request origin is valid
   const origin = req.headers?.origin;
   if (origin && isOriginAllowed && isOriginAllowed(origin)) {
@@ -18,7 +22,7 @@ const errorHandler = (err, req, res, next) => {
   }
 
   let statusCode = err.statusCode || (res.statusCode !== 200 && res.statusCode !== 204 ? res.statusCode : 500);
-  let message = err.message || 'Internal Server Error';
+  let message = err.message || err.error?.description || err.description || 'Internal Server Error';
 
   // Handle CORS blocked origin errors with 403 Forbidden instead of 500
   if (err.message && err.message.startsWith('CORS blocked')) {

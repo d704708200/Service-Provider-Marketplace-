@@ -716,9 +716,16 @@ const BookingsPage = () => {
                   <CreditCard className="w-4 h-4 text-indigo-600" />
                   <span>Financial & Payment Breakdown</span>
                 </div>
-                <span className="text-xs font-semibold text-slate-500 uppercase">
-                  Method: {selectedBooking.paymentMethod}
-                </span>
+                <div className="flex items-center gap-2">
+                  {selectedBooking.initialPaymentMethod && (
+                    <span className="text-[11px] font-medium text-slate-500 uppercase bg-slate-100 px-2 py-0.5 rounded">
+                      Initial: {selectedBooking.initialPaymentMethod}
+                    </span>
+                  )}
+                  <span className="text-xs font-semibold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded">
+                    Settlement: {selectedBooking.paymentMethod} {selectedBooking.postServicePaymentChoice ? `(Post-Service ${selectedBooking.postServicePaymentChoice})` : ''}
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
@@ -750,6 +757,14 @@ const BookingsPage = () => {
 
               {/* Payment Gateway Transaction Evidence */}
               <div className="pt-2 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-600">
+                {selectedBooking.postServicePaymentChoice && (
+                  <div>
+                    <span className="text-slate-400 block text-[11px]">Post-Service Choice:</span>
+                    <span className="font-semibold text-indigo-900 uppercase">
+                      {selectedBooking.postServicePaymentChoice}
+                    </span>
+                  </div>
+                )}
                 {selectedBooking.paymentDetails?.razorpayOrderId && (
                   <div>
                     <span className="text-slate-400 block text-[11px]">Razorpay Order ID:</span>

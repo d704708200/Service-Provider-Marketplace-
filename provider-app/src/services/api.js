@@ -321,6 +321,10 @@ export const walletApi = {
     const response = await api.post('/provider/wallet/commission/verify', paymentData);
     return response.data;
   },
+  reconcileCommissionPayment: async () => {
+    const response = await api.post('/provider/wallet/commission/reconcile');
+    return response.data;
+  },
   toggleAutoDeductCommission: async (enabled) => {
     const isEnabled = Boolean(enabled);
     const response = await api.patch('/provider/wallet/commission/auto-deduct', {

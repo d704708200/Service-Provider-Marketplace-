@@ -11,6 +11,7 @@ const {
   validateSubmitSpareParts,
   validateReviewSpareParts,
   validateSelectSparePartsPaymentMethod,
+  validateSelectPostServicePaymentChoice,
   validateUpdateTeamSize
 } = require('../middleware/validation');
 
@@ -100,6 +101,16 @@ router.post(
   requireRole('customer'),
   validateObjectId('id'),
   bookingController.recordSparePartsPaymentFailure
+);
+
+// Customer selects post-service payment choice (cash vs online)
+router.patch(
+  '/customer/:id/payment-choice',
+  authenticate,
+  requireRole('customer'),
+  validateObjectId('id'),
+  validateSelectPostServicePaymentChoice,
+  bookingController.selectPostServicePaymentChoice
 );
 
 // Initiate Razorpay payment order for customer booking

@@ -114,12 +114,23 @@ const verifyPaymentSignature = ({ orderId, paymentId, signature, secret }) => {
     return false;
   }
 
-  const generatedSignature = crypto
-    .createHmac('sha256', keySecret)
-    .update(`${String(orderId).trim()}|${String(paymentId).trim()}`)
-    .digest('hex');
+  try {
+    const generatedSignature = crypto
+      .createHmac('sha256', keySecret)
+      .update(`${String(orderId).trim()}|${String(paymentId).trim()}`)
+      .digest('hex');
 
-  return generatedSignature === String(signature).trim();
+    const genBuf = Buffer.from(generatedSignature, 'utf8');
+    const sigBuf = Buffer.from(String(signature).trim(), 'utf8');
+
+    if (genBuf.length !== sigBuf.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(genBuf, sigBuf);
+  } catch (err) {
+    return false;
+  }
 };
 
 /**
@@ -132,12 +143,39 @@ const verifyWebhookSignature = (bodyString, webhookSignature, secret) => {
   const webhookSecret = (secret || process.env.RAZORPAY_WEBHOOK_SECRET || '').trim();
   if (!webhookSecret || !webhookSignature) return false;
 
-  const expectedSignature = crypto
-    .createHmac('sha256', webhookSecret)
-    .update(bodyString)
-    .digest('hex');
+  try {
+    const expectedSignature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(bodyString)
+      .digest('hex');
 
-  return expectedSignature === String(webhookSignature).trim();
+    const expBuf = Buffer.from(expectedSignature, 'utf8');
+    const sigBuf = Buffer.from(String(webhookSignature).trim(), 'utf8');
+
+    if (expBuf.length !== sigBuf.length) return false;
+    return crypto.timingSafeEqual(expBuf, sigBuf);
+  } catch (err) {
+    return false;
+  }
+};
+
+/**
+ * Normalizes and sanitizes errors thrown by the Razorpay SDK
+ */
+const sanitizeRazorpayError = (err, defaultMessage = 'Payment gateway error') => {
+  if (err instanceof Error && err.statusCode && !err.gatewayError) {
+    return err;
+  }
+  const message =
+    err.error?.description ||
+    err.description ||
+    err.message ||
+    defaultMessage;
+  const statusCode = err.statusCode || 400;
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.gatewayError = err.error || null;
+  return error;
 };
 
 /**
@@ -148,7 +186,11 @@ const verifyWebhookSignature = (bodyString, webhookSignature, secret) => {
 const fetchPayment = async (paymentId) => {
   if (!paymentId) throw new Error('Payment ID is required to fetch Razorpay payment details');
   const instance = getRazorpayInstance();
-  return await instance.payments.fetch(String(paymentId).trim());
+  try {
+    return await instance.payments.fetch(String(paymentId).trim());
+  } catch (err) {
+    throw sanitizeRazorpayError(err, `Failed to fetch payment '${paymentId}' from Razorpay`);
+  }
 };
 
 /**
@@ -159,7 +201,11 @@ const fetchPayment = async (paymentId) => {
 const fetchOrder = async (orderId) => {
   if (!orderId) throw new Error('Order ID is required to fetch Razorpay order details');
   const instance = getRazorpayInstance();
-  return await instance.orders.fetch(String(orderId).trim());
+  try {
+    return await instance.orders.fetch(String(orderId).trim());
+  } catch (err) {
+    throw sanitizeRazorpayError(err, `Failed to fetch order '${orderId}' from Razorpay`);
+  }
 };
 
 /**
@@ -172,7 +218,11 @@ const fetchOrder = async (orderId) => {
 const capturePayment = async (paymentId, amountInPaise, currency = 'INR') => {
   if (!paymentId) throw new Error('Payment ID is required to capture payment');
   const instance = getRazorpayInstance();
-  return await instance.payments.capture(String(paymentId).trim(), amountInPaise, currency);
+  try {
+    return await instance.payments.capture(String(paymentId).trim(), amountInPaise, currency);
+  } catch (err) {
+    throw sanitizeRazorpayError(err, `Failed to capture payment '${paymentId}' with Razorpay`);
+  }
 };
 
 /**
@@ -183,7 +233,11 @@ const capturePayment = async (paymentId, amountInPaise, currency = 'INR') => {
 const fetchOrderPayments = async (orderId) => {
   if (!orderId) throw new Error('Order ID is required to fetch order payments');
   const instance = getRazorpayInstance();
-  return await instance.orders.fetchPayments(String(orderId).trim());
+  try {
+    return await instance.orders.fetchPayments(String(orderId).trim());
+  } catch (err) {
+    throw sanitizeRazorpayError(err, `Failed to fetch payments for order '${orderId}' from Razorpay`);
+  }
 };
 
 module.exports = {
@@ -195,5 +249,6 @@ module.exports = {
   fetchPayment,
   fetchOrder,
   capturePayment,
-  fetchOrderPayments
+  fetchOrderPayments,
+  sanitizeRazorpayError
 };

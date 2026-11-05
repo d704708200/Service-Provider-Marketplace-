@@ -408,6 +408,8 @@ const createBooking = async (userId, bookingData) => {
       },
       paymentStatus: 'pending',
       paymentMethod: bookingData.paymentMethod || 'cash',
+      initialPaymentMethod: bookingData.paymentMethod || 'cash',
+      postServicePaymentChoice: null,
       candidateProviders,
       notes: effectiveNotes
     });
@@ -1239,51 +1241,9 @@ const completeServiceByProvider = async (userId, bookingId) => {
     throw err;
   }
 
-  // Payment completion checks:
-  // 1. If booking paymentMethod is cash, paymentStatus must be paid (marked by provider)
-  if (existing.paymentMethod === 'cash') {
-    if (existing.paymentStatus !== 'paid') {
-      const totalPayable = existing.pricing?.totalAmount || 0;
-      const err = new Error(
-        `Cannot complete service: Provider must collect cash and mark cash received (Total: ₹${totalPayable}) before completion.`
-      );
-      err.statusCode = 400;
-      throw err;
-    }
-  }
-
-  // 2. If booking paymentMethod is online, base service must be paid
-  if (existing.paymentMethod === 'online' && existing.paymentStatus !== 'paid') {
-    const err = new Error(
-      'Cannot complete service: Online payment for base service is pending. Customer must pay before completion.'
-    );
-    err.statusCode = 400;
-    throw err;
-  }
-
-  // 3. If spare parts were approved with additional amount > 0, verify spare parts payment
-  if (
-    existing.spareParts &&
-    existing.spareParts.status === 'approved' &&
-    existing.spareParts.totalAdditionalAmount > 0
-  ) {
-    if (existing.spareParts.paymentStatus !== 'paid') {
-      const method = existing.spareParts.paymentMethod || 'online';
-      if (method === 'cash') {
-        const err = new Error(
-          `Cannot complete service: Provider must mark cash collected for the approved extra materials (₹${existing.spareParts.totalAdditionalAmount}) before completion.`
-        );
-        err.statusCode = 400;
-        throw err;
-      } else {
-        const err = new Error(
-          'Cannot complete service: Approved additional materials amount has not been paid yet by the customer.'
-        );
-        err.statusCode = 400;
-        throw err;
-      }
-    }
-  }
+  // Post-Service Payment Choice Rule:
+  // Provider can mark service complete while payment is pending.
+  // The customer can then choose to pay in Cash directly to the provider or pay Online via Razorpay.
 
   const now = new Date();
   const updatedBooking = await Booking.findOneAndUpdate(
@@ -1317,22 +1277,30 @@ const completeServiceByProvider = async (userId, bookingId) => {
     $inc: { completedBookingsCount: 1 }
   });
 
-  // Credit provider earnings in Wallet (idempotent)
-  try {
-    const walletService = require('./walletService');
-    await walletService.creditBookingEarnings(updatedBooking._id);
-  } catch (walletErr) {
-    console.error('[WALLET_CREDIT_BOOKING_EARNINGS_ERROR]', walletErr.message);
+  // Credit provider earnings in Wallet (idempotent, only if already paid)
+  if (updatedBooking.paymentStatus === 'paid') {
+    try {
+      const walletService = require('./walletService');
+      await walletService.creditBookingEarnings(updatedBooking._id);
+    } catch (walletErr) {
+      console.error('[WALLET_CREDIT_BOOKING_EARNINGS_ERROR]', walletErr.message);
+    }
   }
 
   // Safe notification to customer that service is completed
   try {
     const custUserId = updatedBooking.customer?.user?._id || updatedBooking.customer?.user;
     if (custUserId) {
+      const isPaid = updatedBooking.paymentStatus === 'paid';
+      const totalPayable = updatedBooking.pricing?.totalAmount || 0;
       await notificationService.sendNotification({
         recipientIds: [custUserId],
-        title: `Service Completed: ${updatedBooking.bookingReference}`,
-        body: `Your service ${updatedBooking.service?.name || ''} has been marked as completed. Please leave a review!`,
+        title: isPaid
+          ? `Service Completed: ${updatedBooking.bookingReference}`
+          : `Service Completed • Payment Pending: ${updatedBooking.bookingReference}`,
+        body: isPaid
+          ? `Your service ${updatedBooking.service?.name || ''} has been marked as completed. Please leave a review!`
+          : `Your service has been marked as completed. Total amount: ₹${totalPayable}. Please choose to Pay Cash to Provider or Pay Online via Razorpay in your app.`,
         type: 'booking',
         data: {
           bookingId: updatedBooking._id.toString(),
@@ -1705,6 +1673,7 @@ const createPaymentOrder = async (userId, bookingId) => {
 
   // Persist Razorpay order details on booking
   booking.paymentMethod = 'online';
+  booking.postServicePaymentChoice = 'online';
   if (!booking.paymentDetails) {
     booking.paymentDetails = {};
   }
@@ -1744,6 +1713,12 @@ const verifyPayment = async (userId, bookingId, paymentPayload) => {
     throw err;
   }
 
+  if (booking.paymentDetails?.cashConfirmedByProvider || (booking.paymentStatus === 'paid' && booking.paymentMethod === 'cash')) {
+    const err = new Error('Payment verification conflict: Booking was already settled in cash with the provider');
+    err.statusCode = 409;
+    throw err;
+  }
+
   if (booking.paymentStatus === 'paid') {
     return booking;
   }
@@ -1776,13 +1751,47 @@ const verifyPayment = async (userId, bookingId, paymentPayload) => {
   // Mark paid
   booking.paymentStatus = 'paid';
   booking.paymentMethod = 'online';
+  booking.postServicePaymentChoice = 'online';
   if (!booking.paymentDetails) booking.paymentDetails = {};
   booking.paymentDetails.razorpayOrderId = razorpayOrderId;
   booking.paymentDetails.razorpayPaymentId = razorpayPaymentId;
   booking.paymentDetails.razorpaySignature = razorpaySignature;
   booking.paymentDetails.paidAt = new Date();
   booking.paymentDetails.failureReason = null;
+
+  if (booking.spareParts && booking.spareParts.status === 'approved') {
+    booking.spareParts.paymentStatus = 'paid';
+    booking.spareParts.paymentMethod = 'online';
+    if (!booking.spareParts.paymentDetails) booking.spareParts.paymentDetails = {};
+    booking.spareParts.paymentDetails.razorpayOrderId = razorpayOrderId;
+    booking.spareParts.paymentDetails.razorpayPaymentId = razorpayPaymentId;
+    booking.spareParts.paymentDetails.paidAt = new Date();
+  }
   await booking.save();
+
+  // Safe notification to provider that customer paid online
+  try {
+    const provDoc = await Provider.findById(booking.provider).select('user');
+    if (provDoc?.user) {
+      await notificationService.sendNotification({
+        recipientIds: [provDoc.user],
+        title: `Payment Received Online: ${booking.bookingReference}`,
+        body: `Customer paid ₹${booking.pricing?.totalAmount || 0} online via Razorpay. Your net earnings have been credited to your wallet.`,
+        type: 'booking',
+        data: {
+          bookingId: booking._id.toString(),
+          bookingReference: booking.bookingReference,
+          paymentStatus: 'paid',
+          paymentMethod: 'online',
+          paymentId: razorpayPaymentId
+        },
+        bookingId: booking._id,
+        idempotencyKey: `booking_paid_online_${booking._id}`
+      });
+    }
+  } catch (notifErr) {
+    console.error('[BOOKING_ONLINE_PAID_NOTIFICATION_ERROR]', notifErr.message);
+  }
 
   if (booking.status === 'completed') {
     try {
@@ -2331,7 +2340,10 @@ const confirmCashPaymentByProvider = async (userId, bookingId) => {
   // Check if booking is eligible for cash collection:
   // Case 1: booking.paymentMethod === 'cash'
   // Case 2: booking.paymentMethod === 'online' AND booking.spareParts?.paymentMethod === 'cash'
-  const isBaseCash = booking.paymentMethod === 'cash';
+  const isBaseCash =
+    booking.paymentMethod === 'cash' ||
+    booking.postServicePaymentChoice === 'cash' ||
+    (booking.status === 'completed' && booking.paymentStatus !== 'paid');
   const isSparePartsCash =
     booking.spareParts &&
     booking.spareParts.status === 'approved' &&
@@ -2380,6 +2392,8 @@ const confirmCashPaymentByProvider = async (userId, bookingId) => {
     const finalPayable = booking.pricing?.totalAmount || 0;
     const updateFields = {
       paymentStatus: 'paid',
+      paymentMethod: 'cash',
+      postServicePaymentChoice: 'cash',
       'paymentDetails.cashCollectedAmount': finalPayable,
       'paymentDetails.cashConfirmedByProvider': true,
       'paymentDetails.cashConfirmedByProviderAt': now,
@@ -2435,6 +2449,39 @@ const confirmCashPaymentByProvider = async (userId, bookingId) => {
     const err = new Error('Cash payment could not be recorded: payment may have already been collected or modified concurrently');
     err.statusCode = 400;
     throw err;
+  }
+
+  // Credit provider earnings / record cash commission due if service is completed
+  if (updatedBooking.status === 'completed') {
+    try {
+      const walletService = require('./walletService');
+      await walletService.creditBookingEarnings(updatedBooking._id);
+    } catch (walletErr) {
+      console.error('[WALLET_CREDIT_BOOKING_EARNINGS_CASH_CONFIRM_ERROR]', walletErr.message);
+    }
+  }
+
+  // Safe notification to customer that cash payment was confirmed
+  try {
+    const custUserId = updatedBooking.customer?.user?._id || updatedBooking.customer?.user || booking.customer?.user;
+    if (custUserId) {
+      await notificationService.sendNotification({
+        recipientIds: [custUserId],
+        title: `Cash Payment Confirmed: ${updatedBooking.bookingReference}`,
+        body: `Provider has confirmed receipt of ₹${updatedBooking.paymentDetails?.cashCollectedAmount || updatedBooking.pricing?.totalAmount || 0} in cash. Thank you!`,
+        type: 'booking',
+        data: {
+          bookingId: updatedBooking._id.toString(),
+          bookingReference: updatedBooking.bookingReference,
+          paymentStatus: 'paid',
+          paymentMethod: 'cash'
+        },
+        bookingId: updatedBooking._id,
+        idempotencyKey: `booking_cash_confirmed_${updatedBooking._id}`
+      });
+    }
+  } catch (notifErr) {
+    console.error('[BOOKING_CASH_CONFIRMED_NOTIFICATION_ERROR]', notifErr.message);
   }
 
   return await Booking.findById(booking._id)
@@ -2677,6 +2724,66 @@ const updateTeamSizeByProvider = async (userId, bookingId, teamData) => {
   return booking;
 };
 
+
+/**
+ * Customer chooses post-service payment method (cash vs online)
+ */
+const selectPostServicePaymentChoice = async (userId, bookingId, choice) => {
+  const customer = await Customer.findOne({ user: userId });
+  if (!customer) {
+    const err = new Error('Customer profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const booking = await Booking.findOne({ _id: bookingId, customer: customer._id });
+  if (!booking) {
+    const err = new Error(`Booking with ID '${bookingId}' not found`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (booking.paymentStatus === 'paid') {
+    const err = new Error('This booking is already paid');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const validChoice = choice === 'online' ? 'online' : 'cash';
+  booking.postServicePaymentChoice = validChoice;
+  if (validChoice === 'cash') {
+    booking.paymentMethod = 'cash';
+  }
+  await booking.save();
+
+  // Notify provider if choice is cash
+  if (validChoice === 'cash' && booking.provider) {
+    try {
+      const provDoc = await Provider.findById(booking.provider).select('user');
+      if (provDoc?.user) {
+        await notificationService.sendNotification({
+          recipientIds: [provDoc.user],
+          title: `Cash Payment Selected: ${booking.bookingReference}`,
+          body: `Customer selected cash payment of ₹${booking.pricing?.totalAmount || 0}. Please collect cash and confirm receipt.`,
+          type: 'booking',
+          data: {
+            bookingId: booking._id.toString(),
+            bookingReference: booking.bookingReference,
+            postServicePaymentChoice: 'cash',
+            totalAmount: booking.pricing?.totalAmount || 0
+          },
+          bookingId: booking._id,
+          idempotencyKey: `booking_cash_choice_${booking._id}`
+        });
+      }
+    } catch (notifErr) {
+      console.error('[BOOKING_CASH_CHOICE_NOTIF_ERROR]', notifErr.message);
+    }
+  }
+
+  return booking;
+};
+
 module.exports = {
   createBooking,
   getCustomerBookings,
@@ -2695,6 +2802,7 @@ module.exports = {
   cancelBookingByAdmin,
   createPaymentOrder,
   verifyPayment,
+  selectPostServicePaymentChoice,
   recordPaymentFailure,
   submitSpareParts,
   reviewSpareParts,

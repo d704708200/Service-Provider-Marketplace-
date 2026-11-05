@@ -254,6 +254,23 @@ const verifyCommissionPayment = async (req, res, next) => {
   }
 };
 
+const reconcileCommissionPayment = async (req, res, next) => {
+  try {
+    const provider = await getProviderFromUser(req.user._id);
+    const result = await walletService.reconcileCommissionPayment(provider._id);
+
+    res.status(200).json({
+      success: result.success,
+      settled: result.settled,
+      status: result.status,
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const toggleAutoDeductCommission = async (req, res, next) => {
   try {
     const provider = await getProviderFromUser(req.user._id);
@@ -367,6 +384,7 @@ module.exports = {
   createPayCommissionOrder,
   cancelPayCommissionOrder,
   verifyCommissionPayment,
+  reconcileCommissionPayment,
   toggleAutoDeductCommission,
   adminListCommissions,
   adminToggleAutoCommissionAdjustment,

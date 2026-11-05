@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { bookingApi, reviewApi } from '../../services/api';
+import { openRazorpayCheckout } from '../../services/razorpayService';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView } from '../../components/common';
 import { callPhoneNumber } from '../../utils/phoneUtils';
 import { getWarrantyContactStatus } from '../../utils/warrantyUtils';
@@ -107,6 +108,11 @@ export default function BookingDetailScreen({ route, navigation }) {
   const [error, setError] = useState(null);
   const [copiedRef, setCopiedRef] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+
+  // Post-service payment choice states
+  const [postPaymentProcessing, setPostPaymentProcessing] = useState(false);
+  const [cashChoiceSelected, setCashChoiceSelected] = useState(false);
+  const [postPaymentError, setPostPaymentError] = useState(null);
 
   // Review states
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -226,6 +232,78 @@ export default function BookingDetailScreen({ route, navigation }) {
       Alert.alert('Rejection Failed', err.userMessage || 'Could not reject charges');
     } finally {
       setPartsSubmitting(false);
+    }
+  };
+
+  const handleSelectCashPayment = async () => {
+    setPostPaymentProcessing(true);
+    setPostPaymentError(null);
+    try {
+      const res = await bookingApi.selectPostServicePaymentChoice(booking._id, 'cash');
+      if (res?.success) {
+        setCashChoiceSelected(true);
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+          window.alert(`Cash Payment Selected: Please hand ₹${booking.pricing?.totalAmount || 0} in cash directly to your service provider (${providerName}). The provider will confirm receipt.`);
+        } else {
+          Alert.alert(
+            'Cash Payment Selected',
+            `Please hand ₹${booking.pricing?.totalAmount || 0} in cash directly to your service provider (${providerName}). Your provider will confirm receipt.`
+          );
+        }
+        fetchDetail();
+      }
+    } catch (err) {
+      const msg = err.userMessage || err.message || 'Could not record cash payment choice';
+      setPostPaymentError(msg);
+      Alert.alert('Error', msg);
+    } finally {
+      setPostPaymentProcessing(false);
+    }
+  };
+
+  const handlePayOnlinePostService = async () => {
+    setPostPaymentProcessing(true);
+    setPostPaymentError(null);
+    try {
+      const orderRes = await bookingApi.createPaymentOrder(booking._id);
+      if (!orderRes?.success || !orderRes.data) {
+        throw new Error(orderRes?.message || 'Could not generate Razorpay payment order');
+      }
+
+      const checkoutResult = await openRazorpayCheckout({
+        orderData: orderRes.data,
+        description: `Payment for ${booking.service?.name || 'Service'} (${booking.bookingReference})`,
+        customerName: booking.customer?.user?.name || 'Customer',
+        customerPhone: booking.customer?.user?.phone || '',
+        customerEmail: booking.customer?.user?.email || '',
+        themeColor: '#7C3AED'
+      });
+
+      if (!checkoutResult?.success) {
+        if (checkoutResult?.error?.isCancelled) {
+          Alert.alert('Payment Cancelled', 'Online payment checkout was cancelled. You can retry or choose to pay cash.');
+          return;
+        }
+        throw new Error(checkoutResult?.error?.description || 'Razorpay checkout encountered an issue');
+      }
+
+      const verifyRes = await bookingApi.verifyPayment(booking._id, checkoutResult.data);
+      if (verifyRes?.success) {
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+          window.alert('Payment Successful! Thank you. Your payment was verified and completed.');
+        } else {
+          Alert.alert('Payment Successful', 'Thank you! Your payment was verified and completed.');
+        }
+        fetchDetail();
+      } else {
+        throw new Error(verifyRes?.message || 'Payment verification failed');
+      }
+    } catch (err) {
+      const msg = err.userMessage || err.message || 'Online payment could not be completed';
+      setPostPaymentError(msg);
+      Alert.alert('Payment Failed', msg);
+    } finally {
+      setPostPaymentProcessing(false);
     }
   };
 
@@ -654,6 +732,98 @@ export default function BookingDetailScreen({ route, navigation }) {
           </View>
         </Card>
 
+        {/* Post-Service Payment Choice Card (When completed and unpaid) */}
+        {booking.status === 'completed' && booking.paymentStatus !== 'paid' && (
+          <Card style={[styles.card, styles.postServiceCard]}>
+            <View style={styles.postServiceHeader}>
+              <View style={styles.postServiceIconBadge}>
+                <Ionicons name="card-outline" size={20} color="#7C3AED" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.postServiceTitle}>Service Completed! Payment Due</Text>
+                <Text style={styles.postServiceSub}>
+                  Choose how you wish to settle this service with your provider.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.postServiceBreakdown}>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Base Service Price</Text>
+                <Text style={styles.summaryVal}>
+                  ₹{booking.originalServicePrice || booking.pricing?.basePrice || 0}
+                </Text>
+              </View>
+              {booking.spareParts?.status === 'approved' && booking.spareParts?.totalAdditionalAmount > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Approved Extra Parts / Materials</Text>
+                  <Text style={[styles.summaryVal, { color: '#F59E0B' }]}>
+                    +₹{booking.spareParts.totalAdditionalAmount}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.postServiceTotalRow}>
+                <Text style={styles.postServiceTotalLabel}>Total Payable Amount</Text>
+                <Text style={styles.postServiceTotalVal}>₹{booking.pricing?.totalAmount || 0}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.postServiceNote}>
+              Platform commission applies solely to the base service price; additional parts carry 0% platform fee.
+            </Text>
+
+            {/* Option 1: Pay Cash to Provider */}
+            <TouchableOpacity
+              style={[
+                styles.choiceCard,
+                (cashChoiceSelected || booking.postServicePaymentChoice === 'cash') && styles.choiceCardActive
+              ]}
+              onPress={handleSelectCashPayment}
+              disabled={postPaymentProcessing}
+              activeOpacity={0.8}
+            >
+              <View style={styles.choiceIconWrap}>
+                <Ionicons name="cash-outline" size={22} color="#059669" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.choiceTitle}>Option 1: Pay Cash to Provider</Text>
+                <Text style={styles.choiceDesc}>
+                  Hand ₹{booking.pricing?.totalAmount || 0} in cash to {providerName}. The provider will confirm receipt in their app.
+                </Text>
+                {(cashChoiceSelected || booking.postServicePaymentChoice === 'cash') && (
+                  <View style={styles.awaitingBadge}>
+                    <Ionicons name="time-outline" size={13} color="#D97706" />
+                    <Text style={styles.awaitingText}>Awaiting Provider Confirmation</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+
+            {/* Option 2: Pay Online via Razorpay */}
+            <View style={[styles.choiceCard, { borderColor: '#8B5CF6' }]}>
+              <View style={[styles.choiceIconWrap, { backgroundColor: '#EDE9FE' }]}>
+                <Ionicons name="card" size={22} color="#7C3AED" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.choiceTitle}>Option 2: Pay Online via Razorpay</Text>
+                <Text style={styles.choiceDesc}>
+                  Pay ₹{booking.pricing?.totalAmount || 0} securely via UPI (GPay, PhonePe, Paytm), Cards, or NetBanking.
+                </Text>
+                <View style={{ marginTop: 8 }}>
+                  <Button
+                    title={postPaymentProcessing ? 'Opening Razorpay...' : `Pay ₹${booking.pricing?.totalAmount || 0} Online Now`}
+                    variant="primary"
+                    loading={postPaymentProcessing}
+                    disabled={postPaymentProcessing}
+                    onPress={handlePayOnlinePostService}
+                    size="sm"
+                  />
+                </View>
+              </View>
+            </View>
+          </Card>
+        )}
+
         {/* Payment Details Card */}
         <Card style={styles.card}>
           <Text style={styles.cardSectionTitle}>Payment Information</Text>
@@ -1031,6 +1201,116 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontSize: 12,
     fontWeight: '600'
+  },
+  postServiceCard: {
+    borderWidth: 1.5,
+    borderColor: '#7C3AED',
+    backgroundColor: '#FAF5FF',
+  },
+  postServiceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  postServiceIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EDE9FE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  postServiceTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#5B21B6',
+  },
+  postServiceSub: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  postServiceBreakdown: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  postServiceTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 8,
+    marginTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  postServiceTotalLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  postServiceTotalVal: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#7C3AED',
+  },
+  postServiceNote: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    marginBottom: 12,
+  },
+  choiceCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  choiceCardActive: {
+    borderColor: '#059669',
+    backgroundColor: '#ECFDF5',
+  },
+  choiceIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#D1FAE5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  choiceTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  choiceDesc: {
+    fontSize: 12,
+    color: '#4B5563',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  awaitingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  awaitingText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#92400E',
   },
   card: {
     width: '100%',

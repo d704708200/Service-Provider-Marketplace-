@@ -241,6 +241,23 @@ const createPaymentOrder = async (req, res, next) => {
   }
 };
 
+const selectPostServicePaymentChoice = async (req, res, next) => {
+  try {
+    const updatedBooking = await bookingService.selectPostServicePaymentChoice(
+      req.user._id,
+      req.params.id,
+      req.body.choice
+    );
+    res.status(200).json({
+      success: true,
+      message: `Post-service payment choice '${req.body.choice}' recorded successfully`,
+      data: updatedBooking
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const verifyPayment = async (req, res, next) => {
   try {
     const updatedBooking = await bookingService.verifyPayment(req.user._id, req.params.id, req.body);
@@ -445,6 +462,7 @@ module.exports = {
   cancelAdminBooking,
   createPaymentOrder,
   verifyPayment,
+  selectPostServicePaymentChoice,
   recordPaymentFailure,
   submitSpareParts,
   reviewSpareParts,

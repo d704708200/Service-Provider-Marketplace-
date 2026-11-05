@@ -1416,7 +1416,7 @@ export default function RequestServiceScreen({ route, navigation }) {
                   Cash / Pay on Service
                 </Text>
                 <Text style={styles.paymentOptionSub}>
-                  Pay verified professional after work completion
+                  Pay verified professional after work completion (Cash or Online)
                 </Text>
               </View>
               <View style={styles.slotRadioCircle}>

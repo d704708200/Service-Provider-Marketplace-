@@ -1443,8 +1443,9 @@ const createPayCommissionOrder = async (providerId, requestedAmount) => {
     throw err;
   }
 
-  if (requestedAmount !== undefined && requestedAmount !== null) {
-    const parsed = Number(requestedAmount);
+  const rawAmount = (typeof requestedAmount === 'object' && requestedAmount !== null) ? requestedAmount.amount : requestedAmount;
+  if (rawAmount !== undefined && rawAmount !== null) {
+    const parsed = Number(rawAmount);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       const err = new Error('Invalid payment amount. Amount must be greater than zero.');
       err.statusCode = 400;
@@ -1653,7 +1654,34 @@ const cancelActiveCommissionOrder = async (providerId) => {
  * STRICT RULE 2: Only verified captured payment can create COMMISSION_PAYMENT and set commissionDue to 0.
  * Edge-case Safety: Late successful payments for cancelled/expired orders are accounted for and settled.
  */
-const verifyAndSettleCommissionPayment = async (providerId, { razorpayOrderId, razorpayPaymentId, razorpaySignature }) => {
+const verifyAndSettleCommissionPayment = async (providerId, payload = {}) => {
+  const source = (payload && payload.response) || payload || {};
+  const razorpayOrderId =
+    source.razorpayOrderId ||
+    source.razorpay_order_id ||
+    source.orderId ||
+    source.order_id ||
+    payload.razorpayOrderId ||
+    payload.razorpay_order_id ||
+    payload.orderId ||
+    payload.order_id;
+  const razorpayPaymentId =
+    source.razorpayPaymentId ||
+    source.razorpay_payment_id ||
+    source.paymentId ||
+    source.payment_id ||
+    payload.razorpayPaymentId ||
+    payload.razorpay_payment_id ||
+    payload.paymentId ||
+    payload.payment_id;
+  const razorpaySignature =
+    source.razorpaySignature ||
+    source.razorpay_signature ||
+    source.signature ||
+    payload.razorpaySignature ||
+    payload.razorpay_signature ||
+    payload.signature;
+
   if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
     const err = new Error('Razorpay order ID, payment ID, and signature are required for commission settlement.');
     err.statusCode = 400;
@@ -1676,16 +1704,26 @@ const verifyAndSettleCommissionPayment = async (providerId, { razorpayOrderId, r
       success: true,
       settled: true,
       alreadySettled: true,
-      message: 'Commission payment already settled',
+      message: 'Commission payment already settled in full.',
       wallet,
       transaction: alreadyProcessed
     };
   }
 
   if (currentCommissionDue <= 0) {
-    const err = new Error('No outstanding commission payable to settle.');
-    err.statusCode = 400;
-    throw err;
+    const latestTxn = await WalletTransaction.findOne({
+      provider: providerId,
+      type: 'COMMISSION_PAYMENT'
+    }).sort({ createdAt: -1 });
+
+    return {
+      success: true,
+      settled: true,
+      alreadySettled: true,
+      message: 'No outstanding commission payable to settle. Commission balance is already ₹0.',
+      wallet,
+      transaction: latestTxn
+    };
   }
 
   // 2. Active Order Validation: Must match the wallet's order ID
@@ -1738,7 +1776,8 @@ const verifyAndSettleCommissionPayment = async (providerId, { razorpayOrderId, r
         try {
           paymentRecord = await paymentService.capturePayment(razorpayPaymentId, expectedAmountInPaise, 'INR');
         } catch (captureErr) {
-          const err = new Error(`Payment is authorized but backend capture failed: ${captureErr.message}. Commission remains unsettled.`);
+          const capMsg = captureErr.message || captureErr.error?.description || 'Gateway capture error';
+          const err = new Error(`Payment is authorized but backend capture failed: ${capMsg}. Commission remains unsettled.`);
           err.statusCode = 400;
           throw err;
         }
@@ -1753,7 +1792,8 @@ const verifyAndSettleCommissionPayment = async (providerId, { razorpayOrderId, r
     }
   } catch (apiErr) {
     if (apiErr.statusCode === 400) throw apiErr;
-    if (process.env.NODE_ENV === 'production' && !apiErr.message.includes('test_')) {
+    const errMsg = (apiErr && (apiErr.message || apiErr.error?.description || apiErr.description)) || '';
+    if (process.env.NODE_ENV === 'production' && !errMsg.includes('test_')) {
       throw apiErr;
     }
   }
@@ -1882,6 +1922,134 @@ const verifyAndSettleCommissionPayment = async (providerId, { razorpayOrderId, r
     wallet: updatedWallet,
     transaction
   };
+};
+
+/**
+ * Provider / Recovery: Reconcile in-flight commission payment server-side with Razorpay gateway.
+ * Recovers captured or authorized payments after network timeouts or client disconnects.
+ * Idempotently settles the commission if payment was captured.
+ * Does not cancel or release active order lock unless payment genuinely failed or expired.
+ */
+const reconcileCommissionPayment = async (providerId) => {
+  const wallet = await getOrCreateWallet(providerId);
+  const currentCommissionDue = wallet.commissionDue || 0;
+
+  // 1. If commission is already settled (balance due is 0)
+  if (currentCommissionDue <= 0) {
+    const latestTxn = await WalletTransaction.findOne({
+      provider: providerId,
+      type: 'COMMISSION_PAYMENT'
+    }).sort({ createdAt: -1 });
+
+    return {
+      success: true,
+      settled: true,
+      status: 'already_settled',
+      message: 'Commission is already settled in full with zero balance due.',
+      wallet,
+      transaction: latestTxn
+    };
+  }
+
+  // 2. Check active order
+  const activeOrder = wallet.activeCommissionOrder;
+  if (!activeOrder || !activeOrder.orderId) {
+    return {
+      success: false,
+      settled: false,
+      status: 'no_active_order',
+      message: 'No active commission payment order found. You can initiate a new payment.'
+    };
+  }
+
+  // 3. Inspect Razorpay Gateway for payments on this order
+  const paymentService = require('./paymentService');
+  try {
+    const paymentsList = await paymentService.fetchOrderPayments(activeOrder.orderId);
+    const items = paymentsList && Array.isArray(paymentsList.items) ? paymentsList.items : [];
+
+    // Prioritize captured payment
+    const captured = items.find((p) => p.status === 'captured');
+    if (captured) {
+      const settlement = await verifyAndSettleCommissionPayment(providerId, {
+        razorpayOrderId: activeOrder.orderId,
+        razorpayPaymentId: captured.id,
+        razorpaySignature: 'auto_resolved_capture'
+      });
+      return {
+        ...settlement,
+        status: 'settled',
+        message: 'Payment verified and commission settled in full.'
+      };
+    }
+
+    // Look for authorized payment that can be captured
+    const authorized = items.find((p) => p.status === 'authorized');
+    if (authorized) {
+      const amountPaise = activeOrder.amountInPaise || Math.round(currentCommissionDue * 100);
+      try {
+        await paymentService.capturePayment(authorized.id, amountPaise, 'INR');
+        const settlement = await verifyAndSettleCommissionPayment(providerId, {
+          razorpayOrderId: activeOrder.orderId,
+          razorpayPaymentId: authorized.id,
+          razorpaySignature: 'auto_resolved_capture'
+        });
+        return {
+          ...settlement,
+          status: 'settled',
+          message: 'Authorized payment captured and commission settled in full.'
+        };
+      } catch (capErr) {
+        return {
+          success: false,
+          settled: false,
+          status: 'capture_failed',
+          message: `Payment authorized on Razorpay but capture failed: ${capErr.message || 'Gateway error'}. Outstanding commission unchanged.`
+        };
+      }
+    }
+
+    // If payments exist and all failed
+    if (items.length > 0 && items.every((p) => p.status === 'failed')) {
+      await ProviderWallet.findByIdAndUpdate(wallet._id, {
+        $set: { 'activeCommissionOrder.status': 'failed' }
+      });
+      return {
+        success: false,
+        settled: false,
+        status: 'failed',
+        message: 'Payment attempt failed at gateway. You can retry paying your commission safely.'
+      };
+    }
+
+    // If order has expired without payment
+    if (activeOrder.expiresAt && new Date(activeOrder.expiresAt) < new Date()) {
+      await ProviderWallet.findByIdAndUpdate(wallet._id, {
+        $set: { 'activeCommissionOrder.status': 'expired' }
+      });
+      return {
+        success: false,
+        settled: false,
+        status: 'expired',
+        message: 'Payment order has expired. Safe retry is available.'
+      };
+    }
+
+    return {
+      success: false,
+      settled: false,
+      status: 'pending',
+      message: 'Payment is pending on gateway. Please complete checkout or check again in a moment.'
+    };
+  } catch (err) {
+    const errorMsg = err.message || err.error?.description || 'Could not verify payment status with gateway.';
+    return {
+      success: false,
+      settled: false,
+      status: 'gateway_error',
+      message: errorMsg
+    };
+  }
 };
 
 /**
@@ -2212,6 +2380,7 @@ module.exports = {
   cancelPayCommissionOrder: cancelActiveCommissionOrder,
   verifyAndSettleCommissionPayment,
   verifyCommissionPayment: verifyAndSettleCommissionPayment,
+  reconcileCommissionPayment,
   adminListCommissions,
   adminToggleAutoCommissionAdjustment,
   adminSettleFullCommission,

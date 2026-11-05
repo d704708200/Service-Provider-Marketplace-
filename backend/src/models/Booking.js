@@ -173,13 +173,23 @@ const bookingSchema = new mongoose.Schema(
     providerNetEarning: { type: Number, default: null },
     paymentStatus: {
       type: String,
-      enum: ['pending', 'paid', 'refunded', 'failed'],
+      enum: ['pending', 'processing', 'paid', 'refunded', 'failed', 'cancelled'],
       default: 'pending'
     },
     paymentMethod: {
       type: String,
       enum: ['cash', 'card', 'upi', 'wallet', 'online'],
       default: 'cash'
+    },
+    initialPaymentMethod: {
+      type: String,
+      enum: ['cash', 'online', 'card', 'upi', 'wallet', null],
+      default: 'cash'
+    },
+    postServicePaymentChoice: {
+      type: String,
+      enum: ['cash', 'online', null],
+      default: null
     },
     paymentDetails: {
       razorpayOrderId: { type: String, trim: true, default: null },

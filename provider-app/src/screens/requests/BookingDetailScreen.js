@@ -236,50 +236,8 @@ export default function BookingDetailScreen({ route, navigation }) {
       return;
     }
 
-    // 2. Check if cash for booking or spare parts is unpaid
-    if (booking.paymentMethod === 'cash' && booking.paymentStatus !== 'paid') {
-      const msg = `Please collect cash (₹${booking.pricing?.totalAmount || 0}) from the customer and tap "Mark Cash Received" before completing the service.`;
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
-        window.alert(`[Cash Collection Required] ${msg}`);
-      } else {
-        Alert.alert('Cash Collection Required', msg);
-      }
-      return;
-    }
-
-    // 3. Check if extra materials were approved with cash selected and cash is not yet marked received
-    if (
-      booking.spareParts &&
-      booking.spareParts.status === 'approved' &&
-      booking.spareParts.paymentMethod === 'cash' &&
-      booking.spareParts.paymentStatus !== 'paid' &&
-      booking.spareParts.totalAdditionalAmount > 0
-    ) {
-      const msg = `The customer selected Cash on Service for approved extra materials (₹${booking.spareParts.totalAdditionalAmount}). Please collect cash and tap "Collect Extra Cash" before completing the service.`;
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
-        window.alert(`[Cash Collection Required] ${msg}`);
-      } else {
-        Alert.alert('Cash Collection Required', msg);
-      }
-      return;
-    }
-
-    // 4. Check if extra materials were approved with online payment pending
-    if (
-      booking.spareParts &&
-      booking.spareParts.status === 'approved' &&
-      (booking.spareParts.paymentMethod === 'online' || !booking.spareParts.paymentMethod) &&
-      booking.spareParts.paymentStatus !== 'paid' &&
-      booking.spareParts.totalAdditionalAmount > 0
-    ) {
-      const msg = `The customer has approved extra materials (+₹${booking.spareParts.totalAdditionalAmount}) but has not completed payment yet. Please ask the customer to pay via their Customer App before completing.`;
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
-        window.alert(`[Payment Pending] ${msg}`);
-      } else {
-        Alert.alert('Payment Pending', msg);
-      }
-      return;
-    }
+    // Post-Service Payment Choice Rule:
+    // Service can be completed while payment is pending. Customer can choose Cash or Online after completion.
 
     if (actionLoading) return;
 
@@ -605,6 +563,16 @@ export default function BookingDetailScreen({ route, navigation }) {
               {booking.paymentStatus || 'Pending'} ({booking.paymentMethod?.toUpperCase() || 'CASH'})
             </Text>
           </View>
+          {booking.paymentStatus === 'paid' && (
+            <View style={{ marginTop: 8, padding: 8, backgroundColor: '#ECFDF5', borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="checkmark-circle" size={16} color="#059669" />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#065F46' }}>
+                {booking.paymentMethod === 'online'
+                  ? '✓ Customer paid online via Razorpay. Net earnings credited to wallet.'
+                  : '✓ Full cash payment collected & confirmed.'}
+              </Text>
+            </View>
+          )}
 
           <View style={styles.metaRow}>
             <Text style={styles.metaLabel}>Mode</Text>
@@ -959,7 +927,8 @@ export default function BookingDetailScreen({ route, navigation }) {
       {/* Action Footer */}
       {(booking.status === 'pending' ||
         booking.status === 'accepted' ||
-        booking.status === 'in_progress') && (
+        booking.status === 'in_progress' ||
+        (booking.status === 'completed' && booking.paymentStatus !== 'paid')) && (
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}>
           {booking.status === 'pending' && (
             <Button
@@ -981,6 +950,27 @@ export default function BookingDetailScreen({ route, navigation }) {
               onPress={handleStartService}
               style={styles.actionBtn}
             />
+          )}
+
+          {booking.status === 'completed' && booking.paymentStatus !== 'paid' && (
+            <View style={{ flex: 1, gap: 8 }}>
+              <View style={styles.pendingPaymentBanner}>
+                <Ionicons name="information-circle-outline" size={16} color="#B45309" />
+                <Text style={styles.pendingPaymentBannerText}>
+                  {booking.postServicePaymentChoice === 'cash'
+                    ? `Customer selected Cash: Collect ₹${booking.pricing?.totalAmount || 0} in cash from customer.`
+                    : `Service Completed • Payment Pending: Collect ₹${booking.pricing?.totalAmount || 0} in cash or wait for customer online payment.`}
+                </Text>
+              </View>
+              <Button
+                title={actionLoading ? 'Recording...' : `Mark Cash Received (₹${booking.pricing?.totalAmount || 0})`}
+                variant="primary"
+                loading={actionLoading}
+                disabled={actionLoading}
+                onPress={handleMarkCashReceived}
+                style={[styles.actionBtn, { backgroundColor: '#059669' }]}
+              />
+            </View>
           )}
 
           {booking.status === 'in_progress' && (
@@ -1603,6 +1593,23 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: '#FFFFFF',
     fontWeight: '500'
+  },
+  pendingPaymentBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF3C7',
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  pendingPaymentBannerText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#92400E',
+    lineHeight: 15,
   },
   bottomBar: {
     position: 'absolute',

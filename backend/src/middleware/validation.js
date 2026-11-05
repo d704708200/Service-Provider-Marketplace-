@@ -1414,6 +1414,30 @@ const validateReviewSpareParts = (req, res, next) => {
   next();
 };
 
+const validateSelectPostServicePaymentChoice = (req, res, next) => {
+  const { choice, paymentMethod } = req.body;
+  const effectiveChoice = (choice || paymentMethod || '').toLowerCase().trim();
+  const errors = [];
+
+  if (!effectiveChoice || !['cash', 'online'].includes(effectiveChoice)) {
+    errors.push("Payment choice must be either 'cash' or 'online'");
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  req.body.choice = effectiveChoice;
+  next();
+};
+
 const validateSelectSparePartsPaymentMethod = (req, res, next) => {
   const { paymentMethod } = req.body;
   const errors = [];
@@ -1704,6 +1728,7 @@ module.exports = {
   validateSubmitSpareParts,
   validateReviewSpareParts,
   validateSelectSparePartsPaymentMethod,
+  validateSelectPostServicePaymentChoice,
   
 validateUpdateTeamSize,
   validateCreateHomeBanner,
