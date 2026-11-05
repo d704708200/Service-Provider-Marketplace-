@@ -733,6 +733,15 @@ export default function BookingDetailScreen({ route, navigation }) {
             )}
           </View>
 
+          {/* 0% Commission on Parts Policy Notice */}
+          <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.25)', borderWidth: 1, borderRadius: 10, padding: 10, marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Ionicons name="shield-checkmark" size={16} color="#10B981" />
+            <Text style={{ color: '#D1FAE5', fontSize: 11, flex: 1, lineHeight: 15 }}>
+              <Text style={{ fontWeight: '700', color: '#34D399' }}>0% Platform Commission: </Text>
+              You receive 100% of approved spare parts payments. Mendroo platform commission is calculated only on original service price.
+            </Text>
+          </View>
+
           {booking.spareParts?.items?.length > 0 ? (
             <View style={styles.partsBreakdownBox}>
               {booking.spareParts.items.map((item, idx) => (

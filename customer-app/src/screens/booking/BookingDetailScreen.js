@@ -152,7 +152,7 @@ export default function BookingDetailScreen({ route, navigation }) {
     const ref = booking?.bookingReference;
     if (!ref) return;
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(ref).catch(() => {});
+      navigator.clipboard.writeText(ref).catch(() => { });
     }
     setCopiedRef(true);
     setTimeout(() => setCopiedRef(false), 2000);
@@ -563,8 +563,8 @@ export default function BookingDetailScreen({ route, navigation }) {
                   booking.spareParts.status === 'approved'
                     ? 'success'
                     : booking.spareParts.status === 'rejected'
-                    ? 'danger'
-                    : 'warning'
+                      ? 'danger'
+                      : 'warning'
                 }
                 size="sm"
               />
@@ -614,7 +614,7 @@ export default function BookingDetailScreen({ route, navigation }) {
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Base Service Price</Text>
             <Text style={styles.summaryVal}>
-              ₹{booking.pricing?.basePrice || booking.spareParts?.originalServiceAmount || booking.service?.price || 0}
+              ₹{booking.originalServicePrice || booking.pricing?.basePrice || booking.spareParts?.originalServiceAmount || booking.service?.price || 0}
             </Text>
           </View>
 
@@ -732,8 +732,8 @@ export default function BookingDetailScreen({ route, navigation }) {
                   booking.status === 'completed'
                     ? styles.timelineDotActive
                     : booking.status === 'cancelled'
-                    ? styles.timelineDotDanger
-                    : null
+                      ? styles.timelineDotDanger
+                      : null
                 ]}
               />
               <View style={styles.timelineContent}>

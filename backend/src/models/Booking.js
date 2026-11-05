@@ -148,6 +148,29 @@ const bookingSchema = new mongoose.Schema(
       discount: { type: Number, default: 0, min: 0 },
       totalAmount: { type: Number, required: true, min: 0 }
     },
+    // Dedicated Accounting & Commission Breakdown
+    // Platform commission is calculated ONLY on originalServicePrice, never on spare parts/materials
+    accounting: {
+      originalServicePrice: { type: Number, default: 0, min: 0 },
+      additionalPartsAmount: { type: Number, default: 0, min: 0 },
+      partsDescription: { type: String, default: '', trim: true },
+      customerApprovedPartsAmount: { type: Number, default: 0, min: 0 },
+      totalCustomerPayable: { type: Number, default: 0, min: 0 },
+      commissionableAmount: { type: Number, default: 0, min: 0 },
+      platformCommissionRate: { type: Number, default: 15, min: 0 },
+      platformCommissionAmount: { type: Number, default: 0, min: 0 },
+      providerNetEarning: { type: Number, default: 0, min: 0 }
+    },
+    // Top-level fields for direct access and backward compatibility
+    originalServicePrice: { type: Number, default: null },
+    additionalPartsAmount: { type: Number, default: 0 },
+    partsDescription: { type: String, default: '' },
+    customerApprovedPartsAmount: { type: Number, default: 0 },
+    totalCustomerPayable: { type: Number, default: null },
+    commissionableAmount: { type: Number, default: null },
+    platformCommissionRate: { type: Number, default: null },
+    platformCommissionAmount: { type: Number, default: null },
+    providerNetEarning: { type: Number, default: null },
     paymentStatus: {
       type: String,
       enum: ['pending', 'paid', 'refunded', 'failed'],
@@ -317,6 +340,43 @@ bookingSchema.index({ status: 1, bookingMode: 1 });
 bookingSchema.index({ category: 1, tag: 1 });
 bookingSchema.index({ scheduledDate: 1 });
 bookingSchema.index({ 'address.location': '2dsphere' });
+
+/**
+ * Pre-save middleware to keep accounting breakdown and originalServicePrice synchronized.
+ * Enforces: Platform commission is calculated ONLY on originalServicePrice, never on spare parts.
+ */
+bookingSchema.pre('save', function (next) {
+  try {
+    const { calculateBookingCommission } = require('../utils/commissionCalculator');
+    const breakdown = calculateBookingCommission(this);
+
+    this.accounting = {
+      originalServicePrice: breakdown.originalServicePrice,
+      additionalPartsAmount: breakdown.additionalPartsAmount,
+      partsDescription: breakdown.partsDescription,
+      customerApprovedPartsAmount: breakdown.customerApprovedPartsAmount,
+      totalCustomerPayable: breakdown.totalCustomerPayable,
+      commissionableAmount: breakdown.commissionableAmount,
+      platformCommissionRate: breakdown.platformCommissionRate,
+      platformCommissionAmount: breakdown.platformCommissionAmount,
+      providerNetEarning: breakdown.providerNetEarning
+    };
+
+    this.originalServicePrice = breakdown.originalServicePrice;
+    this.additionalPartsAmount = breakdown.additionalPartsAmount;
+    this.partsDescription = breakdown.partsDescription;
+    this.customerApprovedPartsAmount = breakdown.customerApprovedPartsAmount;
+    this.totalCustomerPayable = breakdown.totalCustomerPayable;
+    this.commissionableAmount = breakdown.commissionableAmount;
+    this.platformCommissionRate = breakdown.platformCommissionRate;
+    this.platformCommissionAmount = breakdown.platformCommissionAmount;
+    this.providerNetEarning = breakdown.providerNetEarning;
+
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 const Booking = mongoose.model('Booking', bookingSchema);
 

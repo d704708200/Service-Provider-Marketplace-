@@ -16,6 +16,7 @@ const ProviderWallet = require('./ProviderWallet');
 const WalletTransaction = require('./WalletTransaction');
 const WithdrawalRequest = require('./WithdrawalRequest');
 const ServiceTag = require('./ServiceTag');
+const SystemSetting = require('./SystemSetting');
 
 module.exports = {
   User,
@@ -35,5 +36,6 @@ module.exports = {
   HomeBanner,
   ProviderWallet,
   WalletTransaction,
-  WithdrawalRequest
+  WithdrawalRequest,
+  SystemSetting
 };

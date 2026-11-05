@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Wallet,
@@ -1171,9 +1172,27 @@ const WalletsPage = () => {
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
               <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Standard Commission Rate</div>
               <div className="text-2xl font-bold text-indigo-600 mt-1">
-                15%
+                {commissionSummary?.activeCommissionRate || 15}%
               </div>
-              <div className="text-xs text-slate-500 mt-1">Configured platform take-rate</div>
+              <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
+                <span>Base service only (Parts @ 0%)</span>
+                <Link to="/settings?tab=commission" className="text-indigo-600 hover:text-indigo-800 font-semibold underline text-[11px]">
+                  Settings &rarr;
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* Critical Business Rule Policy Card */}
+          <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-4 flex items-start gap-3">
+            <ShieldCheck className="w-5 h-5 text-indigo-600 mt-0.5 shrink-0" />
+            <div className="text-xs space-y-1">
+              <p className="font-bold text-indigo-950">
+                Audited Commission Policy: Platform Commission Calculated Strictly on Original Base Service Price
+              </p>
+              <p className="text-indigo-800 leading-relaxed">
+                Platform commission (15%) is assessed <strong>only once</strong> on the original service/base price agreed at booking creation. All spare parts, replacement components, and physical materials supplied by providers are <strong>100% commission-free (Parts Commission = ₹0)</strong>. Net customer parts payments are credited in full to the provider.
+              </p>
             </div>
           </div>
 

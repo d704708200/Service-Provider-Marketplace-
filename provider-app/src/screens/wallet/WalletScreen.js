@@ -741,14 +741,25 @@ export default function WalletScreen({ navigation }) {
                         <Text style={styles.commissionGridVal}>₹{item.customerPaymentAmount || 0}</Text>
                       </View>
                       <View style={styles.commissionGridCol}>
-                        <Text style={styles.commissionGridLabel}>Platform Rate</Text>
-                        <Text style={styles.commissionGridVal}>{item.commissionPercentage}</Text>
+                        <Text style={styles.commissionGridLabel}>Commissionable</Text>
+                        <Text style={styles.commissionGridVal}>₹{item.commissionableAmount || item.originalServicePrice || item.customerPaymentAmount || 0}</Text>
                       </View>
                       <View style={styles.commissionGridCol}>
-                        <Text style={styles.commissionGridLabel}>Commission Amount</Text>
+                        <Text style={styles.commissionGridLabel}>Commission ({item.commissionPercentage})</Text>
                         <Text style={[styles.commissionGridVal, { color: '#EF4444' }]}>₹{item.amount}</Text>
                       </View>
                     </View>
+
+                    {item.additionalPartsAmount > 0 && (
+                      <View style={{ marginTop: 6, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '600' }}>
+                          Extra Materials (₹{item.additionalPartsAmount})
+                        </Text>
+                        <Text style={{ color: '#34D399', fontSize: 10, fontWeight: '700' }}>
+                          0% Commission (100% Provider Earning)
+                        </Text>
+                      </View>
+                    )}
 
                     <Text style={styles.commissionItemDate}>{formatDate(item.createdAt)}</Text>
                   </View>

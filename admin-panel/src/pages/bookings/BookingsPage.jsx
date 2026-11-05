@@ -810,6 +810,132 @@ const BookingsPage = () => {
               </div>
             )}
 
+            {/* Mendroo Platform Commission & Financial Audit Breakdown */}
+            {(() => {
+              const originalServicePrice = Number(
+                selectedBooking.originalServicePrice ||
+                selectedBooking.accounting?.originalServicePrice ||
+                selectedBooking.spareParts?.originalServiceAmount ||
+                selectedBooking.pricing?.basePrice ||
+                0
+              );
+              const isPartsApproved = selectedBooking.spareParts?.status === 'approved';
+              const additionalPartsAmount = Number(
+                selectedBooking.additionalPartsAmount ||
+                selectedBooking.accounting?.additionalPartsAmount ||
+                selectedBooking.spareParts?.totalAdditionalAmount ||
+                0
+              );
+              const customerApprovedPartsAmount = isPartsApproved ? additionalPartsAmount : 0;
+              const commissionableAmount = Number(
+                selectedBooking.commissionableAmount ||
+                selectedBooking.accounting?.commissionableAmount ||
+                originalServicePrice
+              );
+              const commissionRate = Number(
+                selectedBooking.platformCommissionRate ||
+                selectedBooking.accounting?.platformCommissionRate ||
+                15
+              );
+              const platformCommissionAmount = Number(
+                selectedBooking.platformCommissionAmount ||
+                selectedBooking.accounting?.platformCommissionAmount ||
+                (Math.round(commissionableAmount * (commissionRate / 100) * 100) / 100)
+              );
+              const totalCustomerPayable = Number(
+                selectedBooking.totalCustomerPayable ||
+                selectedBooking.accounting?.totalCustomerPayable ||
+                selectedBooking.pricing?.totalAmount ||
+                (originalServicePrice + customerApprovedPartsAmount)
+              );
+              const providerNetEarning = Number(
+                selectedBooking.providerNetEarning ||
+                selectedBooking.accounting?.providerNetEarning ||
+                (Math.round(((originalServicePrice - platformCommissionAmount) + customerApprovedPartsAmount) * 100) / 100)
+              );
+
+              return (
+                <div className="p-4 bg-gradient-to-br from-indigo-50/70 via-slate-50 to-emerald-50/40 rounded-xl border border-indigo-100 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                        Mendroo Platform Commission & Financial Audit
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/80 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                      Parts Excluded from Commission (0%)
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Platform commission is calculated <strong className="text-slate-700">only once</strong> on the original service price agreed at booking time. Spare parts and replacement components supplied by the provider are <strong className="text-slate-700">100% commission-free</strong>.
+                  </p>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-1">
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px]">Original Service Price</span>
+                      <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+                        ₹{originalServicePrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px]">Additional Parts Amount</span>
+                      <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+                        ₹{customerApprovedPartsAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-[10px] text-emerald-600 block mt-0.5 font-medium">Parts Comm: ₹0 (0%)</span>
+                    </div>
+
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px]">Total Customer Payable</span>
+                      <span className="font-bold text-indigo-900 text-sm mt-0.5 block">
+                        ₹{totalCustomerPayable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">Base + Approved Parts</span>
+                    </div>
+
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px]">Commissionable Amount</span>
+                      <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+                        ₹{commissionableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">Base Service Only</span>
+                    </div>
+
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px]">Platform Commission Rate</span>
+                      <span className="font-bold text-indigo-600 text-sm mt-0.5 block">
+                        {commissionRate}%
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">Configured Take-Rate</span>
+                    </div>
+
+                    <div className="p-2.5 bg-amber-50/80 rounded-lg border border-amber-200">
+                      <span className="text-amber-700 block text-[11px] font-medium">Platform Commission Amount</span>
+                      <span className="font-bold text-amber-900 text-sm mt-0.5 block">
+                        ₹{platformCommissionAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-[10px] text-amber-700 block mt-0.5 font-sans">
+                        ₹{commissionableAmount} × {commissionRate}% = ₹{platformCommissionAmount}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 bg-emerald-50/80 rounded-lg border border-emerald-200 sm:col-span-2">
+                      <span className="text-emerald-700 block text-[11px] font-medium">Provider Net Earning</span>
+                      <span className="font-bold text-emerald-900 text-sm mt-0.5 block">
+                        ₹{providerNetEarning.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-[10px] text-emerald-700 block mt-0.5">
+                        Service (₹{(originalServicePrice - platformCommissionAmount).toFixed(2)}) + 100% Parts (₹{customerApprovedPartsAmount.toFixed(2)})
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Status History & Audit Timestamps */}
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-3">
               <span className="text-xs font-bold text-slate-500 uppercase block">Status History & Timestamps</span>

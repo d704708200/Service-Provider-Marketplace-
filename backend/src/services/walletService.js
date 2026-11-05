@@ -672,8 +672,8 @@ const toggleAutoDeductCommission = async (providerId, enabled) => {
     success: true,
     message: isEnabled
       ? (deductionResult?.deducted
-          ? `Auto deduct enabled. Your full commission of ₹${deductionResult.amount} was automatically settled from your available balance.`
-          : 'Automatic commission deduction from wallet enabled successfully')
+        ? `Auto deduct enabled. Your full commission of ₹${deductionResult.amount} was automatically settled from your available balance.`
+        : 'Automatic commission deduction from wallet enabled successfully')
       : 'Automatic commission deduction from wallet disabled successfully',
     autoDeductCommissionFromWallet: isEnabled,
     deductionResult,
@@ -726,24 +726,20 @@ const creditBookingEarnings = async (bookingId) => {
     throw err;
   }
 
-  // Total Gross Calculation
-  // pricing.totalAmount is the total customer bill (already includes approved spare parts).
-  let totalGrossAmount = Number(booking.pricing?.totalAmount || 0);
-  if (!totalGrossAmount || totalGrossAmount <= 0) {
-    const base = Number(booking.pricing?.basePrice || 0);
-    const parts = (
-      booking.spareParts &&
-      booking.spareParts.status === 'approved' &&
-      booking.spareParts.paymentStatus === 'paid'
-    ) ? Number(booking.spareParts.totalAdditionalAmount || 0) : 0;
-    totalGrossAmount = base + parts;
-  }
+  // Critical Business Rule: Commission calculated ONLY ONCE on original base service price.
+  // Spare parts, materials, and replacement components are 100% EXCLUDED from platform commission (partsCommission = 0).
+  const { calculateBookingCommission } = require('../utils/commissionCalculator');
+  const accounting = calculateBookingCommission(booking);
 
-  // Platform Commission Model: Normalized from environment or default 15%
-  const commissionConfig = getPlatformCommissionConfig();
-  const commissionRate = commissionConfig.rateDecimal;
-  const platformCommission = Math.round(totalGrossAmount * commissionRate);
-  const providerNetEarnings = totalGrossAmount - platformCommission;
+  const originalServicePrice = accounting.originalServicePrice;
+  const additionalPartsAmount = accounting.additionalPartsAmount;
+  const customerApprovedPartsAmount = accounting.customerApprovedPartsAmount;
+  const commissionableAmount = accounting.commissionableAmount;
+  const platformCommission = accounting.platformCommissionAmount; // paise precision, calculated on originalServicePrice only
+  const providerNetEarnings = accounting.providerNetEarning;
+  const totalGrossAmount = accounting.totalCustomerPayable;
+  const commissionRateFormatted = `${accounting.platformCommissionRate}%`;
+  const partsCommission = 0;
 
   const wallet = await getOrCreateWallet(booking.provider);
   const balanceBefore = wallet.availableBalance;
@@ -771,9 +767,16 @@ const creditBookingEarnings = async (bookingId) => {
         metadata: {
           bookingReference: booking.bookingReference,
           serviceName: booking.service?.name,
-          grossAmount: totalGrossAmount,
+          originalServicePrice,
+          additionalPartsAmount,
+          customerApprovedPartsAmount,
+          commissionableAmount,
           platformCommission,
-          commissionRate: `${Math.round(commissionRate * 100)}%`,
+          partsCommission: 0,
+          grossAmount: totalGrossAmount,
+          totalCustomerPayable: totalGrossAmount,
+          providerNetEarnings,
+          commissionRate: commissionRateFormatted,
           paymentMethod: 'online'
         }
       });
@@ -817,6 +820,10 @@ const creditBookingEarnings = async (bookingId) => {
       success: true,
       providerNetEarnings,
       platformCommission,
+      partsCommission: 0,
+      commissionableAmount,
+      originalServicePrice,
+      additionalPartsAmount: customerApprovedPartsAmount,
       totalGrossAmount,
       balanceAfter: updatedWallet.availableBalance,
       commissionDue: updatedWallet.commissionDue || 0,
@@ -827,10 +834,11 @@ const creditBookingEarnings = async (bookingId) => {
     // Booking was paid in CASH.
     // Provider collected 100% cash in hand from the customer directly.
     // RULE:
-    // 1. NEVER make the provider's availableBalance negative to represent outstanding commission!
-    // 2. Keep commission payable separate from withdrawable wallet balance (in commissionDue).
-    // 3. Do not credit gross cash to availableBalance.
-    // 4. Record CASH_BOOKING_COMMISSION_DUE with immutable ledger entry.
+    // 1. Commission is calculated ONLY on original base service price, NEVER on spare parts.
+    // 2. NEVER make the provider's availableBalance negative to represent outstanding commission!
+    // 3. Keep commission payable separate from withdrawable wallet balance (in commissionDue).
+    // 4. Do not credit gross cash to availableBalance.
+    // 5. Record CASH_BOOKING_COMMISSION_DUE with immutable ledger entry.
     const txnRef = `TXN-CDUE-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
     const currentDueBefore = wallet.commissionDue || 0;
     const currentDueAfter = currentDueBefore + platformCommission;
@@ -849,14 +857,20 @@ const creditBookingEarnings = async (bookingId) => {
         status: 'completed',
         booking: booking._id,
         paymentMethod: 'cash',
-        description: `Platform Commission Due for Cash Booking #${booking.bookingReference}`,
+        description: `Platform Commission Due for Cash Booking #${booking.bookingReference} (Base: ₹${commissionableAmount}, Parts: ₹${customerApprovedPartsAmount} @ 0% comm)`,
         metadata: {
           bookingReference: booking.bookingReference,
           serviceName: booking.service?.name,
-          grossAmount: totalGrossAmount,
+          originalServicePrice,
+          additionalPartsAmount,
+          customerApprovedPartsAmount,
+          commissionableAmount,
           platformCommission,
+          partsCommission: 0,
+          grossAmount: totalGrossAmount,
+          totalCustomerPayable: totalGrossAmount,
           providerNetEarnings,
-          commissionRate: `${Math.round(commissionRate * 100)}%`,
+          commissionRate: commissionRateFormatted,
           paymentMethod: 'cash'
         }
       });
@@ -922,6 +936,10 @@ const creditBookingEarnings = async (bookingId) => {
       success: true,
       providerNetEarnings,
       platformCommission,
+      partsCommission: 0,
+      commissionableAmount,
+      originalServicePrice,
+      additionalPartsAmount: customerApprovedPartsAmount,
       totalGrossAmount,
       balanceAfter: updatedWallet.availableBalance,
       commissionDue: updatedWallet.commissionDue,
@@ -1367,10 +1385,9 @@ const getCommissionDetails = async (providerId) => {
     .lean();
 
   const currentCommissionDue = wallet.commissionDue || 0;
-  const configuredRate = (
-    typeof process.env.PLATFORM_COMMISSION_RATE !== 'undefined' &&
-    !isNaN(parseFloat(process.env.PLATFORM_COMMISSION_RATE))
-  ) ? parseFloat(process.env.PLATFORM_COMMISSION_RATE) : 0.15;
+  const { getActiveCommissionRate } = require('../utils/commissionCalculator');
+  const activeConfig = await getActiveCommissionRate();
+  const configuredRate = activeConfig.rateDecimal;
 
   return {
     commissionDue: currentCommissionDue,
@@ -1381,7 +1398,7 @@ const getCommissionDetails = async (providerId) => {
     reconciliationFlagged: Boolean(wallet.reconciliationFlagged),
     reconciliationReason: wallet.reconciliationReason || null,
     configuredCommissionRate: configuredRate,
-    commissionRateText: `${Math.round(configuredRate * 100)}% Platform Take-Rate`,
+    commissionRateText: `${activeConfig.ratePercentage}% Platform Take-Rate`,
     activeOrder: wallet.activeCommissionOrder?.status === 'pending' ? {
       orderId: wallet.activeCommissionOrder.orderId,
       amount: wallet.activeCommissionOrder.amount,
@@ -1395,7 +1412,13 @@ const getCommissionDetails = async (providerId) => {
       bookingId: t.booking?._id || t.metadata?.bookingId || null,
       bookingReference: t.booking?.bookingReference || t.metadata?.bookingReference || 'N/A',
       serviceName: t.booking?.service?.name || t.metadata?.serviceName || 'Service',
-      customerPaymentAmount: t.metadata?.grossAmount || 0,
+      customerPaymentAmount: t.metadata?.totalCustomerPayable || t.metadata?.grossAmount || 0,
+      originalServicePrice: t.metadata?.originalServicePrice || t.metadata?.commissionableAmount || t.metadata?.grossAmount || 0,
+      additionalPartsAmount: t.metadata?.customerApprovedPartsAmount || t.metadata?.additionalPartsAmount || 0,
+      customerApprovedPartsAmount: t.metadata?.customerApprovedPartsAmount || t.metadata?.additionalPartsAmount || 0,
+      commissionableAmount: t.metadata?.commissionableAmount || t.metadata?.originalServicePrice || t.metadata?.grossAmount || 0,
+      platformCommissionAmount: t.amount,
+      partsCommission: 0,
       commissionPercentage: t.metadata?.commissionRate || `${Math.round(configuredRate * 100)}%`,
       createdAt: t.createdAt,
       status: t.status,
@@ -1888,10 +1911,15 @@ const adminListCommissions = async (query = {}) => {
     providersWithOutstandingCount: 0
   };
 
+  const { getActiveCommissionRate } = require('../utils/commissionCalculator');
+  const activeCommissionConfig = await getActiveCommissionRate();
+
   return {
     summary: {
       totalOutstandingCommission: summary.totalOutstandingCommission || 0,
-      providersWithOutstandingCount: summary.providersWithOutstandingCount || 0
+      providersWithOutstandingCount: summary.providersWithOutstandingCount || 0,
+      activeCommissionRate: activeCommissionConfig.ratePercentage,
+      activeCommissionRateFormatted: activeCommissionConfig.rateFormatted
     },
     wallets: wallets.map((w) => ({
       _id: w._id,

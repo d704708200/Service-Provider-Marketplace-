@@ -519,5 +519,16 @@ export const tagApi = {
   }
 };
 
+export const settingApi = {
+  getCommissionSetting: async () => {
+    const response = await api.get('/admin/settings/commission');
+    return response.data;
+  },
+  updateCommissionSetting: async (data) => {
+    const response = await api.put('/admin/settings/commission', data);
+    return response.data;
+  }
+};
+
 export default api;
 

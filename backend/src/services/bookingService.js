@@ -357,6 +357,13 @@ const createBooking = async (userId, bookingData) => {
 
     const effectiveNotes = (bookingData.notes || bookingData.problemDescription || '').trim();
 
+    // Freeze active platform commission rate snapshot for this booking
+    const { getActiveCommissionRate } = require('../utils/commissionCalculator');
+    const activeCommission = await getActiveCommissionRate();
+    const activeRate = activeCommission.ratePercentage;
+    const initialCommissionAmount = Math.round(basePrice * (activeRate / 100) * 100) / 100;
+    const initialProviderNet = Math.round((basePrice - initialCommissionAmount) * 100) / 100;
+
     newBooking = await Booking.create({
       bookingReference,
       customer: customer._id,
@@ -382,6 +389,22 @@ const createBooking = async (userId, bookingData) => {
         tax,
         discount,
         totalAmount
+      },
+      originalServicePrice: basePrice,
+      commissionableAmount: basePrice,
+      platformCommissionRate: activeRate,
+      platformCommissionAmount: initialCommissionAmount,
+      providerNetEarning: initialProviderNet,
+      accounting: {
+        originalServicePrice: basePrice,
+        additionalPartsAmount: 0,
+        partsDescription: '',
+        customerApprovedPartsAmount: 0,
+        totalCustomerPayable: totalAmount,
+        commissionableAmount: basePrice,
+        platformCommissionRate: activeRate,
+        platformCommissionAmount: initialCommissionAmount,
+        providerNetEarning: initialProviderNet
       },
       paymentStatus: 'pending',
       paymentMethod: bookingData.paymentMethod || 'cash',
@@ -1868,8 +1891,15 @@ const submitSpareParts = async (userId, bookingId, { items }) => {
   labourSubtotal = Math.round(labourSubtotal * 100) / 100;
   const totalAdditionalAmount = Math.round((partsSubtotal + labourSubtotal) * 100) / 100;
 
-  // Preserve original service amount
-  const originalServiceAmount = booking.spareParts?.originalServiceAmount || booking.pricing.totalAmount;
+  // Preserve original service amount (Strictly base service price before spare parts)
+  const originalServiceAmount = Number(
+    booking.originalServicePrice ||
+    booking.spareParts?.originalServiceAmount ||
+    booking.pricing?.basePrice ||
+    booking.pricing?.totalAmount ||
+    0
+  );
+  booking.originalServicePrice = originalServiceAmount;
   const hasItems = sanitizedItems.length > 0;
 
   booking.spareParts = {
