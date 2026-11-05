@@ -1433,7 +1433,7 @@ const getCommissionDetails = async (providerId) => {
  * Concurrency Safety: Compare-and-set active order lock prevents duplicate active orders.
  * Edge-case Safety: Checks for unresolved in-flight payments before creating new orders.
  */
-const createPayCommissionOrder = async (providerId) => {
+const createPayCommissionOrder = async (providerId, requestedAmount) => {
   const wallet = await getOrCreateWallet(providerId);
   const currentCommissionDue = wallet.commissionDue || 0;
 
@@ -1443,7 +1443,22 @@ const createPayCommissionOrder = async (providerId) => {
     throw err;
   }
 
+  if (requestedAmount !== undefined && requestedAmount !== null) {
+    const parsed = Number(requestedAmount);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      const err = new Error('Invalid payment amount. Amount must be greater than zero.');
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
   const paymentService = require('./paymentService');
+  let activeKeyId;
+  try {
+    activeKeyId = paymentService.getSanitizedRazorpayConfig().keyId;
+  } catch (e) {
+    activeKeyId = process.env.RAZORPAY_KEY_ID ? process.env.RAZORPAY_KEY_ID.trim() : 'rzp_test_placeholder';
+  }
 
   // 1. Check if there is already an active order for this provider
   const activeOrder = wallet.activeCommissionOrder;
@@ -1494,7 +1509,7 @@ const createPayCommissionOrder = async (providerId) => {
           amount: activeOrder.amount,
           amountInPaise: activeOrder.amountInPaise,
           currency: activeOrder.currency || 'INR',
-          keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder',
+          keyId: activeKeyId,
           expiresAt: activeOrder.expiresAt,
           status: 'pending'
         };
@@ -1537,7 +1552,7 @@ const createPayCommissionOrder = async (providerId) => {
         amount: reloaded.activeCommissionOrder.amount,
         amountInPaise: reloaded.activeCommissionOrder.amountInPaise,
         currency: reloaded.activeCommissionOrder.currency || 'INR',
-        keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder',
+        keyId: activeKeyId,
         expiresAt: reloaded.activeCommissionOrder.expiresAt,
         status: 'pending'
       };
@@ -1583,7 +1598,7 @@ const createPayCommissionOrder = async (providerId) => {
     amount: currentCommissionDue,
     amountInPaise,
     currency: order.currency || 'INR',
-    keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder',
+    keyId: activeKeyId,
     expiresAt: orderExpiry,
     status: 'pending'
   };
@@ -1659,6 +1674,8 @@ const verifyAndSettleCommissionPayment = async (providerId, { razorpayOrderId, r
   if (alreadyProcessed) {
     return {
       success: true,
+      settled: true,
+      alreadySettled: true,
       message: 'Commission payment already settled',
       wallet,
       transaction: alreadyProcessed
@@ -1859,6 +1876,8 @@ const verifyAndSettleCommissionPayment = async (providerId, { razorpayOrderId, r
 
   return {
     success: true,
+    settled: true,
+    commissionSettled: amountToSettle,
     message: 'Commission payable to Mendroo settled in full',
     wallet: updatedWallet,
     transaction

@@ -214,7 +214,7 @@ const getCommissionDetails = async (req, res, next) => {
 const createPayCommissionOrder = async (req, res, next) => {
   try {
     const provider = await getProviderFromUser(req.user._id);
-    const order = await walletService.createPayCommissionOrder(provider._id);
+    const order = await walletService.createPayCommissionOrder(provider._id, req.body?.amount);
 
     res.status(200).json({
       success: true,

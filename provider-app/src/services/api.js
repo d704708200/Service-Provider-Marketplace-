@@ -309,8 +309,8 @@ export const walletApi = {
     const response = await api.get('/provider/wallet/commission');
     return response.data;
   },
-  createPayCommissionOrder: async () => {
-    const response = await api.post('/provider/wallet/commission/pay');
+  createPayCommissionOrder: async (payload = {}) => {
+    const response = await api.post('/provider/wallet/commission/pay', payload);
     return response.data;
   },
   cancelPayCommissionOrder: async () => {

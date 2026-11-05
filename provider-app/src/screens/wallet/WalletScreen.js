@@ -38,6 +38,11 @@ export default function WalletScreen({ navigation }) {
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedTxn, setSelectedTxn] = useState(null);
   const [payingCommission, setPayingCommission] = useState(false);
+  const [commissionPayModalVisible, setCommissionPayModalVisible] = useState(false);
+  const [commissionPayStep, setCommissionPayStep] = useState('confirm');
+  const [commissionPayMessage, setCommissionPayMessage] = useState('');
+  const [commissionPayError, setCommissionPayError] = useState('');
+  const [commissionPayFeedback, setCommissionPayFeedback] = useState(null);
   const [togglingAutoDeduct, setTogglingAutoDeduct] = useState(false);
   const [autoDeductModalVisible, setAutoDeductModalVisible] = useState(false);
   const [targetAutoDeductValue, setTargetAutoDeductValue] = useState(false);
@@ -76,65 +81,154 @@ export default function WalletScreen({ navigation }) {
     fetchWalletData();
   };
 
-  const handlePayCommissionNow = async () => {
+  const handlePayCommissionNow = () => {
     const amountToPay = summary?.commissionDue || commissionData?.commissionDue || 0;
+    if (__DEV__) {
+      console.log('[WalletScreen] "Pay Full Commission" clicked. Outstanding amount: ₹' + amountToPay);
+    }
+
     if (amountToPay <= 0) {
-      Alert.alert('No Due', 'You do not have any outstanding commission payable.');
+      setCommissionPayStep('error');
+      setCommissionPayError('You do not have any outstanding platform commission payable.');
+      setCommissionPayModalVisible(true);
       return;
     }
 
-    Alert.alert(
-      'Pay Full Commission',
-      `You are about to settle the complete outstanding platform commission of ₹${amountToPay.toLocaleString('en-IN', { minimumFractionDigits: 2 })} in one transaction via Razorpay.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: `Pay ₹${amountToPay}`,
-          onPress: async () => {
-            setPayingCommission(true);
-            try {
-              const orderRes = await walletApi.createPayCommissionOrder();
-              if (!orderRes?.success || !orderRes.data) {
-                throw new Error(orderRes?.message || 'Could not initiate payment order');
-              }
+    if (payingCommission) {
+      if (__DEV__) console.log('[WalletScreen] Commission payment is already processing, ignoring duplicate click.');
+      return;
+    }
 
-              const checkoutResult = await openCommissionPaymentCheckout({
-                orderData: orderRes.data,
-                providerName: 'Mendroo Service Provider'
-              });
+    // Open custom confirmation modal (cross-platform Web + Android)
+    setCommissionPayStep('confirm');
+    setCommissionPayMessage('');
+    setCommissionPayError('');
+    setCommissionPayModalVisible(true);
+  };
 
-              if (!checkoutResult.success) {
-                // Cancel active lock so order can be immediately retried if needed
-                walletApi.cancelPayCommissionOrder().catch(() => { });
-                if (!checkoutResult.isCancelled) {
-                  Alert.alert('Payment Incomplete', checkoutResult.error || 'Payment was not completed. Outstanding commission remains unchanged.');
-                }
-                setPayingCommission(false);
-                return;
-              }
+  const executeCommissionPayment = async () => {
+    if (payingCommission) return;
 
-              // Verify on backend
-              const verifyRes = await walletApi.verifyCommissionPayment({
-                razorpayOrderId: checkoutResult.data.razorpayOrderId,
-                razorpayPaymentId: checkoutResult.data.razorpayPaymentId,
-                razorpaySignature: checkoutResult.data.razorpaySignature
-              });
+    const amountToPay = summary?.commissionDue || commissionData?.commissionDue || 0;
+    if (amountToPay <= 0) {
+      setCommissionPayStep('error');
+      setCommissionPayError('You do not have any outstanding platform commission payable.');
+      return;
+    }
 
-              if (verifyRes?.success) {
-                Alert.alert('Settlement Successful', 'Your platform commission has been settled in full. Commission Payable is now ₹0.');
-                fetchWalletData();
-              } else {
-                Alert.alert('Verification Issue', verifyRes?.message || 'Payment verification could not be confirmed.');
-              }
-            } catch (err) {
-              Alert.alert('Payment Error', err.response?.data?.error?.message || err.message || 'Payment failed');
-            } finally {
-              setPayingCommission(false);
-            }
-          }
+    setPayingCommission(true);
+    setCommissionPayStep('processing');
+    setCommissionPayMessage('Creating payment order...');
+
+    if (__DEV__) {
+      console.log('[WalletScreen] Initiating order creation for ₹' + amountToPay);
+    }
+
+    try {
+      const orderRes = await walletApi.createPayCommissionOrder({ amount: amountToPay });
+
+      if (!orderRes?.success || !orderRes.data) {
+        throw new Error(orderRes?.message || 'Could not initiate payment order with server.');
+      }
+
+      // Check if server resolved an already captured payment
+      if (orderRes.data.alreadySettled) {
+        setCommissionPayStep('success');
+        setCommissionPayMessage(orderRes.data.message || 'Commission was already settled.');
+        setCommissionPayFeedback({
+          type: 'success',
+          message: orderRes.data.message || 'Commission was already settled.'
+        });
+        fetchWalletData();
+        setPayingCommission(false);
+        return;
+      }
+
+      setCommissionPayMessage('Launching Razorpay checkout...');
+      if (__DEV__) {
+        console.log('[WalletScreen] Order created:', orderRes.data.orderId, 'Launching checkout...');
+      }
+
+      const checkoutResult = await openCommissionPaymentCheckout({
+        orderData: orderRes.data,
+        providerName: summary?.providerName || 'Mendroo Service Provider'
+      });
+
+      if (!checkoutResult.success) {
+        // Unlock order on server so it can be retried immediately
+        walletApi.cancelPayCommissionOrder().catch(() => {});
+
+        if (checkoutResult.isCancelled) {
+          if (__DEV__) console.log('[WalletScreen] Payment was cancelled by provider.');
+          setCommissionPayStep('cancelled');
+          setCommissionPayMessage('Payment cancelled. Your outstanding commission is unchanged.');
+          setCommissionPayFeedback({
+            type: 'info',
+            message: 'Payment cancelled. Your outstanding commission is unchanged.'
+          });
+        } else {
+          if (__DEV__) console.log('[WalletScreen] Payment checkout failed:', checkoutResult.error);
+          setCommissionPayStep('error');
+          setCommissionPayError(checkoutResult.error || 'Payment was not completed. Outstanding commission remains unchanged.');
+          setCommissionPayFeedback({
+            type: 'error',
+            message: checkoutResult.error || 'Payment was not completed. Outstanding commission remains unchanged.'
+          });
         }
-      ]
-    );
+        setPayingCommission(false);
+        return;
+      }
+
+      // Verify on backend
+      setCommissionPayMessage('Verifying payment with server...');
+      if (__DEV__) {
+        console.log('[WalletScreen] Gateway payment successful. Verifying server-side signature...');
+      }
+
+      const verifyRes = await walletApi.verifyCommissionPayment({
+        razorpayOrderId: checkoutResult.data.razorpayOrderId,
+        razorpayPaymentId: checkoutResult.data.razorpayPaymentId,
+        razorpaySignature: checkoutResult.data.razorpaySignature
+      });
+
+      if (verifyRes?.success) {
+        if (__DEV__) console.log('[WalletScreen] Commission payment verified & settled in full!');
+        setCommissionPayStep('success');
+        setCommissionPayMessage('Commission payment successful. Your platform commission has been settled in full.');
+        setCommissionPayFeedback({
+          type: 'success',
+          message: 'Commission payment successful. Your platform commission has been settled in full.'
+        });
+        fetchWalletData();
+      } else {
+        if (__DEV__) console.warn('[WalletScreen] Verification issue:', verifyRes?.message);
+        setCommissionPayStep('error');
+        setCommissionPayError(verifyRes?.message || 'Payment verification could not be confirmed by the server.');
+        setCommissionPayFeedback({
+          type: 'error',
+          message: verifyRes?.message || 'Payment verification could not be confirmed by the server.'
+        });
+      }
+    } catch (err) {
+      console.error('[WalletScreen] Payment exception:', err);
+      // Cancel pending lock so provider can retry
+      walletApi.cancelPayCommissionOrder().catch(() => {});
+
+      const errorMsg =
+        err.response?.data?.message ||
+        err.response?.data?.error?.message ||
+        err.message ||
+        'Payment request failed. Please check your network and try again.';
+
+      setCommissionPayStep('error');
+      setCommissionPayError(errorMsg);
+      setCommissionPayFeedback({
+        type: 'error',
+        message: errorMsg
+      });
+    } finally {
+      setPayingCommission(false);
+    }
   };
 
   const handleToggleAutoDeduct = (newValue) => {
@@ -373,6 +467,35 @@ export default function WalletScreen({ navigation }) {
             </Text>
           </View>
 
+          {commissionPayFeedback && (
+            <View style={[
+              styles.feedbackBanner,
+              commissionPayFeedback.type === 'success' ? styles.feedbackSuccess :
+              commissionPayFeedback.type === 'info' ? styles.feedbackInfo : styles.feedbackError,
+              { marginBottom: 12 }
+            ]}>
+              <Ionicons
+                name={
+                  commissionPayFeedback.type === 'success' ? 'checkmark-circle' :
+                  commissionPayFeedback.type === 'info' ? 'information-circle' : 'alert-circle'
+                }
+                size={16}
+                color={
+                  commissionPayFeedback.type === 'success' ? '#10B981' :
+                  commissionPayFeedback.type === 'info' ? '#3B82F6' : '#EF4444'
+                }
+              />
+              <Text style={[
+                styles.feedbackBannerText,
+                { flex: 1, color: commissionPayFeedback.type === 'success' ? '#10B981' : commissionPayFeedback.type === 'info' ? '#60A5FA' : '#F87171' }
+              ]}>
+                {commissionPayFeedback.message}
+              </Text>
+              <TouchableOpacity onPress={() => setCommissionPayFeedback(null)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={14} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+          )}
           {commissionPayable > 0 ? (
             <View style={styles.commissionPayActionContainer}>
               <View style={styles.settlementOptionBadgeRow}>
@@ -782,6 +905,150 @@ export default function WalletScreen({ navigation }) {
                   Pay Full Commission ₹{commissionPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </Text>
               </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Commission Settlement Cross-Platform Modal (Web + Mobile) */}
+      <Modal
+        visible={commissionPayModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!payingCommission) setCommissionPayModalVisible(false);
+        }}
+      >
+        <View style={styles.confirmModalOverlay}>
+          <View style={styles.confirmModalContent}>
+            {commissionPayStep === 'confirm' && (
+              <View style={{ alignItems: 'center', width: '100%' }}>
+                <View style={[styles.confirmIconCircle, { backgroundColor: 'rgba(124, 58, 237, 0.15)' }]}>
+                  <Ionicons name="card-outline" size={30} color="#8B5CF6" />
+                </View>
+                <Text style={styles.confirmModalTitle}>Pay Full Commission</Text>
+                
+                <View style={styles.commissionPayModalAmountCard}>
+                  <Text style={styles.commissionPayModalAmountLabel}>TOTAL COMMISSION DUE</Text>
+                  <Text style={styles.commissionPayModalAmountValue}>
+                    ₹{commissionPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+
+                <Text style={styles.confirmModalBody}>
+                  You are about to settle the complete outstanding platform commission in one single transaction via Razorpay.
+                </Text>
+
+                <View style={styles.commissionPayModalSafetyRow}>
+                  <Ionicons name="shield-checkmark" size={16} color="#10B981" />
+                  <Text style={styles.commissionPayModalSafetyText}>
+                    Your withdrawable Available Balance is completely protected and will never be deducted.
+                  </Text>
+                </View>
+
+                <View style={[styles.confirmActionsRow, { width: '100%', marginTop: 16 }]}>
+                  <TouchableOpacity
+                    style={styles.confirmCancelBtn}
+                    onPress={() => setCommissionPayModalVisible(false)}
+                    disabled={payingCommission}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.confirmCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.confirmExecuteBtn, { backgroundColor: '#7C3AED' }]}
+                    onPress={executeCommissionPayment}
+                    disabled={payingCommission}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.confirmExecuteBtnText}>
+                      Proceed to Pay ₹{commissionPayable.toFixed(2)}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {commissionPayStep === 'processing' && (
+              <View style={{ alignItems: 'center', paddingVertical: 12, width: '100%' }}>
+                <ActivityIndicator size="large" color="#8B5CF6" style={{ marginBottom: 16 }} />
+                <Text style={styles.confirmModalTitle}>Processing Commission</Text>
+                <Text style={[styles.confirmModalBody, { color: '#C4B5FD', fontWeight: '600', marginTop: 8 }]}>
+                  {commissionPayMessage || 'Processing payment...'}
+                </Text>
+                <Text style={[styles.confirmModalBody, { fontSize: 11, color: '#6B7280', marginTop: 4 }]}>
+                  Please do not close this window or navigate away.
+                </Text>
+              </View>
+            )}
+
+            {commissionPayStep === 'success' && (
+              <View style={{ alignItems: 'center', width: '100%' }}>
+                <View style={[styles.confirmIconCircle, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                  <Ionicons name="checkmark-circle" size={32} color="#10B981" />
+                </View>
+                <Text style={styles.confirmModalTitle}>Settlement Successful</Text>
+                <Text style={[styles.confirmModalBody, { color: '#D1FAE5', marginTop: 8 }]}>
+                  {commissionPayMessage || 'Your platform commission has been settled in full.'}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.confirmExecuteBtn, { backgroundColor: '#10B981', width: '100%', marginTop: 20 }]}
+                  onPress={() => setCommissionPayModalVisible(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.confirmExecuteBtnText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {commissionPayStep === 'cancelled' && (
+              <View style={{ alignItems: 'center', width: '100%' }}>
+                <View style={[styles.confirmIconCircle, { backgroundColor: 'rgba(107, 114, 128, 0.15)' }]}>
+                  <Ionicons name="close-circle-outline" size={32} color="#9CA3AF" />
+                </View>
+                <Text style={styles.confirmModalTitle}>Payment Cancelled</Text>
+                <Text style={[styles.confirmModalBody, { marginTop: 8 }]}>
+                  {commissionPayMessage || 'Payment cancelled. Your outstanding commission is unchanged.'}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.confirmCancelBtn, { width: '100%', marginTop: 20 }]}
+                  onPress={() => setCommissionPayModalVisible(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.confirmCancelBtnText}>Dismiss</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {commissionPayStep === 'error' && (
+              <View style={{ alignItems: 'center', width: '100%' }}>
+                <View style={[styles.confirmIconCircle, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
+                  <Ionicons name="alert-circle-outline" size={32} color="#EF4444" />
+                </View>
+                <Text style={styles.confirmModalTitle}>Payment Incomplete</Text>
+                <Text style={[styles.confirmModalBody, { color: '#FCA5A5', marginTop: 8 }]}>
+                  {commissionPayError || 'An error occurred during payment processing.'}
+                </Text>
+                <View style={[styles.confirmActionsRow, { width: '100%', marginTop: 20 }]}>
+                  <TouchableOpacity
+                    style={styles.confirmCancelBtn}
+                    onPress={() => setCommissionPayModalVisible(false)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.confirmCancelBtnText}>Close</Text>
+                  </TouchableOpacity>
+                  {commissionPayable > 0 && (
+                    <TouchableOpacity
+                      style={[styles.confirmExecuteBtn, { backgroundColor: '#7C3AED' }]}
+                      onPress={executeCommissionPayment}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.confirmExecuteBtnText}>Retry</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
             )}
           </View>
         </View>
@@ -1520,6 +1787,48 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700'
+  },
+  commissionPayModalAmountCard: {
+    backgroundColor: '#1E1B2E',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    marginVertical: 14,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#2E2845'
+  },
+  commissionPayModalAmountLabel: {
+    color: '#9CA3AF',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8
+  },
+  commissionPayModalAmountValue: {
+    color: '#F43F5E',
+    fontSize: 28,
+    fontWeight: '800',
+    marginTop: 4
+  },
+  commissionPayModalSafetyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.2)',
+    width: '100%'
+  },
+  commissionPayModalSafetyText: {
+    color: '#34D399',
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+    lineHeight: 16
   },
   // Feedback Banner Styles
   feedbackBanner: {
