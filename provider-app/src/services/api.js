@@ -354,8 +354,21 @@ export const providerTagApi = {
 // Provider Reviews & Ratings API
 export const reviewApi = {
   getProviderReviews: async (params = {}) => {
-    const response = await api.get('/reviews/provider/me', { params });
-    return response.data;
+    try {
+      const response = await api.get('/reviews/provider/me', { params });
+      return response.data;
+    } catch (err) {
+      // Fallback in case route is accessed through /providers/me/reviews
+      if (err.response?.status === 404 || err.response?.status === 400) {
+        try {
+          const fallbackRes = await api.get('/providers/me/reviews', { params });
+          return fallbackRes.data;
+        } catch (_) {
+          // Keep original error
+        }
+      }
+      throw err;
+    }
   }
 };
 

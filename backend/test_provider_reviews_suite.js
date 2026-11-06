@@ -252,6 +252,79 @@ async function runProviderReviewsSuite() {
     assert(updatedProvA.rating.average === 4.7, `Provider A rating.average synced to 4.7 (DB value: ${updatedProvA.rating.average})`);
     assert(updatedProvA.rating.count === 3, `Provider A rating.count synced to 3 (DB value: ${updatedProvA.rating.count})`);
 
+    console.log('\n--- Scenario 8: HTTP Route Resolution & ObjectId Isolation ---');
+    const http = require('http');
+    const app = require('./src/app');
+    const { generateToken } = require('./src/utils/jwt');
+
+    const tokenA = generateToken({ userId: userA._id, role: 'provider' });
+    const tokenB = generateToken({ userId: userB._id, role: 'provider' });
+    const custToken = generateToken({ userId: custUser._id, role: 'customer' });
+
+    const server = http.createServer(app);
+    await new Promise((resolve) => server.listen(0, resolve));
+    const serverPort = server.address().port;
+    const baseUrl = `http://127.0.0.1:${serverPort}`;
+
+    const makeRequest = (urlPath, token = null) => {
+      return new Promise((resolve, reject) => {
+        const url = new URL(urlPath, baseUrl);
+        const headers = { Accept: 'application/json' };
+        if (token) headers.Authorization = `Bearer ${token}`;
+
+        const req = http.request(url, { method: 'GET', headers }, (res) => {
+          let rawData = '';
+          res.on('data', (chunk) => { rawData += chunk; });
+          res.on('end', () => {
+            let json = {};
+            try { json = JSON.parse(rawData); } catch (_) {}
+            resolve({ status: res.statusCode, body: json, raw: rawData });
+          });
+        });
+        req.on('error', reject);
+        req.end();
+      });
+    };
+
+    // 1. Authenticated Provider A calls /api/reviews/provider/me
+    const httpResA = await makeRequest('/api/reviews/provider/me?page=1&limit=10', tokenA);
+    assert(httpResA.status === 200, `Provider A HTTP 200 OK (got: ${httpResA.status})`);
+    assert(httpResA.body.success === true, 'Response success is true');
+    assert(Array.isArray(httpResA.body.data) && httpResA.body.data.length === 3, 'Data has 3 reviews');
+    assert(httpResA.body.stats?.averageRating === 4.7, `HTTP stats.averageRating is 4.7 (got: ${httpResA.body.stats?.averageRating})`);
+    assert(httpResA.body.stats?.distribution?.[5] === 2, 'Distribution 5-star count is 2');
+    assert(!httpResA.raw.includes('Invalid MongoDB ObjectId'), 'Never treats "me" as invalid ObjectId');
+
+    // 2. Authenticated Provider B calls /api/reviews/provider/me (isolation test)
+    const httpResB = await makeRequest('/api/reviews/provider/me?page=1&limit=10', tokenB);
+    assert(httpResB.status === 200, `Provider B HTTP 200 OK (got: ${httpResB.status})`);
+    assert(httpResB.body.data.length === 2, 'Provider B receives only their 2 reviews');
+    assert(httpResB.body.stats?.averageRating === 2.5, 'Provider B stats average is 2.5');
+
+    // 3. Unauthenticated call to /api/reviews/provider/me
+    const unauthRes = await makeRequest('/api/reviews/provider/me');
+    assert(unauthRes.status === 401, `Unauthenticated request returns 401 (got: ${unauthRes.status})`);
+    assert(!unauthRes.raw.includes('Invalid MongoDB ObjectId'), 'Unauthenticated does not fail on ObjectId validation');
+
+    // 4. Role-based check: Customer calling provider route returns 403
+    const forbiddenRes = await makeRequest('/api/reviews/provider/me', custToken);
+    assert(forbiddenRes.status === 403, `Customer token calling provider reviews returns 403 (got: ${forbiddenRes.status})`);
+
+    // 5. Public provider endpoint with valid ObjectId
+    const validPublicRes = await makeRequest(`/api/reviews/provider/${providerA._id}`);
+    assert(validPublicRes.status === 200, `Public endpoint with valid ObjectId returns 200 (got: ${validPublicRes.status})`);
+
+    // 6. Public provider endpoint with invalid ObjectId returns controlled 400
+    const invalidPublicRes = await makeRequest('/api/reviews/provider/not-a-valid-id');
+    assert(invalidPublicRes.status === 400, `Public endpoint with invalid ID returns 400 (got: ${invalidPublicRes.status})`);
+    assert(invalidPublicRes.body.error?.message?.includes('Invalid MongoDB ObjectId'), 'Error message states invalid MongoDB ObjectId for non-"me" parameter');
+
+    // 7. Verify /providers/me/reviews route alias
+    const aliasRes = await makeRequest('/api/providers/me/reviews', tokenA);
+    assert(aliasRes.status === 200, `Alias /api/providers/me/reviews returns 200 (got: ${aliasRes.status})`);
+
+    await new Promise((resolve) => server.close(resolve));
+
   } finally {
     // Teardown test artifacts
     if (createdReviewIds.length > 0) {

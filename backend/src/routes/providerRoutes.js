@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const providerController = require('../controllers/providerController');
 const tagController = require('../controllers/tagController');
+const reviewController = require('../controllers/reviewController');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { uploadSingleAvatar, uploadSingleKYCDocument, uploadSingleCertificationDocument } = require('../middleware/upload');
 const {
@@ -30,6 +31,13 @@ router.get(
   authenticate,
   requireRole('provider'),
   providerController.getProviderMe
+);
+
+router.get(
+  '/me/reviews',
+  authenticate,
+  requireRole('provider'),
+  reviewController.getProviderReviews
 );
 
 router.put(

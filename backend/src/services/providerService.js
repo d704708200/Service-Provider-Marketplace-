@@ -1443,16 +1443,6 @@ const getProviderSlotAvailability = async ({ providerId, date, startTime, endTim
       }
     }
   }
-          avatar: alt.user?.avatar || null,
-          experienceYears: alt.experienceYears || 0,
-          categories: alt.categories,
-          rating: alt.rating || { average: 5.0, count: 0 },
-          startingPrice: altService ? altService.price : null,
-          isAvailable: true
-        });
-      }
-    }
-  }
 
   return {
     providerId: provider._id,

@@ -56,6 +56,7 @@ router.get(
 );
 
 // Provider: Get authenticated provider's reviews, rating stats, and distribution
+// Registered strictly BEFORE /provider/:providerId so literal 'me' is never matched as a param
 router.get(
   '/provider/me',
   authenticate,
@@ -63,9 +64,28 @@ router.get(
   reviewController.getProviderReviews
 );
 
-// Public: Get reviews for a provider
+// Alias: /api/reviews/me
+router.get(
+  '/me',
+  authenticate,
+  requireRole('provider'),
+  reviewController.getProviderReviews
+);
+
+// Public: Get reviews for a specific provider by ObjectId
+// Includes guard so 'me' is never evaluated by validateObjectId
 router.get(
   '/provider/:providerId',
+  (req, res, next) => {
+    if (req.params.providerId === 'me') {
+      return authenticate(req, res, () => {
+        requireRole('provider')(req, res, () => {
+          reviewController.getProviderReviews(req, res, next);
+        });
+      });
+    }
+    next();
+  },
   validateObjectId('providerId'),
   reviewController.getProviderPublicReviews
 );

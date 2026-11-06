@@ -195,196 +195,210 @@ export default function ReviewsScreen({ navigation }) {
           />
         }
       >
-        {/* Rating Overview Card */}
-        <Card style={styles.summaryCard}>
-          <View style={styles.summaryTopRow}>
-            {/* Big Score Box */}
-            <View style={styles.scoreContainer}>
-              <Text style={styles.bigScoreText}>
-                {stats.averageRating ? Number(stats.averageRating).toFixed(1) : '5.0'}
-              </Text>
-              <View style={styles.starsRow}>
-                {renderStars(stats.averageRating || 5.0)}
-              </View>
-              <Text style={styles.totalReviewsText}>
-                Based on {stats.total || 0} {stats.total === 1 ? 'review' : 'reviews'}
-              </Text>
-            </View>
-
-            {/* Rating Distribution Bars */}
-            <View style={styles.distributionContainer}>
-              {[5, 4, 3, 2, 1].map((star) => {
-                const count = stats.distribution?.[star] || 0;
-                const pct = distributionPercentages[star] || 0;
-                return (
-                  <View key={star} style={styles.distRow}>
-                    <Text style={styles.distStarLabel}>{star}★</Text>
-                    <View style={styles.distBarTrack}>
-                      <View style={[styles.distBarFill, { width: `${pct}%` }]} />
-                    </View>
-                    <Text style={styles.distCountLabel}>{count}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        </Card>
-
-        {/* Filter Chips */}
-        <View style={styles.filterSection}>
-          <Text style={styles.filterSectionTitle}>Filter Reviews</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}
-          >
-            {STAR_FILTERS.map((f) => {
-              const isSelected = selectedFilter === f.value;
-              return (
-                <TouchableOpacity
-                  key={String(f.value)}
-                  style={[styles.filterChip, isSelected && styles.filterChipActive]}
-                  onPress={() => handleSelectFilter(f.value)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.filterChipText, isSelected && styles.filterChipTextActive]}>
-                    {f.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* Reviews List */}
+        {/* Loading State */}
         {loading && !refreshing ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Loading client feedback...</Text>
+            <Text style={styles.loadingText}>Loading client feedback & ratings...</Text>
           </View>
         ) : error ? (
+          /* Error State (prevents showing false/unverified ratings when request fails) */
           <ErrorView
+            title="Could Not Load Reviews"
             message={error}
             onRetry={() => {
               setLoading(true);
               fetchReviews(1, false, selectedFilter);
             }}
           />
-        ) : reviews.length === 0 ? (
-          <EmptyState
-            icon="star-outline"
-            title="No Reviews Found"
-            description={
-              selectedFilter !== 'all'
-                ? `No ${selectedFilter}-star reviews received yet.`
-                : 'Customer feedback and star ratings will appear here as soon as clients review your completed services.'
-            }
-          />
         ) : (
-          <View style={styles.reviewsList}>
-            <Text style={styles.reviewsListHeading}>
-              {selectedFilter === 'all'
-                ? `Customer Feedback (${pagination.total || reviews.length})`
-                : `${selectedFilter} Star Reviews (${pagination.total || reviews.length})`}
-            </Text>
+          <>
+            {/* Rating Overview Card */}
+            <Card style={styles.summaryCard}>
+              <View style={styles.summaryTopRow}>
+                {/* Big Score Box */}
+                <View style={styles.scoreContainer}>
+                  <Text style={styles.bigScoreText}>
+                    {stats.total > 0 && stats.averageRating
+                      ? Number(stats.averageRating).toFixed(1)
+                      : stats.total === 0
+                      ? '0.0'
+                      : Number(stats.averageRating || 0).toFixed(1)}
+                  </Text>
+                  <View style={styles.starsRow}>
+                    {renderStars(stats.total > 0 ? (stats.averageRating || 0) : 0)}
+                  </View>
+                  <Text style={styles.totalReviewsText}>
+                    {stats.total > 0
+                      ? `Based on ${stats.total} ${stats.total === 1 ? 'review' : 'reviews'}`
+                      : 'No client reviews yet'}
+                  </Text>
+                </View>
 
-            {reviews.map((item) => {
-              const customerUser = item.customer?.user;
-              const customerName = customerUser?.name || 'Verified Customer';
-              const avatarUrl = formatAvatarUrl(customerUser?.avatar);
-              const initials = customerName
-                .split(' ')
-                .map((n) => n[0])
-                .join('')
-                .slice(0, 2)
-                .toUpperCase() || 'VC';
+                {/* Rating Distribution Bars */}
+                <View style={styles.distributionContainer}>
+                  {[5, 4, 3, 2, 1].map((star) => {
+                    const count = stats.distribution?.[star] || 0;
+                    const pct = distributionPercentages[star] || 0;
+                    return (
+                      <View key={star} style={styles.distRow}>
+                        <Text style={styles.distStarLabel}>{star}★</Text>
+                        <View style={styles.distBarTrack}>
+                          <View style={[styles.distBarFill, { width: `${pct}%` }]} />
+                        </View>
+                        <Text style={styles.distCountLabel}>{count}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            </Card>
 
-              return (
-                <Card key={item._id} style={styles.reviewCard}>
-                  {/* Top Customer Info Row */}
-                  <View style={styles.reviewHeader}>
-                    <View style={styles.customerRow}>
-                      {avatarUrl ? (
-                        <Image
-                          source={{ uri: avatarUrl }}
-                          style={styles.customerAvatar}
-                        />
-                      ) : (
-                        <View style={styles.avatarFallback}>
-                          <Text style={styles.avatarInitials}>{initials}</Text>
+            {/* Filter Chips */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Filter Reviews</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterRow}
+              >
+                {STAR_FILTERS.map((f) => {
+                  const isSelected = selectedFilter === f.value;
+                  return (
+                    <TouchableOpacity
+                      key={String(f.value)}
+                      style={[styles.filterChip, isSelected && styles.filterChipActive]}
+                      onPress={() => handleSelectFilter(f.value)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.filterChipText, isSelected && styles.filterChipTextActive]}>
+                        {f.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Reviews List or Empty State */}
+            {reviews.length === 0 ? (
+              <EmptyState
+                icon="star-outline"
+                title="No Reviews Found"
+                description={
+                  selectedFilter !== 'all'
+                    ? `No ${selectedFilter}-star reviews received yet.`
+                    : 'Customer feedback and star ratings will appear here as soon as clients review your completed services.'
+                }
+              />
+            ) : (
+              <View style={styles.reviewsList}>
+                <Text style={styles.reviewsListHeading}>
+                  {selectedFilter === 'all'
+                    ? `Customer Feedback (${pagination.total || reviews.length})`
+                    : `${selectedFilter} Star Reviews (${pagination.total || reviews.length})`}
+                </Text>
+
+                {reviews.map((item) => {
+                  const customerUser = item.customer?.user;
+                  const customerName = customerUser?.name || 'Verified Customer';
+                  const avatarUrl = formatAvatarUrl(customerUser?.avatar);
+                  const initials =
+                    customerName
+                      .split(' ')
+                      .map((n) => n[0])
+                      .join('')
+                      .slice(0, 2)
+                      .toUpperCase() || 'VC';
+
+                  return (
+                    <Card key={item._id} style={styles.reviewCard}>
+                      {/* Top Customer Info Row */}
+                      <View style={styles.reviewHeader}>
+                        <View style={styles.customerRow}>
+                          {avatarUrl ? (
+                            <Image
+                              source={{ uri: avatarUrl }}
+                              style={styles.customerAvatar}
+                            />
+                          ) : (
+                            <View style={styles.avatarFallback}>
+                              <Text style={styles.avatarInitials}>{initials}</Text>
+                            </View>
+                          )}
+                          <View style={styles.customerMeta}>
+                            <Text style={styles.customerName} numberOfLines={1}>
+                              {customerName}
+                            </Text>
+                            <Text style={styles.reviewDate}>
+                              {formatDate(item.createdAt)}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Star Badge */}
+                        <View style={styles.ratingBadge}>
+                          <Ionicons name="star" size={13} color="#F59E0B" />
+                          <Text style={styles.ratingBadgeText}>
+                            {Number(item.rating || 5).toFixed(1)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Service & Booking Reference Pill */}
+                      {(item.service?.name || item.booking?.bookingReference) && (
+                        <View style={styles.bookingMetaRow}>
+                          {item.service?.name ? (
+                            <View style={styles.servicePill}>
+                              <Ionicons name="construct-outline" size={12} color="#A78BFA" />
+                              <Text style={styles.servicePillText} numberOfLines={1}>
+                                {item.service.name}
+                              </Text>
+                            </View>
+                          ) : null}
+
+                          {item.booking?.bookingReference ? (
+                            <View style={styles.bookingRefPill}>
+                              <Ionicons name="receipt-outline" size={12} color="#9CA3AF" />
+                              <Text style={styles.bookingRefText}>
+                                {item.booking.bookingReference}
+                              </Text>
+                            </View>
+                          ) : null}
                         </View>
                       )}
-                      <View style={styles.customerMeta}>
-                        <Text style={styles.customerName} numberOfLines={1}>
-                          {customerName}
-                        </Text>
-                        <Text style={styles.reviewDate}>
-                          {formatDate(item.createdAt)}
-                        </Text>
-                      </View>
-                    </View>
 
-                    {/* Star Badge */}
-                    <View style={styles.ratingBadge}>
-                      <Ionicons name="star" size={13} color="#F59E0B" />
-                      <Text style={styles.ratingBadgeText}>
-                        {Number(item.rating || 5).toFixed(1)}
+                      {/* Review Text */}
+                      <Text style={styles.reviewComment}>
+                        {item.comment && item.comment.trim()
+                          ? item.comment.trim()
+                          : 'Client gave a star rating without written comment.'}
                       </Text>
-                    </View>
-                  </View>
+                    </Card>
+                  );
+                })}
 
-                  {/* Service & Booking Reference Pill */}
-                  {(item.service?.name || item.booking?.bookingReference) && (
-                    <View style={styles.bookingMetaRow}>
-                      {item.service?.name ? (
-                        <View style={styles.servicePill}>
-                          <Ionicons name="construct-outline" size={12} color="#A78BFA" />
-                          <Text style={styles.servicePillText} numberOfLines={1}>
-                            {item.service.name}
-                          </Text>
-                        </View>
-                      ) : null}
-
-                      {item.booking?.bookingReference ? (
-                        <View style={styles.bookingRefPill}>
-                          <Ionicons name="receipt-outline" size={12} color="#9CA3AF" />
-                          <Text style={styles.bookingRefText}>
-                            {item.booking.bookingReference}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  )}
-
-                  {/* Review Text */}
-                  <Text style={styles.reviewComment}>
-                    {item.comment && item.comment.trim()
-                      ? item.comment.trim()
-                      : 'Client gave a positive 5-star rating without written comment.'}
-                  </Text>
-                </Card>
-              );
-            })}
-
-            {/* Pagination / Load More Button */}
-            {pagination.page < pagination.totalPages && (
-              <TouchableOpacity
-                style={styles.loadMoreBtn}
-                onPress={handleLoadMore}
-                disabled={loadingMore}
-                activeOpacity={0.7}
-              >
-                {loadingMore ? (
-                  <ActivityIndicator size="small" color="#A78BFA" />
-                ) : (
-                  <>
-                    <Text style={styles.loadMoreText}>Load More Reviews</Text>
-                    <Ionicons name="chevron-down" size={16} color="#A78BFA" />
-                  </>
+                {/* Pagination / Load More Button */}
+                {pagination.page < pagination.totalPages && (
+                  <TouchableOpacity
+                    style={styles.loadMoreBtn}
+                    onPress={handleLoadMore}
+                    disabled={loadingMore}
+                    activeOpacity={0.7}
+                  >
+                    {loadingMore ? (
+                      <ActivityIndicator size="small" color="#A78BFA" />
+                    ) : (
+                      <>
+                        <Text style={styles.loadMoreText}>Load More Reviews</Text>
+                        <Ionicons name="chevron-down" size={16} color="#A78BFA" />
+                      </>
+                    )}
+                  </TouchableOpacity>
                 )}
-              </TouchableOpacity>
+              </View>
             )}
-          </View>
+          </>
         )}
       </ScrollView>
     </View>
