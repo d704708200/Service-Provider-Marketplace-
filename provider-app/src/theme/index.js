@@ -12,7 +12,26 @@ export const spacing = {
   xxxl: 32
 };
 
+export const fontSize = {
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 18,
+  xl: 20,
+  xxl: 24,
+  xxxl: 30
+};
+
+export const fontWeight = {
+  regular: '400',
+  medium: '500',
+  semibold: '600',
+  bold: '700'
+};
+
 export const typography = {
+  fontSize,
+  fontWeight,
   titleLarge: {
     fontSize: 24,
     fontWeight: '700',
@@ -90,6 +109,8 @@ export const theme = {
   COLORS: colors,
   spacing,
   typography,
+  fontSize,
+  fontWeight,
   borderRadius,
   shadows
 };

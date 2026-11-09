@@ -33,6 +33,64 @@ const documentSchema = new mongoose.Schema(
   { _id: true }
 );
 
+const providerServiceAreaSchema = new mongoose.Schema(
+  {
+    category: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category',
+      required: true
+    },
+    service: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Service',
+      default: null
+    },
+    serviceName: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    radiusKm: {
+      type: Number,
+      required: true,
+      min: [0.1, 'Radius must be greater than 0 KM']
+    },
+    address: {
+      street: { type: String, default: '', trim: true },
+      locality: { type: String, default: '', trim: true },
+      city: { type: String, default: '', trim: true },
+      state: { type: String, default: '', trim: true },
+      zipCode: { type: String, default: '', trim: true },
+      formattedAddress: { type: String, default: '', trim: true }
+    },
+    location: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point'
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        required: true
+      }
+    },
+    locationSource: {
+      type: String,
+      enum: ['gps', 'manual'],
+      default: 'gps'
+    },
+    isActive: {
+      type: Boolean,
+      default: true
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now
+    }
+  },
+  { _id: true }
+);
+
 const providerSchema = new mongoose.Schema(
   {
     user: {
@@ -129,6 +187,8 @@ const providerSchema = new mongoose.Schema(
         ref: 'ServiceArea'
       }
     ],
+    // Service-level location and radius configurations (independent per service)
+    serviceAreasConfig: [providerServiceAreaSchema],
     // Physical business address & GeoJSON coordinates for proximity matching
     businessAddress: {
       street: { type: String, trim: true, default: '' },
@@ -301,6 +361,8 @@ providerSchema.index({ isDeleted: 1 });
 providerSchema.index({ 'rating.average': -1 });
 providerSchema.index({ showInTopRated: 1, topRatedOrder: 1 });
 providerSchema.index({ location: '2dsphere' }, { sparse: true });
+providerSchema.index({ 'serviceAreasConfig.location': '2dsphere' }, { sparse: true });
+providerSchema.index({ 'serviceAreasConfig.category': 1, 'serviceAreasConfig.isActive': 1 });
 providerSchema.index({ 'businessAddress.city': 1 });
 
 const Provider = mongoose.model('Provider', providerSchema);

@@ -12,6 +12,7 @@ import {
   Calendar,
   Star,
   MapPin,
+  Compass,
   BarChart3,
   Settings,
   X,
@@ -33,6 +34,7 @@ const navItems = [
   { name: 'Service Requests', path: '/requests', icon: CalendarCheck },
   { name: 'Reviews', path: '/reviews', icon: Star },
   { name: 'Service Areas', path: '/locations', icon: MapPin },
+  { name: 'Service Radius (KM)', path: '/service-radii', icon: Compass },
   { name: 'Wallets & Payouts', path: '/wallets', icon: Wallet },
   { name: 'Reports', path: '/reports', icon: BarChart3 },
   { name: 'Settings', path: '/settings', icon: Settings }

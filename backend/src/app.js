@@ -20,6 +20,7 @@ const { publicRouter: homeBannerPublicRoutes, adminRouter: homeBannerAdminRoutes
 const { providerRouter: providerWalletRoutes, adminRouter: adminWalletRoutes } = require('./routes/walletRoutes');
 const tagRoutes = require('./routes/tagRoutes');
 const providerMyServicesRoutes = require('./routes/providerMyServicesRoutes');
+const serviceRadiusRoutes = require('./routes/serviceRadiusRoutes');
 const settingRoutes = require('./routes/settingRoutes');
 const { initializeFirebase, isFirebaseConfigured, getFirebaseProjectId } = require('./config/firebase');
 
@@ -104,6 +105,8 @@ app.use('/api/admin/wallets', adminWalletRoutes);
 app.use('/api/tags', tagRoutes);
 app.use('/api/admin/tags', tagRoutes);
 app.use('/api/provider/my-services', providerMyServicesRoutes);
+app.use('/api/service-radii', serviceRadiusRoutes);
+app.use('/api/admin/service-radii', serviceRadiusRoutes);
 app.use('/api/admin/settings', settingRoutes);
 
 // 404 Handler

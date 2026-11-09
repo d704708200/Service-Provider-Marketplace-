@@ -530,5 +530,44 @@ export const settingApi = {
   }
 };
 
+export const serviceRadiusApi = {
+  getAll: async (params = {}) => {
+    const response = await api.get('/service-radii', { params });
+    return response.data;
+  },
+  getById: async (id) => {
+    const response = await api.get(`/service-radii/${id}`);
+    return response.data;
+  },
+  create: async (data) => {
+    const response = await api.post('/service-radii', data);
+    return response.data;
+  },
+  update: async (id, data) => {
+    const response = await api.put(`/service-radii/${id}`, data);
+    return response.data;
+  },
+  addRadiusOption: async (id, data) => {
+    const response = await api.post(`/service-radii/${id}/radii`, data);
+    return response.data;
+  },
+  toggleRadiusOptionStatus: async (id, radiusId, isActive) => {
+    const response = await api.patch(`/service-radii/${id}/radii/${radiusId}/status`, { isActive });
+    return response.data;
+  },
+  deleteRadiusOption: async (id, radiusId) => {
+    const response = await api.delete(`/service-radii/${id}/radii/${radiusId}`);
+    return response.data;
+  },
+  getProviders: async (id, params = {}) => {
+    const response = await api.get(`/service-radii/${id}/providers`, { params });
+    return response.data;
+  },
+  delete: async (id) => {
+    const response = await api.delete(`/service-radii/${id}`);
+    return response.data;
+  }
+};
+
 export default api;
 

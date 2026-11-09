@@ -19,6 +19,7 @@ import BookingsPage from './pages/bookings/BookingsPage';
 import RequestsPage from './pages/requests/RequestsPage';
 import ReviewsPage from './pages/reviews/ReviewsPage';
 import LocationsPage from './pages/locations/LocationsPage';
+import ServiceRadiusPage from './pages/locations/ServiceRadiusPage';
 import ReportsPage from './pages/reports/ReportsPage';
 import SettingsPage from './pages/settings/SettingsPage';
 import WalletsPage from './pages/wallets/WalletsPage';
@@ -50,6 +51,7 @@ function App() {
               <Route path="/requests" element={<RequestsPage />} />
               <Route path="/reviews" element={<ReviewsPage />} />
               <Route path="/locations" element={<LocationsPage />} />
+              <Route path="/service-radii" element={<ServiceRadiusPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/wallets" element={<WalletsPage />} />
               <Route path="/settings" element={<SettingsPage />} />

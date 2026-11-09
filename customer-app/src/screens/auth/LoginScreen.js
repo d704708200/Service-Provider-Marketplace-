@@ -120,6 +120,17 @@ export default function LoginScreen({ navigation }) {
             error={formErrors.password}
           />
 
+          <TouchableOpacity
+            style={styles.forgotPasswordContainer}
+            onPress={() => {
+              clearError();
+              navigation.navigate('ForgotPassword');
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.forgotPasswordLink}>Forgot Password?</Text>
+          </TouchableOpacity>
+
           <Button
             title="Sign In"
             onPress={handleLogin}
@@ -204,6 +215,17 @@ const styles = StyleSheet.create({
   submitBtn: {
     marginTop: spacing.sm,
     backgroundColor: '#7C3AED'
+  },
+  forgotPasswordContainer: {
+    alignSelf: 'flex-end',
+    marginTop: -spacing.xs,
+    marginBottom: spacing.md,
+    paddingVertical: 4
+  },
+  forgotPasswordLink: {
+    ...typography.bodySmall,
+    color: '#A78BFA',
+    fontWeight: '600'
   },
   registerRow: {
     flexDirection: 'row',

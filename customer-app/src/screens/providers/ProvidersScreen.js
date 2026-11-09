@@ -13,13 +13,16 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { providerApi, tagApi } from '../../services/api';
-import { Header, Input, Card, Badge, EmptyState } from '../../components/common';
+import { Header, Input, Card, Badge, EmptyState, SelectLocationModal } from '../../components/common';
+import { useLocation } from '../../context/LocationContext';
 import { formatRating, formatReviewCount, formatExperience } from '../../utils/formatters';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 export default function ProvidersScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
+  const { location, setManualLocation } = useLocation();
+  const [showLocationModal, setShowLocationModal] = useState(false);
   const {
     category: initialCategory,
     categoryId: initialCategoryId,
@@ -121,8 +124,14 @@ export default function ProvidersScreen({ route, navigation }) {
       }
 
       let list = [];
+      const coordsParams = {};
+      if (location?.latitude && location?.longitude) {
+        coordsParams.latitude = location.latitude;
+        coordsParams.longitude = location.longitude;
+      }
+
       if (activeCategory) {
-        const params = {};
+        const params = { ...coordsParams };
         if (debouncedSearch) params.search = debouncedSearch;
         if (selectedTagId && selectedTagId !== 'ALL') {
           params.tagId = selectedTagId;
@@ -139,7 +148,7 @@ export default function ProvidersScreen({ route, navigation }) {
           }
         }
       } else {
-        const params = {};
+        const params = { ...coordsParams };
         if (debouncedSearch) params.search = debouncedSearch;
         if (activeService) params.service = activeService;
 
@@ -155,7 +164,7 @@ export default function ProvidersScreen({ route, navigation }) {
       setSwitchingTag(false);
       setRefreshing(false);
     }
-  }, [activeCategory, activeService, selectedTagId, debouncedSearch]);
+  }, [activeCategory, activeService, selectedTagId, debouncedSearch, location?.latitude, location?.longitude]);
 
   useEffect(() => {
     fetchProviders(false);
@@ -334,6 +343,15 @@ export default function ProvidersScreen({ route, navigation }) {
                   • {formatExperience(item.experienceYears)} Yrs Exp
                 </Text>
               ) : null}
+
+              {item.distanceKm != null && (
+                <View style={styles.distanceBadge}>
+                  <Ionicons name="navigate" size={11} color="#0284C7" />
+                  <Text style={styles.distanceBadgeText}>
+                    {item.distanceKm < 1 ? '< 1 KM away' : `${item.distanceKm} KM away`}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Price & Action Row */}
@@ -384,7 +402,30 @@ export default function ProvidersScreen({ route, navigation }) {
         containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
 
-      {/* 2. Provider Search Bar (Pinned Directly Below Header) */}
+      {/* 2. Service Area / Location Selector Bar */}
+      <View style={styles.locationBarSection}>
+        <TouchableOpacity
+          style={styles.locationBarCard}
+          onPress={() => setShowLocationModal(true)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.locationBarLeft}>
+            <Ionicons name="location" size={16} color={colors.primary} />
+            <View style={styles.locationBarTextWrap}>
+              <Text style={styles.locationBarLabel}>Service Area:</Text>
+              <Text style={styles.locationBarAddress} numberOfLines={1}>
+                {location?.formattedAddress || location?.city || 'Select / Auto-Detect Location'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.changeLocationPill}>
+            <Text style={styles.changeLocationPillText}>Change</Text>
+            <Ionicons name="chevron-forward" size={13} color={colors.primary} />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* 3. Provider Search Bar (Pinned Directly Below Location Bar) */}
       <View style={styles.searchSection}>
         <Input
           placeholder="Search by provider name or skill..."
@@ -498,30 +539,38 @@ export default function ProvidersScreen({ route, navigation }) {
           }
           ListEmptyComponent={
             <EmptyState
-              icon="people-outline"
+              icon={location?.latitude ? "location-outline" : "people-outline"}
               title={
-                selectedTagObj
+                location?.latitude && !debouncedSearch && (!selectedTagObj || selectedTagId === 'ALL')
+                  ? 'No Providers in Service Area'
+                  : selectedTagObj
                   ? `No Providers for "${selectedTagObj.name}"`
                   : debouncedSearch
                   ? 'No Matching Providers'
                   : 'No Providers Available'
               }
               description={
-                selectedTagObj
+                location?.latitude && !debouncedSearch && (!selectedTagObj || selectedTagId === 'ALL')
+                  ? 'No service providers are currently available within your selected service area. Please try a different location or check back soon.'
+                  : selectedTagObj
                   ? `No verified professionals are currently offering "${selectedTagObj.name}" in this category. Try choosing "All" or another service tag.`
                   : debouncedSearch
                   ? `No verified providers match "${debouncedSearch}". Try searching by another name or skill.`
                   : `No verified providers are currently active in ${categoryName || 'this category'}. Please check back soon.`
               }
               actionTitle={
-                selectedTagObj
+                location?.latitude && !debouncedSearch && (!selectedTagObj || selectedTagId === 'ALL')
+                  ? 'Change Location'
+                  : selectedTagObj
                   ? `Show All ${categoryName ? categoryName + ' ' : ''}Providers`
                   : debouncedSearch
                   ? 'Clear Search'
                   : 'Explore Other Categories'
               }
               onAction={
-                selectedTagObj
+                location?.latitude && !debouncedSearch && (!selectedTagObj || selectedTagId === 'ALL')
+                  ? () => setShowLocationModal(true)
+                  : selectedTagObj
                   ? () => setSelectedTagId('ALL')
                   : debouncedSearch
                   ? handleClearSearch
@@ -531,6 +580,17 @@ export default function ProvidersScreen({ route, navigation }) {
           }
         />
       )}
+
+      {/* Select Location Modal */}
+      <SelectLocationModal
+        visible={showLocationModal}
+        onClose={() => setShowLocationModal(false)}
+        initialLocation={location}
+        onLocationSelected={(newLoc) => {
+          setManualLocation(newLoc);
+          setShowLocationModal(false);
+        }}
+      />
     </View>
   );
 }
@@ -811,5 +871,75 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700'
+  },
+  locationBarSection: {
+    backgroundColor: '#161420',
+    paddingHorizontal: spacing.md,
+    paddingTop: 8,
+    paddingBottom: 4
+  },
+  locationBarCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#1E1B2E',
+    borderWidth: 1,
+    borderColor: '#2F2948',
+    borderRadius: borderRadius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  locationBarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    marginRight: 8
+  },
+  locationBarTextWrap: {
+    flex: 1
+  },
+  locationBarLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
+  locationBarAddress: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF'
+  },
+  changeLocationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12
+  },
+  changeLocationPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary
+  },
+  distanceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(2, 132, 199, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(2, 132, 199, 0.3)',
+    marginLeft: 4
+  },
+  distanceBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#38BDF8'
   }
 });

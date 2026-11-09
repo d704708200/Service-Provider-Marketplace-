@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
   MapPin,
   Plus,
@@ -12,7 +13,8 @@ import {
   X,
   Building,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Compass
 } from 'lucide-react';
 import { locationApi } from '../../services/api';
 import Card from '../../components/common/Card';
@@ -278,6 +280,13 @@ const LocationsPage = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            to="/service-radii"
+            className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-xs transition-colors"
+          >
+            <Compass className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Service Radius (KM)</span>
+          </Link>
           <button
             type="button"
             onClick={fetchLocations}

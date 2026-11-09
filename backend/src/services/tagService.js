@@ -1,5 +1,11 @@
 const mongoose = require('mongoose');
 const { ServiceTag, Category, Provider, Booking, User, Service } = require('../models');
+const {
+  calculateHaversineDistanceKm,
+  isValidLatitude,
+  isValidLongitude,
+  isValidGeoJsonCoordinates
+} = require('../utils/geoUtils');
 
 /**
  * Generate a URL-safe lowercase slug from a string
@@ -848,23 +854,47 @@ const getProvidersByCategoryAndTag = async (categoryId, query = {}) => {
     }
   }
 
+  const customerLat =
+    query.latitude !== undefined && query.latitude !== '' && !isNaN(Number(query.latitude))
+      ? Number(query.latitude)
+      : query.lat !== undefined && query.lat !== '' && !isNaN(Number(query.lat))
+      ? Number(query.lat)
+      : null;
+
+  const customerLng =
+    query.longitude !== undefined && query.longitude !== '' && !isNaN(Number(query.longitude))
+      ? Number(query.longitude)
+      : query.lng !== undefined && query.lng !== '' && !isNaN(Number(query.lng))
+      ? Number(query.lng)
+      : null;
+
+  const hasCustomerCoords =
+    customerLat != null &&
+    customerLng != null &&
+    isValidLatitude(customerLat) &&
+    isValidLongitude(customerLng);
+
   const pageNum = Math.max(1, parseInt(page, 10));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
   const skip = (pageNum - 1) * limitNum;
 
-  const [providers, total] = await Promise.all([
+  // When coordinates are supplied, fetch all candidate providers to compute distance and filter strictly
+  const fetchLimit = hasCustomerCoords ? 500 : limitNum;
+  const fetchSkip = hasCustomerCoords ? 0 : skip;
+
+  const [providers, totalDbCount] = await Promise.all([
     Provider.find(filter)
       .populate('user', 'name phone email avatar isActive')
       .populate('categories', 'name slug')
       .populate('serviceTags.tag', 'name slug category subcategory icon image')
       .sort({ 'rating.average': -1, completedBookingsCount: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(limitNum)
+      .skip(fetchSkip)
+      .limit(fetchLimit)
       .lean(),
     Provider.countDocuments(filter)
   ]);
 
-  // Enrich provider response with specific tag price and details
+  // Enrich provider response with specific tag price and distance details
   const enrichedProviders = providers
     .filter((p) => p.user && p.user.isActive)
     .map((p) => {
@@ -873,6 +903,25 @@ const getProvidersByCategoryAndTag = async (categoryId, query = {}) => {
         matchedTagConfig = p.serviceTags?.find(
           (st) => String(st.tag?._id || st.tag) === String(tagDoc._id)
         );
+      }
+
+      // Check service-specific location and radius
+      const areaConfig = (p.serviceAreasConfig || []).find(
+        (a) => (a.category?._id || a.category)?.toString() === categoryDoc._id.toString() && a.isActive !== false
+      );
+
+      let distanceKm = null;
+      let isWithinRadius = true;
+
+      if (hasCustomerCoords) {
+        if (areaConfig && isValidGeoJsonCoordinates(areaConfig.location?.coordinates)) {
+          const [pLng, pLat] = areaConfig.location.coordinates;
+          distanceKm = calculateHaversineDistanceKm(customerLat, customerLng, pLat, pLng);
+          isWithinRadius = distanceKm <= areaConfig.radiusKm;
+        } else {
+          // Provider has not configured service location for this category
+          isWithinRadius = false;
+        }
       }
 
       return {
@@ -892,6 +941,11 @@ const getProvidersByCategoryAndTag = async (categoryId, query = {}) => {
         verificationStatus: p.verificationStatus,
         servicePrice: matchedTagConfig?.basePrice || p.pricing?.basePrice || 0,
         pricingType: matchedTagConfig?.pricingType || 'fixed',
+        serviceArea: areaConfig || null,
+        serviceRadiusKm: areaConfig?.radiusKm || null,
+        distanceKm,
+        distance: distanceKm,
+        isWithinRadius,
         matchedTag: tagDoc
           ? {
               _id: tagDoc._id,
@@ -909,15 +963,27 @@ const getProvidersByCategoryAndTag = async (categoryId, query = {}) => {
       };
     });
 
+  let finalProviders = enrichedProviders;
+  let finalTotal = totalDbCount;
+
+  if (hasCustomerCoords) {
+    // Strictly filter out providers outside their configured service radius
+    finalProviders = enrichedProviders
+      .filter((p) => p.isWithinRadius)
+      .sort((a, b) => (a.distanceKm ?? 999999) - (b.distanceKm ?? 999999));
+    finalTotal = finalProviders.length;
+    finalProviders = finalProviders.slice(skip, skip + limitNum);
+  }
+
   return {
     category: categoryDoc,
     tag: tagDoc,
-    providers: enrichedProviders,
+    providers: finalProviders,
     pagination: {
-      total,
+      total: finalTotal,
       page: pageNum,
       limit: limitNum,
-      pages: Math.ceil(total / limitNum)
+      pages: Math.ceil(finalTotal / limitNum)
     }
   };
 };

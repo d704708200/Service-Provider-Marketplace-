@@ -7,37 +7,31 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
-  ActivityIndicator,
-  Modal
+  ActivityIndicator
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { serviceAreaApi } from '../../services/api';
-import { Header, Card, Badge, Button, Input } from '../../components/common';
+import { providerServiceAreaRadiusApi } from '../../services/api';
+import { Header, Card, Badge, Button } from '../../components/common';
+import ServiceAreaRadiusModal from '../../components/services/ServiceAreaRadiusModal';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 export default function ServiceAreasScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const [areas, setAreas] = useState([]);
+  const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Modal State (Add or Edit)
+  // Modal State
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedAreaId, setSelectedAreaId] = useState(null);
-  const [name, setName] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [zipCodesText, setZipCodesText] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState(null);
+  const [selectedServiceItem, setSelectedServiceItem] = useState(null);
 
   const fetchServiceAreas = useCallback(async () => {
     try {
-      const res = await serviceAreaApi.getServiceAreas();
-      if (res?.success && Array.isArray(res.data)) {
-        setAreas(res.data);
+      const res = await providerServiceAreaRadiusApi.getServiceAreas();
+      if (res?.success && Array.isArray(res.data?.services)) {
+        setServices(res.data.services);
       }
     } catch (err) {
       console.warn('Error loading provider service areas:', err.message);
@@ -56,239 +50,182 @@ export default function ServiceAreasScreen({ navigation }) {
     setRefreshing(false);
   };
 
-  const handleOpenAdd = () => {
-    setSelectedAreaId(null);
-    setName('');
-    setCity('');
-    setState('');
-    setZipCodesText('');
-    setErrorMessage(null);
+  const handleOpenConfigure = (serviceItem) => {
+    setSelectedServiceItem(serviceItem);
     setModalVisible(true);
   };
 
-  const handleOpenEdit = (area) => {
-    setSelectedAreaId(area._id);
-    setName(area.name || '');
-    setCity(area.city || '');
-    setState(area.state || '');
-    setZipCodesText(Array.isArray(area.zipCodes) ? area.zipCodes.join(', ') : '');
-    setErrorMessage(null);
-    setModalVisible(true);
-  };
-
-  const handleSave = async () => {
-    if (!name.trim()) {
-      setErrorMessage('Area name is required.');
-      return;
-    }
-    if (!city.trim()) {
-      setErrorMessage('City is required.');
-      return;
-    }
-
-    const zipCodes = zipCodesText
-      .split(',')
-      .map((z) => z.trim())
-      .filter((z) => z.length > 0);
-
-    setSaving(true);
-    setErrorMessage(null);
-
-    const payload = {
-      name: name.trim(),
-      city: city.trim(),
-      state: state.trim(),
-      zipCodes
-    };
-
-    try {
-      let res;
-      if (selectedAreaId) {
-        res = await serviceAreaApi.updateServiceArea(selectedAreaId, payload);
-      } else {
-        res = await serviceAreaApi.addServiceArea(payload);
-      }
-
-      if (res?.success) {
-        setAreas(res.data || []);
-        setModalVisible(false);
-        Alert.alert(
-          'Success',
-          selectedAreaId ? 'Service area updated successfully.' : 'Service area created successfully.'
-        );
-      }
-    } catch (err) {
-      setErrorMessage(err.userMessage || err.message || 'Could not save service area.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = (id) => {
-    Alert.alert('Remove Service Area', 'Are you sure you want to delete this service zone?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const res = await serviceAreaApi.deleteServiceArea(id);
-            if (res?.success) {
-              setAreas(res.data || []);
-            }
-          } catch (err) {
-            Alert.alert('Error', err.userMessage || 'Could not delete service area.');
-          }
-        }
-      }
-    ]);
-  };
+  const configuredCount = services.filter((s) => s.isConfigured).length;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <Header
-        title="Service Areas"
-        subtitle="Operational territories & covered zip codes"
-        showBack={navigation?.canGoBack?.() || false}
+        title="Service Areas & Radius"
+        showBack
         onBack={() => navigation.goBack()}
-        containerStyle={{ paddingTop: insets.top + spacing.xs }}
       />
 
-      <ScrollView showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xxl }]}
+      <ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7C3AED']} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
         }
       >
-        <Card style={styles.cardHeader}>
-          <View style={styles.headerRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.cardHeaderTitle}>Assigned Operational Zones</Text>
-              <Text style={styles.cardHeaderSub}>
-                Bookings from customers within these cities/zip codes will be matched with you.
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.addBtn} onPress={handleOpenAdd} activeOpacity={0.8}>
-              <Ionicons name="add-circle" size={18} color="#A78BFA" />
-              <Text style={styles.addBtnText}>Add Area</Text>
-            </TouchableOpacity>
+        {/* Info Banner */}
+        <View style={styles.bannerCard}>
+          <View style={styles.bannerIconContainer}>
+            <Ionicons name="compass" size={24} color="#A78BFA" />
           </View>
-        </Card>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.bannerTitle}>Service-Level Radius System</Text>
+            <Text style={styles.bannerSub}>
+              Set GPS or manual service location and choose from Admin-approved coverage radii (KM) for each service.
+            </Text>
+          </View>
+        </View>
+
+        {/* Stats Row */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>{services.length}</Text>
+            <Text style={styles.statLabel}>Total Services</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={[styles.statNumber, { color: '#10B981' }]}>
+              {configuredCount}
+            </Text>
+            <Text style={styles.statLabel}>Active Areas</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={[styles.statNumber, { color: '#F59E0B' }]}>
+              {services.length - configuredCount}
+            </Text>
+            <Text style={styles.statLabel}>Not Set</Text>
+          </View>
+        </View>
 
         {loading ? (
-          <ActivityIndicator size="large" color="#7C3AED" style={{ marginTop: 40 }} />
-        ) : areas && areas.length > 0 ? (
-          areas.map((area) => (
-            <Card key={area._id} style={styles.areaCard}>
-              <View style={styles.areaHeader}>
-                <View style={styles.areaTitleRow}>
-                  <View style={styles.iconCircle}>
-                    <Ionicons name="map-outline" size={16} color="#A78BFA" />
-                  </View>
-                  <Text style={styles.areaName}>{area.name}</Text>
-                </View>
-
-                <View style={styles.actionRow}>
-                  <TouchableOpacity onPress={() => handleOpenEdit(area)} style={styles.actionBtn}>
-                    <Ionicons name="pencil-outline" size={18} color="#A78BFA" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(area._id)} style={styles.actionBtn}>
-                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <Text style={styles.areaCity}>
-                {area.city}
-                {area.state ? `, ${area.state}` : ''}
-              </Text>
-
-              {area.zipCodes && area.zipCodes.length > 0 ? (
-                <View style={styles.zipWrap}>
-                  <Text style={styles.zipLabel}>Zip Codes:</Text>
-                  {area.zipCodes.map((zip, idx) => (
-                    <Badge key={idx} label={zip} variant="slate" size="sm" />
-                  ))}
-                </View>
-              ) : (
-                <Text style={styles.noZipText}>All zip codes covered across {area.city}</Text>
-              )}
-            </Card>
-          ))
-        ) : (
-          <Card style={styles.emptyCard}>
-            <Ionicons name="location-outline" size={40} color="#71717A" />
-            <Text style={styles.emptyTitle}>No Service Areas Configured</Text>
-            <Text style={styles.emptySubtitle}>
-              Define service areas so customers in your coverage zones can find and book your services.
+          <View style={styles.centered}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Loading service area configurations...</Text>
+          </View>
+        ) : services.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Ionicons name="location-outline" size={48} color={colors.slate400} />
+            <Text style={styles.emptyTitle}>No Services Selected</Text>
+            <Text style={styles.emptySub}>
+              Select your service tags under "Services" first to configure service areas.
             </Text>
-            <Button
-              title="Add Your First Service Area"
-              onPress={handleOpenAdd}
-              style={{ marginTop: spacing.md }}
-            />
-          </Card>
+          </View>
+        ) : (
+          services.map((item) => {
+            const isConfigured = item.isConfigured;
+            const area = item.serviceArea;
+            const rule = item.radiusRule;
+
+            return (
+              <View
+                key={item.category?._id || item.serviceName}
+                style={styles.serviceAreaCard}
+              >
+                <View style={styles.cardHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.serviceTitle}>{item.serviceName}</Text>
+                    <Text style={styles.serviceSubtitle}>
+                      Permitted Radius: Up to {rule?.maxRadiusKm || 15} KM
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.statusPill,
+                      isConfigured ? styles.statusActive : styles.statusPending
+                    ]}
+                  >
+                    <Ionicons
+                      name={isConfigured ? 'checkmark-circle' : 'alert-circle'}
+                      size={12}
+                      color={isConfigured ? '#10B981' : '#F59E0B'}
+                    />
+                    <Text
+                      style={[
+                        styles.statusText,
+                        isConfigured ? styles.statusTextActive : styles.statusTextPending
+                      ]}
+                    >
+                      {isConfigured ? 'Active' : 'Not Set'}
+                    </Text>
+                  </View>
+                </View>
+
+                {isConfigured ? (
+                  <View style={styles.detailsBox}>
+                    <View style={styles.detailRow}>
+                      <Ionicons name="location" size={16} color="#A78BFA" />
+                      <Text style={styles.addressText} numberOfLines={2}>
+                        {area?.address?.formattedAddress || 'Service Address'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.metaRow}>
+                      <View style={styles.badgePill}>
+                        <Ionicons name="radio" size={11} color="#10B981" />
+                        <Text style={styles.badgePillText}>{area?.radiusKm} KM Radius</Text>
+                      </View>
+                      <View style={styles.badgePill}>
+                        <Ionicons name="navigate" size={11} color="#60A5FA" />
+                        <Text style={styles.badgePillText}>
+                          {area?.locationSource === 'manual' ? 'Manual Address' : 'GPS Detected'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.warningBox}>
+                    <Ionicons name="alert-circle-outline" size={16} color="#F59E0B" />
+                    <Text style={styles.warningText}>
+                      Configure a service location and radius so customers in your area can find you.
+                    </Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.actionBtn, isConfigured && styles.actionBtnConfigured]}
+                  onPress={() => handleOpenConfigure(item)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={isConfigured ? 'create-outline' : 'location-outline'}
+                    size={16}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.actionBtnText}>
+                    {isConfigured ? 'Update Location & Radius' : 'Set Service Location & Radius'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })
         )}
       </ScrollView>
 
-      {/* Add / Edit Area Modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {selectedAreaId ? 'Edit Service Area' : 'New Service Area'}
-              </Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#9CA3AF" />
-              </TouchableOpacity>
-            </View>
-
-            {errorMessage && (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>{errorMessage}</Text>
-              </View>
-            )}
-
-            <Input
-              label="Area Name *"
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. South Mumbai Metro"
-            />
-
-            <Input
-              label="City *"
-              value={city}
-              onChangeText={setCity}
-              placeholder="e.g. Mumbai"
-            />
-
-            <Input
-              label="State"
-              value={state}
-              onChangeText={setState}
-              placeholder="e.g. Maharashtra"
-            />
-
-            <Input
-              label="Zip Codes (comma separated)"
-              value={zipCodesText}
-              onChangeText={setZipCodesText}
-              placeholder="e.g. 400001, 400002, 400005"
-            />
-
-            <Button
-              title={selectedAreaId ? 'Save Changes' : 'Create Service Area'}
-              onPress={handleSave}
-              loading={saving}
-              disabled={saving}
-              style={{ marginTop: spacing.md }}
-            />
-          </View>
-        </View>
-      </Modal>
+      {/* Service Area & Radius Modal */}
+      <ServiceAreaRadiusModal
+        visible={modalVisible}
+        onClose={() => {
+          setModalVisible(false);
+          setSelectedServiceItem(null);
+        }}
+        serviceItem={selectedServiceItem}
+        onSaved={() => {
+          fetchServiceAreas();
+        }}
+      />
     </View>
   );
 }
@@ -296,156 +233,216 @@ export default function ServiceAreasScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: '#0F0D15'
   },
-  scroll: {
-    padding: spacing.lg
+  scrollContent: {
+    padding: spacing.md
   },
-  cardHeader: {
-    marginBottom: spacing.md,
-    backgroundColor: '#161420',
-    borderColor: '#252136'
-  },
-  headerRow: {
+  bannerCard: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md
-  },
-  cardHeaderTitle: {
-    ...typography.titleSmall,
-    color: '#FFFFFF'
-  },
-  cardHeaderSub: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginTop: 2
-  },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs + 2,
-    backgroundColor: '#201A36',
+    gap: 12,
+    backgroundColor: '#1E1B2E',
     borderWidth: 1,
-    borderColor: '#362E52',
-    borderRadius: borderRadius.md
+    borderColor: '#3B3358',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md
   },
-  addBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#A78BFA'
-  },
-  areaCard: {
-    marginBottom: spacing.md,
-    backgroundColor: '#161420',
-    borderColor: '#252136'
-  },
-  areaHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4
-  },
-  areaTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs
-  },
-  iconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#201A36',
+  bannerIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#2A2440',
     alignItems: 'center',
     justifyContent: 'center'
   },
-  areaName: {
-    ...typography.bodyLarge,
-    fontWeight: '700',
+  bannerTitle: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
     color: '#FFFFFF'
   },
-  actionRow: {
-    flexDirection: 'row',
-    gap: spacing.sm
-  },
-  actionBtn: {
-    padding: 4
-  },
-  areaCity: {
-    ...typography.bodyMedium,
-    color: '#CBD5E1',
-    marginBottom: spacing.sm
-  },
-  zipWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 4
-  },
-  zipLabel: {
-    fontSize: 11,
+  bannerSub: {
+    fontSize: typography.fontSize.xs,
     color: '#9CA3AF',
+    marginTop: 2,
+    lineHeight: 16
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#181524',
+    borderWidth: 1,
+    borderColor: '#2E2845',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    alignItems: 'center'
+  },
+  statNumber: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: '#FFFFFF'
+  },
+  statLabel: {
+    fontSize: 10,
+    color: '#9CA3AF',
+    marginTop: 2,
     fontWeight: '600'
   },
-  noZipText: {
-    fontSize: 11,
-    color: '#71717A',
-    fontStyle: 'italic'
+  centered: {
+    padding: spacing.xl,
+    alignItems: 'center'
+  },
+  loadingText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textMuted,
+    marginTop: spacing.sm
   },
   emptyCard: {
-    alignItems: 'center',
+    backgroundColor: '#181524',
+    borderWidth: 1,
+    borderColor: '#2E2845',
+    borderRadius: borderRadius.lg,
     padding: spacing.xl,
-    gap: spacing.sm,
-    backgroundColor: '#161420',
-    borderColor: '#252136'
+    alignItems: 'center'
   },
   emptyTitle: {
-    ...typography.titleMedium,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
     color: '#FFFFFF',
-    marginTop: spacing.xs
+    marginTop: spacing.sm
   },
-  emptySubtitle: {
-    ...typography.bodySmall,
+  emptySub: {
+    fontSize: typography.fontSize.xs,
     color: '#9CA3AF',
     textAlign: 'center',
-    maxWidth: 280
+    marginTop: 4
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'center',
-    padding: spacing.lg
-  },
-  modalContent: {
-    backgroundColor: '#161420',
-    borderRadius: borderRadius.lg,
+  serviceAreaCard: {
+    backgroundColor: '#181524',
     borderWidth: 1,
-    borderColor: '#252136',
-    padding: spacing.lg
+    borderColor: '#2E2845',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md
   },
-  modalHeader: {
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm
   },
-  modalTitle: {
-    ...typography.titleMedium,
+  serviceTitle: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
     color: '#FFFFFF'
   },
-  errorBox: {
-    backgroundColor: '#4C0519',
-    borderWidth: 1,
-    borderColor: '#991B1B',
-    padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.md
+  serviceSubtitle: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2
   },
-  errorText: {
-    ...typography.bodySmall,
-    color: '#F87171'
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1
+  },
+  statusActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderColor: 'rgba(16, 185, 129, 0.3)'
+  },
+  statusPending: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderColor: 'rgba(245, 158, 11, 0.3)'
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '700'
+  },
+  statusTextActive: {
+    color: '#10B981'
+  },
+  statusTextPending: {
+    color: '#F59E0B'
+  },
+  detailsBox: {
+    backgroundColor: '#100E17',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: '#2E2845',
+    marginBottom: spacing.sm
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6
+  },
+  addressText: {
+    fontSize: 12,
+    color: '#E2E8F0',
+    flex: 1
+  },
+  metaRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 2
+  },
+  badgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: '#1E1B2E',
+    borderRadius: 4
+  },
+  badgePillText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#CBD5E1'
+  },
+  warningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.25)',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.sm
+  },
+  warningText: {
+    fontSize: 11,
+    color: '#F59E0B',
+    flex: 1
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    borderRadius: borderRadius.md
+  },
+  actionBtnConfigured: {
+    backgroundColor: '#2E2845',
+    borderWidth: 1,
+    borderColor: '#4C426D'
+  },
+  actionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700'
   }
 });

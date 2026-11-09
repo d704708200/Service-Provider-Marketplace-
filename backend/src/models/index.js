@@ -18,6 +18,7 @@ const WithdrawalRequest = require('./WithdrawalRequest');
 const ServiceTag = require('./ServiceTag');
 const SystemSetting = require('./SystemSetting');
 const ProviderSlotReservation = require('./ProviderSlotReservation');
+const ServiceRadiusConfig = require('./ServiceRadiusConfig');
 
 module.exports = {
   User,
@@ -39,5 +40,6 @@ module.exports = {
   WalletTransaction,
   WithdrawalRequest,
   SystemSetting,
-  ProviderSlotReservation
+  ProviderSlotReservation,
+  ServiceRadiusConfig
 };

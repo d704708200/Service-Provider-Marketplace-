@@ -13,9 +13,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useLocation } from '../../context/LocationContext';
 import { bookingApi, customerApi, serviceApi, providerApi } from '../../services/api';
 import { openRazorpayCheckout } from '../../services/razorpayService';
-import { Header, Card, Input, Button, Badge } from '../../components/common';
+import { Header, Card, Input, Button, Badge, SelectLocationModal } from '../../components/common';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 import { PRICING_LABELS } from '../../constants';
@@ -94,6 +95,7 @@ const getBookingStatusBadge = (status) => {
 export default function RequestServiceScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { location: contextLocation } = useLocation();
   const { service: initialService, serviceId, provider: initialProvider, providerId } = route.params || {};
 
   // Resolved service & provider states
@@ -116,6 +118,17 @@ export default function RequestServiceScreen({ route, navigation }) {
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [postalCode, setPostalCode] = useState('');
+
+  // Location Coordinates & Modal State
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [selectedCoordinates, setSelectedCoordinates] = useState(
+    contextLocation?.latitude && contextLocation?.longitude
+      ? [contextLocation.longitude, contextLocation.latitude]
+      : null
+  );
+  const [locationFormattedAddress, setLocationFormattedAddress] = useState(
+    contextLocation?.formattedAddress || ''
+  );
 
   // Scheduled date selection - generate dates starting from today in local timezone
   const selectableDates = React.useMemo(() => {
@@ -346,8 +359,25 @@ export default function RequestServiceScreen({ route, navigation }) {
           setCity(defaultAddr.city || '');
           setState(defaultAddr.state || '');
           setPostalCode(defaultAddr.zipCode || '');
+          if (defaultAddr.location?.coordinates && defaultAddr.location.coordinates.length === 2) {
+            setSelectedCoordinates(defaultAddr.location.coordinates);
+          }
+          if (defaultAddr.formattedAddress) {
+            setLocationFormattedAddress(defaultAddr.formattedAddress);
+          }
         } else if (isMounted) {
           setUseCustomAddress(true);
+          if (contextLocation) {
+            if (contextLocation.city) setCity(contextLocation.city);
+            if (contextLocation.state) setState(contextLocation.state);
+            if (contextLocation.formattedAddress) {
+              setStreet(contextLocation.formattedAddress);
+              setLocationFormattedAddress(contextLocation.formattedAddress);
+            }
+            if (contextLocation.latitude && contextLocation.longitude) {
+              setSelectedCoordinates([contextLocation.longitude, contextLocation.latitude]);
+            }
+          }
         }
       })
       .catch((err) => {
@@ -358,7 +388,7 @@ export default function RequestServiceScreen({ route, navigation }) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [contextLocation]);
 
   const handleSelectSavedAddress = (addr) => {
     setSelectedAddressId(addr._id);
@@ -367,6 +397,12 @@ export default function RequestServiceScreen({ route, navigation }) {
     setCity(addr.city || '');
     setState(addr.state || '');
     setPostalCode(addr.zipCode || '');
+    if (addr.location?.coordinates && addr.location.coordinates.length === 2) {
+      setSelectedCoordinates(addr.location.coordinates);
+    }
+    if (addr.formattedAddress) {
+      setLocationFormattedAddress(addr.formattedAddress);
+    }
     if (formErrors.street || formErrors.city) {
       setFormErrors({ ...formErrors, street: null, city: null });
     }
@@ -379,6 +415,31 @@ export default function RequestServiceScreen({ route, navigation }) {
     setCity('');
     setState('');
     setPostalCode('');
+    setSelectedCoordinates(
+      contextLocation?.latitude && contextLocation?.longitude
+        ? [contextLocation.longitude, contextLocation.latitude]
+        : null
+    );
+    setLocationFormattedAddress(contextLocation?.formattedAddress || '');
+  };
+
+  const handleLocationModalSelected = (loc) => {
+    setUseCustomAddress(true);
+    setSelectedAddressId(null);
+    if (loc?.longitude != null && loc?.latitude != null) {
+      setSelectedCoordinates([Number(loc.longitude), Number(loc.latitude)]);
+    }
+    if (loc?.formattedAddress) {
+      setLocationFormattedAddress(loc.formattedAddress);
+      setStreet(loc.street || loc.formattedAddress);
+    }
+    if (loc?.city) setCity(loc.city);
+    if (loc?.state) setState(loc.state);
+    if (loc?.postalCode) setPostalCode(loc.postalCode);
+    if (formErrors.street || formErrors.city) {
+      setFormErrors((prev) => ({ ...prev, street: null, city: null }));
+    }
+    setShowLocationModal(false);
   };
 
   const validate = () => {
@@ -470,7 +531,14 @@ export default function RequestServiceScreen({ route, navigation }) {
           street: street.trim(),
           city: city.trim(),
           state: state.trim() || undefined,
-          zipCode: postalCode.trim() || undefined
+          zipCode: postalCode.trim() || undefined,
+          formattedAddress: locationFormattedAddress || `${street.trim()}, ${city.trim()}`,
+          ...(selectedCoordinates && selectedCoordinates.length === 2 ? {
+            location: {
+              type: 'Point',
+              coordinates: selectedCoordinates
+            }
+          } : {})
         },
         notes: problemDescription.trim()
       };
@@ -591,8 +659,12 @@ export default function RequestServiceScreen({ route, navigation }) {
         setSubmitting(false);
       }
     } catch (err) {
+      const isDistanceError =
+        err.statusCode === 409 ||
+        err.status === 409 ||
+        /outside the provider's operating radius/i.test(err.userMessage || err.message || '');
       Alert.alert(
-        'Booking Submission Failed',
+        isDistanceError ? 'Service Area Distance Alert' : 'Booking Submission Failed',
         err.userMessage || err.message || 'Unable to confirm booking. Please try again.'
       );
       setSubmitting(false);
@@ -1294,6 +1366,38 @@ export default function RequestServiceScreen({ route, navigation }) {
             </View>
           )}
 
+          {/* Quick Auto-Detect or Manual Search via Modal */}
+          <TouchableOpacity
+            style={styles.detectLocationBtn}
+            onPress={() => setShowLocationModal(true)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.detectLocationIconWrap}>
+              <Ionicons name="navigate-circle" size={24} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.detectLocationBtnTitle}>
+                {selectedCoordinates ? 'Change Service Coordinates' : 'Detect GPS / Search Address'}
+              </Text>
+              <Text style={styles.detectLocationBtnSub} numberOfLines={1}>
+                {locationFormattedAddress || (selectedCoordinates ? `Verified: [${selectedCoordinates[1].toFixed(4)}, ${selectedCoordinates[0].toFixed(4)}]` : 'Auto-detect or type address to verify provider distance')}
+              </Text>
+            </View>
+            <View style={styles.detectLocationPill}>
+              <Text style={styles.detectLocationPillText}>Select</Text>
+              <Ionicons name="chevron-forward" size={12} color={colors.primary} />
+            </View>
+          </TouchableOpacity>
+
+          {selectedCoordinates && (
+            <View style={styles.verifiedLocationBanner}>
+              <Ionicons name="shield-checkmark" size={15} color="#10B981" />
+              <Text style={styles.verifiedLocationText} numberOfLines={1}>
+                GPS Coordinates active: {selectedCoordinates[1].toFixed(4)}°N, {selectedCoordinates[0].toFixed(4)}°E
+              </Text>
+            </View>
+          )}
+
           <Input
             label="Street Address *"
             placeholder="Flat / House No., Street, Area"
@@ -1475,6 +1579,12 @@ export default function RequestServiceScreen({ route, navigation }) {
           style={styles.submitBtn}
         />
       </ScrollView>
+      <SelectLocationModal
+        visible={showLocationModal}
+        onClose={() => setShowLocationModal(false)}
+        initialLocation={contextLocation}
+        onLocationSelected={handleLocationModalSelected}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -2241,5 +2351,61 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.slate500,
     marginTop: 4
+  },
+  detectLocationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: '#F5F3FF',
+    borderWidth: 1.5,
+    borderColor: '#DDD6FE',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md
+  },
+  detectLocationIconWrap: {
+    width: 32,
+    alignItems: 'center'
+  },
+  detectLocationBtnTitle: {
+    ...typography.bodyMedium,
+    fontWeight: '700',
+    color: '#6D28D9'
+  },
+  detectLocationBtnSub: {
+    ...typography.caption,
+    color: colors.slate600,
+    marginTop: 2
+  },
+  detectLocationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: '#EDE9FE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12
+  },
+  detectLocationPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6D28D9'
+  },
+  verifiedLocationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: spacing.md
+  },
+  verifiedLocationText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#065F46'
   }
 });

@@ -11,6 +11,8 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const paymentService = require('./paymentService');
 const notificationService = require('./notificationService');
+const serviceRadiusService = require('./serviceRadiusService');
+const { calculateHaversineDistanceKm, isValidGeoJsonCoordinates } = require('../utils/geoUtils');
 const { applyWarrantyContactPolicy, getWarrantyContactStatus } = require('../utils/warrantyUtils');
 
 /**
@@ -120,6 +122,35 @@ const createBooking = async (userId, bookingData) => {
   let releaseLock = null;
   let newBooking = null;
   let provider = null;
+
+  // Extract & Validate Customer Coordinates
+  let customerCoordinates = null;
+  if (Array.isArray(bookingData.address?.location?.coordinates) && bookingData.address.location.coordinates.length === 2) {
+    customerCoordinates = [
+      Number(bookingData.address.location.coordinates[0]),
+      Number(bookingData.address.location.coordinates[1])
+    ];
+  } else if (Array.isArray(bookingData.address?.coordinates) && bookingData.address.coordinates.length === 2) {
+    customerCoordinates = [
+      Number(bookingData.address.coordinates[0]),
+      Number(bookingData.address.coordinates[1])
+    ];
+  } else if (bookingData.address?.longitude !== undefined && bookingData.address?.latitude !== undefined) {
+    customerCoordinates = [Number(bookingData.address.longitude), Number(bookingData.address.latitude)];
+  } else if (bookingData.longitude !== undefined && bookingData.latitude !== undefined) {
+    customerCoordinates = [Number(bookingData.longitude), Number(bookingData.latitude)];
+  }
+
+  if (!isValidGeoJsonCoordinates(customerCoordinates, false)) {
+    const err = new Error(
+      'Valid customer service location coordinates (latitude and longitude) are required. Dummy or missing coordinates are rejected.'
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const serviceCategoryId = service.category?._id || service.category;
+  let calculatedBookingDistanceKm = null;
 
   if (bookingData.providerId) {
     provider = await Provider.findById(bookingData.providerId).populate('user');
@@ -265,34 +296,42 @@ const createBooking = async (userId, bookingData) => {
         }
       }
 
-      // Verify Provider Service Area if provider has designated service areas
-      if (provider.serviceAreas && provider.serviceAreas.length > 0 && bookingData.address) {
-        const providerAreas = await ServiceArea.find({
-          _id: { $in: provider.serviceAreas },
-          isActive: true
-        });
+      // Service-level location & radius verification (server-side distance check)
+      const providerArea = (provider.serviceAreasConfig || []).find(
+        (a) => (a.category?._id || a.category)?.toString() === serviceCategoryId.toString() && a.isActive !== false
+      );
 
-        if (providerAreas.length > 0) {
-          const bookingCity = (bookingData.address.city || '').trim().toLowerCase();
-          const bookingZip = (bookingData.address.zipCode || '').trim();
+      if (!providerArea || !isValidGeoJsonCoordinates(providerArea.location?.coordinates)) {
+        const err = new Error(
+          `Provider '${provider.businessName || 'Selected'}' has not configured service availability for '${service.category.name || 'this service'}' in your area`
+        );
+        err.statusCode = 409;
+        throw err;
+      }
 
-          const matchesArea = providerAreas.some((area) => {
-            const cityMatches = area.city && area.city.trim().toLowerCase() === bookingCity;
-            const zipMatches =
-              bookingZip &&
-              Array.isArray(area.zipCodes) &&
-              area.zipCodes.some((z) => z.trim() === bookingZip);
-            return cityMatches || zipMatches;
-          });
-
-          if (!matchesArea) {
-            const err = new Error(
-              `Selected provider does not service this location (${bookingData.address.city || ''} ${bookingZip})`
-            );
-            err.statusCode = 400;
-            throw err;
-          }
+      // Validate Admin-approved radius limits
+      const radiusConfig = await serviceRadiusService.getRadiusConfigByCategory(serviceCategoryId);
+      if (radiusConfig && radiusConfig.isActive) {
+        if (providerArea.radiusKm > radiusConfig.maxRadiusKm) {
+          const err = new Error(
+            `Provider configured radius (${providerArea.radiusKm} KM) exceeds Admin permitted maximum of ${radiusConfig.maxRadiusKm} KM`
+          );
+          err.statusCode = 409;
+          throw err;
         }
+      }
+
+      // Calculate actual server-side geographical distance
+      const [provLng, provLat] = providerArea.location.coordinates;
+      const [custLng, custLat] = customerCoordinates;
+      calculatedBookingDistanceKm = calculateHaversineDistanceKm(custLat, custLng, provLat, provLng);
+
+      if (calculatedBookingDistanceKm > providerArea.radiusKm) {
+        const err = new Error(
+          `Customer location is outside provider's service radius. Distance: ${calculatedBookingDistanceKm} KM, provider service radius: ${providerArea.radiusKm} KM.`
+        );
+        err.statusCode = 409;
+        throw err;
       }
 
       assignedProvider = provider._id;
@@ -317,8 +356,17 @@ const createBooking = async (userId, bookingData) => {
 
       const eligibleProviders = await Provider.find(candidateFilter).populate('user');
 
+      const [custLng, custLat] = customerCoordinates;
       candidateProviders = eligibleProviders
-        .filter((p) => p.user && p.user.isActive)
+        .filter((p) => {
+          if (!p.user || !p.user.isActive) return false;
+          const area = (p.serviceAreasConfig || []).find(
+            (a) => (a.category?._id || a.category)?.toString() === serviceCategoryId.toString() && a.isActive !== false
+          );
+          if (!area || !isValidGeoJsonCoordinates(area.location?.coordinates)) return false;
+          const dist = calculateHaversineDistanceKm(custLat, custLng, area.location.coordinates[1], area.location.coordinates[0]);
+          return dist <= area.radiusKm;
+        })
         .map((p) => p._id);
     }
 
@@ -378,11 +426,23 @@ const createBooking = async (userId, bookingData) => {
       scheduledDate,
       scheduledTimeSlot,
       address: {
-        street: bookingData.address.street.trim(),
-        city: bookingData.address.city.trim(),
+        street: (bookingData.address.street || '').trim(),
+        locality: (bookingData.address.locality || '').trim(),
+        city: (bookingData.address.city || '').trim(),
         state: bookingData.address.state ? bookingData.address.state.trim() : '',
         zipCode: bookingData.address.zipCode ? bookingData.address.zipCode.trim() : '',
-        location: bookingData.address.location || { type: 'Point', coordinates: [0, 0] }
+        formattedAddress: (
+          bookingData.address.formattedAddress ||
+          [bookingData.address.street, bookingData.address.locality, bookingData.address.city, bookingData.address.state, bookingData.address.zipCode]
+            .filter(Boolean)
+            .join(', ') ||
+          ''
+        ).trim(),
+        distanceKm: calculatedBookingDistanceKm,
+        location: {
+          type: 'Point',
+          coordinates: customerCoordinates
+        }
       },
       pricing: {
         basePrice,

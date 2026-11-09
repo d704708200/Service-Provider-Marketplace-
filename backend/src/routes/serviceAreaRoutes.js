@@ -4,6 +4,10 @@ const serviceAreaController = require('../controllers/serviceAreaController');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { validateObjectId } = require('../middleware/validation');
 
+// Public address search and geocoding helper endpoints
+router.get('/search-address', serviceAreaController.searchAddress);
+router.get('/reverse-geocode', serviceAreaController.reverseGeocode);
+
 // List service areas (admin only)
 router.get(
   '/admin',

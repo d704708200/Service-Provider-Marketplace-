@@ -12,3 +12,5 @@ build/
 cloudflared.exe
 *.apk
 *.aab
+*.xml
+release-apks/

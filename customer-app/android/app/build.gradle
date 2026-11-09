@@ -114,8 +114,8 @@ android {
         applicationId 'com.serviceprovider.customerapp'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "1.2.0"
+        versionCode 4
+        versionName "1.2.1"
     }
     signingConfigs {
         debug {

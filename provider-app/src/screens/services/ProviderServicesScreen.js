@@ -15,8 +15,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { providerTagApi, providerServicesApi, categoryApi } from '../../services/api';
+import { providerTagApi, providerServicesApi, categoryApi, providerServiceAreaRadiusApi } from '../../services/api';
 import { Header, Card, Badge, Button, Input } from '../../components/common';
+import ServiceAreaRadiusModal from '../../components/services/ServiceAreaRadiusModal';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
@@ -61,10 +62,15 @@ export default function ProviderServicesScreen({ navigation }) {
   const [legacySaving, setLegacySaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
+  // Service Area & Radius State
+  const [serviceAreaServices, setServiceAreaServices] = useState([]);
+  const [serviceAreaModalVisible, setServiceAreaModalVisible] = useState(false);
+  const [selectedServiceItemForArea, setSelectedServiceItemForArea] = useState(null);
+
   // Fetch full dynamic service tags & legacy services
   const loadData = useCallback(async () => {
     try {
-      const [tagRes, catRes] = await Promise.all([
+      const [tagRes, catRes, areaRes] = await Promise.all([
         providerTagApi.getMyServicesAndTags().catch((err) => {
           console.warn('Error fetching provider service tags:', err.message);
           return null;
@@ -72,8 +78,16 @@ export default function ProviderServicesScreen({ navigation }) {
         categoryApi.getPublicCategories().catch((err) => {
           console.warn('Error fetching public categories:', err.message);
           return null;
+        }),
+        providerServiceAreaRadiusApi.getServiceAreas().catch((err) => {
+          console.warn('Error fetching provider service areas:', err.message);
+          return null;
         })
       ]);
+
+      if (areaRes?.success && Array.isArray(areaRes.data?.services)) {
+        setServiceAreaServices(areaRes.data.services);
+      }
 
       if (tagRes?.success && tagRes.data) {
         const rawCatalog = tagRes.data.catalog || [];
@@ -260,6 +274,12 @@ export default function ProviderServicesScreen({ navigation }) {
     }
   };
 
+  // Open Service Area & Radius modal for a service category
+  const handleOpenSetServiceArea = (serviceItem) => {
+    setSelectedServiceItemForArea(serviceItem);
+    setServiceAreaModalVisible(true);
+  };
+
   // Toggle category accordion
   const handleToggleCategoryAccordion = (categoryId) => {
     setExpandedCategories((prev) => ({
@@ -420,6 +440,21 @@ export default function ProviderServicesScreen({ navigation }) {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'areas' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('areas')}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name="compass"
+            size={16}
+            color={activeTab === 'areas' ? colors.primaryLight : '#71717A'}
+          />
+          <Text style={[styles.tabText, activeTab === 'areas' && styles.tabTextActive]}>
+            Service Area ({serviceAreaServices.filter((s) => s.isConfigured).length})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.tabButton, activeTab === 'legacy' && styles.tabButtonActive]}
           onPress={() => setActiveTab('legacy')}
           activeOpacity={0.8}
@@ -574,6 +609,44 @@ export default function ProviderServicesScreen({ navigation }) {
                         </View>
                       </View>
                       <View style={styles.categoryHeaderRight}>
+                        {selectedInCat > 0 && (() => {
+                          const areaConfig = serviceAreaServices.find(
+                            (s) => (s.category?._id || s.category)?.toString() === catId
+                          );
+                          return (
+                            <TouchableOpacity
+                              style={[
+                                styles.areaHeaderPill,
+                                areaConfig?.isConfigured && styles.areaHeaderPillConfigured
+                              ]}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                handleOpenSetServiceArea(
+                                  areaConfig || {
+                                    category: catGroup.category,
+                                    serviceName: catGroup.category?.name
+                                  }
+                                );
+                              }}
+                            >
+                              <Ionicons
+                                name="location"
+                                size={12}
+                                color={areaConfig?.isConfigured ? '#10B981' : '#F59E0B'}
+                              />
+                              <Text
+                                style={[
+                                  styles.areaHeaderPillText,
+                                  areaConfig?.isConfigured && styles.areaHeaderPillTextConfigured
+                                ]}
+                              >
+                                {areaConfig?.isConfigured
+                                  ? `${areaConfig.serviceArea.radiusKm} KM`
+                                  : 'Set Area'}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })()}
                         {selectedInCat > 0 && (
                           <View style={styles.activePill}>
                             <Text style={styles.activePillText}>{selectedInCat} Active</Text>
@@ -734,6 +807,118 @@ export default function ProviderServicesScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         </View>
+      ) : activeTab === 'areas' ? (
+        // SERVICE AREAS & RADIUS TAB
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+          style={styles.contentScroll}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
+        >
+          {/* Informational Guidance Banner */}
+          <View style={styles.areaInfoBanner}>
+            <View style={styles.areaInfoIconCircle}>
+              <Ionicons name="compass" size={20} color="#A78BFA" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.areaInfoBannerTitle}>Service-Level Distance Restrictions</Text>
+              <Text style={styles.areaInfoBannerSub}>
+                Every service category maintains its own independent service location and radius. Customers outside your radius cannot book you for that service.
+              </Text>
+            </View>
+          </View>
+
+          {serviceAreaServices.length === 0 ? (
+            <View style={styles.emptyStateContainer}>
+              <Ionicons name="location-outline" size={48} color="#4B5563" />
+              <Text style={styles.emptyStateTitle}>No Services Configured</Text>
+              <Text style={styles.emptyStateSub}>
+                Select service tags first so you can configure their respective service areas.
+              </Text>
+            </View>
+          ) : (
+            serviceAreaServices.map((serviceItem) => {
+              const isConfigured = serviceItem.isConfigured;
+              const currentArea = serviceItem.serviceArea;
+              const rule = serviceItem.radiusRule;
+
+              return (
+                <View key={serviceItem.category?._id || serviceItem.serviceName} style={styles.areaServiceCard}>
+                  <View style={styles.areaCardTopRow}>
+                    <View style={styles.areaServiceInfo}>
+                      <Text style={styles.areaServiceName}>{serviceItem.serviceName}</Text>
+                      <Text style={styles.areaServiceSub}>
+                        Admin Max Allowed: {rule?.maxRadiusKm || 15} KM
+                      </Text>
+                    </View>
+
+                    <View style={[styles.statusPill, isConfigured ? styles.statusPillActive : styles.statusPillPending]}>
+                      <Ionicons
+                        name={isConfigured ? 'checkmark-circle' : 'alert-circle'}
+                        size={13}
+                        color={isConfigured ? '#10B981' : '#F59E0B'}
+                      />
+                      <Text style={[styles.statusPillText, isConfigured ? styles.statusPillTextActive : styles.statusPillTextPending]}>
+                        {isConfigured ? 'Coverage Active' : 'Not Configured'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Configured Details */}
+                  {isConfigured ? (
+                    <View style={styles.areaConfiguredBox}>
+                      <View style={styles.areaDetailRow}>
+                        <Ionicons name="location" size={16} color="#A78BFA" />
+                        <Text style={styles.areaAddressText} numberOfLines={2}>
+                          {currentArea?.address?.formattedAddress || 'Service Location set'}
+                        </Text>
+                      </View>
+
+                      <View style={styles.areaMetaRow}>
+                        <View style={styles.metaBadge}>
+                          <Ionicons name="radio-outline" size={12} color="#10B981" />
+                          <Text style={styles.metaBadgeText}>{currentArea?.radiusKm} KM Radius</Text>
+                        </View>
+                        <View style={styles.metaBadge}>
+                          <Ionicons name="navigate-outline" size={12} color="#60A5FA" />
+                          <Text style={styles.metaBadgeText}>
+                            {currentArea?.locationSource === 'manual' ? 'Manual Address' : 'GPS Detected'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.areaWarningBox}>
+                      <Ionicons name="warning-outline" size={16} color="#F59E0B" />
+                      <Text style={styles.areaWarningText}>
+                        This service is not visible to customers until a service location and radius are configured.
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Action Button */}
+                  <TouchableOpacity
+                    style={[styles.configureAreaBtn, isConfigured && styles.configureAreaBtnEdit]}
+                    onPress={() => handleOpenSetServiceArea(serviceItem)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name={isConfigured ? 'create-outline' : 'location-outline'}
+                      size={16}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.configureAreaBtnText}>
+                      {isConfigured ? 'Update Location & Radius' : 'Set Service Area & Radius'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
       ) : (
         // LEGACY CUSTOM SERVICES TAB
         <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
@@ -991,6 +1176,19 @@ export default function ProviderServicesScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* Service Area & Radius Configuration Modal */}
+      <ServiceAreaRadiusModal
+        visible={serviceAreaModalVisible}
+        onClose={() => {
+          setServiceAreaModalVisible(false);
+          setSelectedServiceItemForArea(null);
+        }}
+        serviceItem={selectedServiceItemForArea}
+        onSaved={() => {
+          loadData();
+        }}
+      />
     </View>
   );
 }
@@ -1603,6 +1801,186 @@ const styles = StyleSheet.create({
   },
   catChipTextSelected: {
     color: '#FFFFFF',
+    fontWeight: '700'
+  },
+  areaHeaderPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+    marginRight: 6
+  },
+  areaHeaderPillConfigured: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: 'rgba(16, 185, 129, 0.4)'
+  },
+  areaHeaderPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#F59E0B'
+  },
+  areaHeaderPillTextConfigured: {
+    color: '#10B981'
+  },
+  areaInfoBanner: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: spacing.md,
+    backgroundColor: '#1E1B2E',
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#3B3358',
+    marginBottom: spacing.md
+  },
+  areaInfoIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#2A2440',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  areaInfoBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 2
+  },
+  areaInfoBannerSub: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    lineHeight: 16
+  },
+  areaServiceCard: {
+    backgroundColor: '#181524',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: '#2E2845',
+    marginBottom: spacing.md
+  },
+  areaCardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm
+  },
+  areaServiceInfo: {
+    flex: 1
+  },
+  areaServiceName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  areaServiceSub: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1
+  },
+  statusPillActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderColor: 'rgba(16, 185, 129, 0.3)'
+  },
+  statusPillPending: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderColor: 'rgba(245, 158, 11, 0.3)'
+  },
+  statusPillText: {
+    fontSize: 10,
+    fontWeight: '700'
+  },
+  statusPillTextActive: {
+    color: '#10B981'
+  },
+  statusPillTextPending: {
+    color: '#F59E0B'
+  },
+  areaConfiguredBox: {
+    backgroundColor: '#100E17',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: '#2E2845',
+    marginBottom: spacing.sm
+  },
+  areaDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6
+  },
+  areaAddressText: {
+    fontSize: 12,
+    color: '#E2E8F0',
+    flex: 1
+  },
+  areaMetaRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4
+  },
+  metaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: '#1E1B2E',
+    borderRadius: 4
+  },
+  metaBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#CBD5E1'
+  },
+  areaWarningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: spacing.sm,
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.25)',
+    marginBottom: spacing.sm
+  },
+  areaWarningText: {
+    fontSize: 11,
+    color: '#F59E0B',
+    flex: 1
+  },
+  configureAreaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    borderRadius: borderRadius.md
+  },
+  configureAreaBtnEdit: {
+    backgroundColor: '#2E2845',
+    borderWidth: 1,
+    borderColor: '#4C426D'
+  },
+  configureAreaBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
     fontWeight: '700'
   }
 });

@@ -94,6 +94,14 @@ export const authApi = {
     const response = await api.post('/auth/register/provider', providerData);
     return response.data;
   },
+  forgotPassword: async (email) => {
+    const response = await api.post('/auth/forgot-password', { email });
+    return response.data;
+  },
+  resetPassword: async ({ token, newPassword, confirmPassword }) => {
+    const response = await api.post('/auth/reset-password', { token, newPassword, confirmPassword });
+    return response.data;
+  },
   getMe: async () => {
     const response = await api.get('/auth/me');
     return response.data;
@@ -369,6 +377,34 @@ export const reviewApi = {
       }
       throw err;
     }
+  }
+};
+
+// Provider Service-Level Radius & Location APIs
+export const providerServiceAreaRadiusApi = {
+  getServiceAreas: async () => {
+    const response = await api.get('/provider/my-services/service-areas');
+    return response.data;
+  },
+  getRadiusOptions: async (categoryId) => {
+    const response = await api.get(`/provider/my-services/radius-options/${categoryId}`);
+    return response.data;
+  },
+  updateServiceArea: async (payload) => {
+    const response = await api.put('/provider/my-services/service-areas', payload);
+    return response.data;
+  },
+  deleteServiceArea: async (categoryId) => {
+    const response = await api.delete(`/provider/my-services/service-areas/${categoryId}`);
+    return response.data;
+  },
+  searchAddress: async (query) => {
+    const response = await api.get('/locations/search-address', { params: { q: query } });
+    return response.data;
+  },
+  reverseGeocode: async (lat, lon) => {
+    const response = await api.get('/locations/reverse-geocode', { params: { lat, lon } });
+    return response.data;
   }
 };
 

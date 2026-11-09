@@ -1,9 +1,11 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Customer = require('../models/Customer');
 const Provider = require('../models/Provider');
 const Admin = require('../models/Admin');
+const emailService = require('./emailService');
 const { generateToken } = require('../utils/jwt');
 
 const SALT_ROUNDS = 10;
@@ -442,6 +444,139 @@ const getCurrentUser = async (userId) => {
   return formatSafeUser(user, profile);
 };
 
+/**
+ * Request Password Reset (Forgot Password)
+ * Generates single-use 15-min token, hashes with SHA-256 before saving to DB,
+ * and sends email via emailService.
+ * Returns identical generic response to prevent user enumeration.
+ */
+const forgotPassword = async ({ email, origin }) => {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
+  if (!normalizedEmail || !emailRegex.test(normalizedEmail)) {
+    const err = new Error('A valid email address is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const genericResponse = {
+    success: true,
+    message: 'If an account exists with this email address, a password reset link has been sent.'
+  };
+
+  const user = await User.findOne({
+    email: normalizedEmail,
+    isDeleted: { $ne: true }
+  }).select('+passwordResetToken +passwordResetExpires +passwordResetLastRequestedAt');
+
+  if (!user) {
+    // Prevent user enumeration
+    return genericResponse;
+  }
+
+  // Rate-limiting / resend protection (60 second cooldown)
+  const now = Date.now();
+  if (user.passwordResetLastRequestedAt && (now - new Date(user.passwordResetLastRequestedAt).getTime()) < 60 * 1000) {
+    // Suppress email within cooldown, return same generic response
+    return genericResponse;
+  }
+
+  // Generate 32-byte cryptographic random token
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+  // Token expires in 15 minutes
+  const expiresInMs = 15 * 60 * 1000;
+  user.passwordResetToken = hashedToken;
+  user.passwordResetExpires = new Date(now + expiresInMs);
+  user.passwordResetLastRequestedAt = new Date(now);
+
+  await user.save({ validateModifiedOnly: true });
+
+  // Determine reset URL:
+  const baseUrl = process.env.RESET_PASSWORD_BASE_URL || origin || `http://localhost:${process.env.PORT || 5000}`;
+  const resetUrl = baseUrl.includes('/reset-password')
+    ? `${baseUrl}?token=${rawToken}`
+    : `${baseUrl}/api/auth/reset-password?token=${rawToken}`;
+
+  try {
+    await emailService.sendPasswordResetEmail({
+      to: user.email,
+      name: user.name,
+      resetUrl,
+      expiresInMinutes: 15
+    });
+  } catch (emailErr) {
+    console.error('[AUTH SERVICE] Error sending reset email:', emailErr.message);
+  }
+
+  return {
+    ...genericResponse,
+    ...(process.env.NODE_ENV === 'test' ? { testToken: rawToken } : {})
+  };
+};
+
+/**
+ * Reset Password using cryptographic token
+ */
+const resetPassword = async ({ token, newPassword, confirmPassword }) => {
+  if (!token || typeof token !== 'string' || !token.trim()) {
+    const err = new Error('Reset token is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+    const err = new Error('New password is required and must be at least 6 characters long');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (newPassword !== confirmPassword) {
+    const err = new Error('New password and confirm password do not match');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Hash incoming raw token to compare with DB
+  const hashedToken = crypto.createHash('sha256').update(token.trim()).digest('hex');
+
+  const user = await User.findOne({
+    passwordResetToken: hashedToken,
+    isDeleted: { $ne: true }
+  }).select('+passwordResetToken +passwordResetExpires');
+
+  if (!user) {
+    const err = new Error('Invalid or expired password reset token');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Check expiration
+  if (!user.passwordResetExpires || user.passwordResetExpires.getTime() < Date.now()) {
+    user.passwordResetToken = null;
+    user.passwordResetExpires = null;
+    await user.save({ validateModifiedOnly: true });
+
+    const err = new Error('Password reset token has expired. Please request a new link.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Update password and clear reset tokens
+  user.password = await hashPassword(newPassword);
+  user.passwordResetToken = null;
+  user.passwordResetExpires = null;
+  user.passwordChangedAt = new Date();
+
+  await user.save({ validateModifiedOnly: true });
+
+  return {
+    success: true,
+    message: 'Password has been reset successfully. You can now log in with your new password.'
+  };
+};
+
 module.exports = {
   hashPassword,
   comparePassword,
@@ -451,5 +586,7 @@ module.exports = {
   registerProvider,
   loginProvider,
   loginAdmin,
-  getCurrentUser
+  getCurrentUser,
+  forgotPassword,
+  resetPassword
 };

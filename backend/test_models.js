@@ -13,7 +13,8 @@ const {
   Notification,
   Admin,
   DeviceToken,
-  HomeBanner
+  HomeBanner,
+  ServiceRadiusConfig
 } = require('./src/models');
 
 console.log('--- Running Schema & Model Unit Tests ---');
@@ -171,4 +172,15 @@ const homeBanner = new HomeBanner({
 assert.strictEqual(homeBanner.validateSync(), undefined);
 console.log('✓ HomeBanner model validation passed');
 
-console.log('--- ALL 13 MODEL TESTS PASSED SUCCESSFULLY! ---');
+// Test 14: ServiceRadiusConfig
+const radiusConfig = new ServiceRadiusConfig({
+  category: new mongoose.Types.ObjectId(),
+  serviceName: 'Electrician',
+  allowedRadii: [{ km: 2, isActive: true }, { km: 5, isActive: true }, { km: 8, isActive: true }],
+  maxRadiusKm: 10,
+  isActive: true
+});
+assert.strictEqual(radiusConfig.validateSync(), undefined);
+console.log('✓ ServiceRadiusConfig model validation passed');
+
+console.log('--- ALL 14 MODEL TESTS PASSED SUCCESSFULLY! ---');

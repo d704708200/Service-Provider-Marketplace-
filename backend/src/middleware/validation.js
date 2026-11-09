@@ -117,6 +117,61 @@ const validateLogin = (req, res, next) => {
 
 const mongoose = require('mongoose');
 
+const validateForgotPassword = (req, res, next) => {
+  const { email } = req.body;
+  const errors = [];
+
+  const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
+  if (!email || typeof email !== 'string' || !emailRegex.test(email.trim())) {
+    errors.push('A valid email address is required');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
+const validateResetPassword = (req, res, next) => {
+  const { token, newPassword, confirmPassword } = req.body;
+  const errors = [];
+
+  if (!token || typeof token !== 'string' || !token.trim()) {
+    errors.push('Reset token is required');
+  }
+
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+    errors.push('Password must be at least 6 characters');
+  }
+
+  if (!confirmPassword || typeof confirmPassword !== 'string') {
+    errors.push('Password confirmation is required');
+  } else if (newPassword && newPassword !== confirmPassword) {
+    errors.push('New password and confirm password do not match');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        message: `Validation failed: ${errors.join(', ')}`,
+        statusCode: 400,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
 const validateObjectId = (...paramNames) => {
   const names = paramNames.length > 0 ? paramNames : ['id'];
   return (req, res, next) => {
@@ -449,8 +504,8 @@ const validateUpdateProviderProfile = (req, res, next) => {
 
   // Check for forbidden fields
   if (role !== undefined || verificationStatus !== undefined || rating !== undefined ||
-      reviewCount !== undefined || completedBookingsCount !== undefined ||
-      rejectionReason !== undefined || verifiedAt !== undefined || isActive !== undefined) {
+    reviewCount !== undefined || completedBookingsCount !== undefined ||
+    rejectionReason !== undefined || verifiedAt !== undefined || isActive !== undefined) {
     return res.status(403).json({
       success: false,
       error: {
@@ -1699,6 +1754,8 @@ module.exports = {
   validateRegisterCustomer,
   validateRegisterProvider,
   validateLogin,
+  validateForgotPassword,
+  validateResetPassword,
   validateObjectId,
   validateCreateCategory,
   validateUpdateCategory,
@@ -1729,8 +1786,8 @@ module.exports = {
   validateReviewSpareParts,
   validateSelectSparePartsPaymentMethod,
   validateSelectPostServicePaymentChoice,
-  
-validateUpdateTeamSize,
+
+  validateUpdateTeamSize,
   validateCreateHomeBanner,
   validateUpdateHomeBanner,
   validateReorderHomeBanners

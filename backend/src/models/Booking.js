@@ -87,9 +87,12 @@ const bookingSchema = new mongoose.Schema(
     },
     address: {
       street: { type: String, required: true, trim: true },
+      locality: { type: String, trim: true, default: '' },
       city: { type: String, required: true, trim: true },
       state: { type: String, trim: true, default: '' },
       zipCode: { type: String, trim: true, default: '' },
+      formattedAddress: { type: String, trim: true, default: '' },
+      distanceKm: { type: Number, default: null },
       location: {
         type: { type: String, enum: ['Point'], default: 'Point' },
         coordinates: { type: [Number], default: [0, 0] }

@@ -688,6 +688,79 @@ const reviewServiceCertification = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/provider/my-services/service-areas
+ * Authenticated provider views all service-level locations and radii
+ */
+const getProviderServiceAreaConfigs = async (req, res, next) => {
+  try {
+    const data = await providerService.getProviderServiceAreaConfigs(req.user._id);
+    res.status(200).json({
+      success: true,
+      message: 'Provider service area configurations retrieved successfully',
+      data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/provider/my-services/radius-options/:categoryId
+ * Get Admin-approved active radius options for a category
+ */
+const getProviderAllowedRadiusOptions = async (req, res, next) => {
+  try {
+    const data = await providerService.getProviderAllowedRadiusOptions(
+      req.user._id,
+      req.params.categoryId
+    );
+    res.status(200).json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PUT /api/provider/my-services/service-areas
+ * Save or update provider service location and radius for a specific service category
+ */
+const updateProviderServiceAreaConfig = async (req, res, next) => {
+  try {
+    const data = await providerService.updateProviderServiceAreaConfig(req.user._id, req.body);
+    res.status(200).json({
+      success: true,
+      message: 'Service area and radius saved successfully',
+      data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/provider/my-services/service-areas/:categoryId
+ * Remove service area config for a category
+ */
+const deleteProviderServiceAreaConfig = async (req, res, next) => {
+  try {
+    const data = await providerService.deleteProviderServiceAreaConfig(
+      req.user._id,
+      req.params.categoryId
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Service area configuration removed successfully',
+      data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getProviderMe,
   updateProviderMe,
@@ -703,6 +776,10 @@ module.exports = {
   addProviderServiceArea,
   updateProviderServiceArea,
   deleteProviderServiceArea,
+  getProviderServiceAreaConfigs,
+  getProviderAllowedRadiusOptions,
+  updateProviderServiceAreaConfig,
+  deleteProviderServiceAreaConfig,
   submitDocument,
   uploadKYCDocument,
   submitKYC,

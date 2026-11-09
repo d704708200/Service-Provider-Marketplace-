@@ -94,6 +94,14 @@ export const authApi = {
     const response = await api.post('/auth/login/customer', credentials);
     return response.data;
   },
+  forgotPassword: async (email) => {
+    const response = await api.post('/auth/forgot-password', { email });
+    return response.data;
+  },
+  resetPassword: async ({ token, newPassword, confirmPassword }) => {
+    const response = await api.post('/auth/reset-password', { token, newPassword, confirmPassword });
+    return response.data;
+  },
   getMe: async () => {
     const response = await api.get('/auth/me');
     return response.data;
@@ -373,6 +381,20 @@ export const notificationApi = {
   },
   markAllAsRead: async () => {
     const response = await api.patch('/notifications/read-all');
+    return response.data;
+  }
+};
+
+// ==========================================
+// 11. Location & Geocoding Search APIs
+// ==========================================
+export const locationApi = {
+  searchAddress: async (query) => {
+    const response = await api.get('/locations/search-address', { params: { q: query } });
+    return response.data;
+  },
+  reverseGeocode: async (lat, lon) => {
+    const response = await api.get('/locations/reverse-geocode', { params: { lat, lon } });
     return response.data;
   }
 };

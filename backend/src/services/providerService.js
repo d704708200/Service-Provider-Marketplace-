@@ -9,6 +9,14 @@ const Review = require('../models/Review');
 const Booking = require('../models/Booking');
 const ServiceTag = require('../models/ServiceTag');
 const ProviderSlotReservation = require('../models/ProviderSlotReservation');
+const ServiceRadiusConfig = require('../models/ServiceRadiusConfig');
+const {
+  calculateHaversineDistanceKm,
+  isValidLatitude,
+  isValidLongitude,
+  isValidGeoJsonCoordinates
+} = require('../utils/geoUtils');
+const serviceRadiusService = require('./serviceRadiusService');
 const {
   parseTimeToMinutes,
   minutesToHHmm,
@@ -1016,9 +1024,9 @@ const getPublicProviders = async (query = {}) => {
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos(lat1 * (Math.PI / 180)) *
-        Math.cos(lat2 * (Math.PI / 180)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return Number((R * c).toFixed(1));
   };
@@ -1086,11 +1094,34 @@ const getPublicProviders = async (query = {}) => {
       const specialization =
         p.categories && p.categories.length > 0 ? p.categories[0].name : (p.specialization || '');
 
-      // Compute geographic distance if both provider and customer coordinates exist
+      // Compute geographic distance & service radius matching
       let distanceKm = null;
-      if (customerLat != null && customerLng != null && p.location?.coordinates?.length === 2) {
-        const [pLng, pLat] = p.location.coordinates;
-        distanceKm = calculateDistanceKm(customerLat, customerLng, pLat, pLng);
+      let isWithinRadius = true;
+      let matchedServiceArea = null;
+
+      if (categoryIds.length > 0 && Array.isArray(p.serviceAreasConfig)) {
+        matchedServiceArea = p.serviceAreasConfig.find(
+          (a) => a.isActive !== false && categoryIds.some((cid) => cid.toString() === (a.category?._id || a.category)?.toString())
+        );
+      } else if (Array.isArray(p.serviceAreasConfig) && p.serviceAreasConfig.length > 0) {
+        matchedServiceArea = p.serviceAreasConfig.find((a) => a.isActive !== false);
+      }
+
+      if (customerLat != null && customerLng != null) {
+        if (matchedServiceArea && isValidGeoJsonCoordinates(matchedServiceArea.location?.coordinates)) {
+          const [pLng, pLat] = matchedServiceArea.location.coordinates;
+          distanceKm = calculateHaversineDistanceKm(customerLat, customerLng, pLat, pLng);
+          isWithinRadius = distanceKm <= matchedServiceArea.radiusKm;
+        } else if (categoryIds.length > 0) {
+          // Provider has not configured an area for this requested service
+          isWithinRadius = false;
+        } else if (p.location?.coordinates?.length === 2 && isValidGeoJsonCoordinates(p.location.coordinates)) {
+          const [pLng, pLat] = p.location.coordinates;
+          distanceKm = calculateHaversineDistanceKm(customerLat, customerLng, pLat, pLng);
+          isWithinRadius = true;
+        } else {
+          isWithinRadius = false;
+        }
       }
 
       return {
@@ -1111,36 +1142,47 @@ const getPublicProviders = async (query = {}) => {
         user: p.user,
         isAvailable: p.isAvailable,
         businessAddress: p.businessAddress || null,
-        location: p.location || null,
-        distance: distanceKm // Real distance in km, or null if coordinates unavailable
+        location: matchedServiceArea?.location || p.location || null,
+        serviceArea: matchedServiceArea || null,
+        serviceRadiusKm: matchedServiceArea?.radiusKm || null,
+        distance: distanceKm, // Real distance in km, or null if coordinates unavailable
+        distanceKm,
+        isWithinRadius
       };
     })
   );
 
+  let finalProviders = enrichedProviders;
+  if (customerLat != null && customerLng != null) {
+    finalProviders = enrichedProviders
+      .filter((p) => p.isWithinRadius)
+      .sort((a, b) => (a.distanceKm ?? 999999) - (b.distanceKm ?? 999999));
+  }
+
   // If pagination parameters were explicitly passed, return pagination object
   if (page !== undefined || (query.limit !== undefined && query.includePagination === 'true')) {
-    const currentLimit = limit || enrichedProviders.length;
-    const currentPage = page || 1;
+    const currentLimit = limit || finalProviders.length;
+    const paginatedProviders = finalProviders.slice(0, currentLimit);
     return {
-      providers: enrichedProviders,
+      providers: paginatedProviders,
       pagination: {
-        page: currentPage,
+        page: page || 1,
         limit: currentLimit,
-        total: totalCount,
-        totalPages: Math.ceil(totalCount / currentLimit) || 1
+        total: finalProviders.length,
+        totalPages: Math.ceil(finalProviders.length / (currentLimit || 1)) || 1
       }
     };
   }
 
   // Default array return for direct compatibility with existing clients
-  enrichedProviders.pagination = {
+  finalProviders.pagination = {
     page: 1,
-    limit: limit || totalCount,
-    total: totalCount,
-    totalPages: limit ? (Math.ceil(totalCount / limit) || 1) : 1
+    limit: limit || finalProviders.length,
+    total: finalProviders.length,
+    totalPages: limit ? (Math.ceil(finalProviders.length / limit) || 1) : 1
   };
 
-  return enrichedProviders;
+  return finalProviders;
 };
 
 /**
@@ -1967,6 +2009,289 @@ const reviewServiceCertification = async (providerId, adminUserId, { status, rej
     .lean();
 };
 
+/**
+ * ------------------------------------------------------------------
+ * SERVICE-LEVEL RADIUS & LOCATION MANAGEMENT (PROVIDER APP)
+ * ------------------------------------------------------------------
+ */
+
+const getProviderServiceAreaConfigs = async (userId) => {
+  const provider = await Provider.findOne({ user: userId })
+    .populate('categories', 'name slug icon')
+    .populate('serviceAreasConfig.category', 'name slug icon');
+
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Ensure default radius configs are seeded
+  await serviceRadiusService.listRadiusConfigs();
+
+  // Find all categories offered by the provider
+  const categoryIds = (provider.categories || []).map((c) => (c._id || c).toString());
+
+  // Also include any categories present in approved serviceTags
+  if (provider.serviceTags && provider.serviceTags.length > 0) {
+    const tagIds = provider.serviceTags
+      .filter((st) => st.isActive && st.approvalStatus === 'approved')
+      .map((st) => st.tag);
+    const tags = await ServiceTag.find({ _id: { $in: tagIds } }).select('category').lean();
+    for (const t of tags) {
+      if (t.category && !categoryIds.includes(t.category.toString())) {
+        categoryIds.push(t.category.toString());
+      }
+    }
+  }
+
+  // Fetch admin radius configs for these categories
+  const radiusConfigs = await ServiceRadiusConfig.find({
+    category: { $in: categoryIds },
+    isActive: true
+  })
+    .populate('category', 'name slug icon')
+    .lean();
+
+  const configsMap = {};
+  for (const rc of radiusConfigs) {
+    const catId = (rc.category?._id || rc.category).toString();
+    configsMap[catId] = {
+      _id: rc._id,
+      category: rc.category,
+      serviceName: rc.serviceName,
+      maxRadiusKm: rc.maxRadiusKm,
+      allowedRadii: (rc.allowedRadii || []).filter((r) => r.isActive !== false)
+    };
+  }
+
+  // Build combined summary per category
+  const categoriesList = await Category.find({ _id: { $in: categoryIds } }).lean();
+
+  const services = categoriesList.map((cat) => {
+    const catIdStr = cat._id.toString();
+    const existingArea = (provider.serviceAreasConfig || []).find(
+      (a) => (a.category?._id || a.category)?.toString() === catIdStr
+    );
+    const radiusRule = configsMap[catIdStr] || {
+      category: cat,
+      serviceName: cat.name,
+      maxRadiusKm: 15,
+      allowedRadii: [
+        { km: 2, isActive: true },
+        { km: 5, isActive: true },
+        { km: 10, isActive: true }
+      ]
+    };
+
+    return {
+      category: cat,
+      serviceName: cat.name,
+      isConfigured: Boolean(existingArea && existingArea.isActive),
+      serviceArea: existingArea || null,
+      radiusRule
+    };
+  });
+
+  return {
+    providerId: provider._id,
+    serviceAreas: provider.serviceAreasConfig || [],
+    services
+  };
+};
+
+const getProviderAllowedRadiusOptions = async (userId, categoryId) => {
+  const config = await serviceRadiusService.getRadiusConfigByCategory(categoryId);
+  if (!config || !config.isActive) {
+    const err = new Error('No active radius configuration found for this service');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  return {
+    category: config.category,
+    serviceName: config.serviceName,
+    maxRadiusKm: config.maxRadiusKm,
+    allowedRadii: (config.allowedRadii || []).filter((r) => r.isActive !== false)
+  };
+};
+
+const updateProviderServiceAreaConfig = async (userId, categoryOrPayload, maybePayload) => {
+  let categoryId = null;
+  let payload = {};
+
+  if (maybePayload && typeof maybePayload === 'object') {
+    payload = maybePayload;
+    categoryId = categoryOrPayload?._id || categoryOrPayload;
+  } else if (categoryOrPayload && typeof categoryOrPayload === 'object' && !(categoryOrPayload instanceof mongoose.Types.ObjectId)) {
+    payload = categoryOrPayload;
+    categoryId = payload.categoryId?._id || payload.categoryId || payload.category?._id || payload.category;
+  } else {
+    categoryId = categoryOrPayload?._id || categoryOrPayload;
+    payload = maybePayload || {};
+  }
+
+  const { radiusKm, address, coordinates, locationSource = 'gps' } = payload;
+
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (provider.isDeleted) {
+    const err = new Error('Provider profile is inactive or deleted');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  if (!categoryId || !mongoose.Types.ObjectId.isValid(categoryId)) {
+    const err = new Error('Valid category ID is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const category = await Category.findById(categoryId);
+  if (!category || category.isActive === false) {
+    const err = new Error('Service category is not active or not found');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  let cleanCoords = null;
+  if (Array.isArray(coordinates) && coordinates.length === 2) {
+    cleanCoords = [Number(coordinates[0]), Number(coordinates[1])];
+  } else if (payload.location?.coordinates && Array.isArray(payload.location.coordinates)) {
+    cleanCoords = [Number(payload.location.coordinates[0]), Number(payload.location.coordinates[1])];
+  } else if (payload.latitude !== undefined && payload.longitude !== undefined) {
+    cleanCoords = [Number(payload.longitude), Number(payload.latitude)];
+  } else if (address?.location?.coordinates && Array.isArray(address.location.coordinates)) {
+    cleanCoords = [Number(address.location.coordinates[0]), Number(address.location.coordinates[1])];
+  }
+
+  if (!isValidGeoJsonCoordinates(cleanCoords, false)) {
+    const err = new Error(
+      'Valid coordinates (latitude and longitude) are required. Dummy or missing coordinates are rejected.'
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const numRadius = Number(radiusKm);
+  if (isNaN(numRadius) || numRadius <= 0) {
+    const err = new Error('Selected radius must be a positive number greater than 0 KM');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const radiusRule = await serviceRadiusService.getRadiusConfigByCategory(categoryId);
+  if (!radiusRule || !radiusRule.isActive) {
+    const err = new Error(`Admin has not activated radius configurations for '${category.name}'`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (numRadius > radiusRule.maxRadiusKm) {
+    const err = new Error(
+      `Selected radius of ${numRadius} KM exceeds Admin maximum limit of ${radiusRule.maxRadiusKm} KM for '${category.name}'`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const activeRadii = (radiusRule.allowedRadii || []).filter((r) => r.isActive !== false);
+  const isValidOption = activeRadii.some((r) => Number(r.km) === numRadius);
+  if (!isValidOption) {
+    const allowedList = activeRadii.map((r) => `${r.km} KM`).join(', ');
+    const err = new Error(
+      `Selected radius of ${numRadius} KM is not an approved active option. Allowed options: ${allowedList}`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const addrObj = address || {};
+  const formattedAddress = (
+    addrObj.formattedAddress ||
+    [addrObj.street, addrObj.locality, addrObj.city, addrObj.state, addrObj.zipCode]
+      .filter(Boolean)
+      .join(', ') ||
+    'Service Location'
+  ).trim();
+
+  const areaConfigData = {
+    category: category._id,
+    serviceName: category.name,
+    radiusKm: numRadius,
+    address: {
+      street: (addrObj.street || '').trim(),
+      locality: (addrObj.locality || '').trim(),
+      city: (addrObj.city || '').trim(),
+      state: (addrObj.state || '').trim(),
+      zipCode: (addrObj.zipCode || '').trim(),
+      formattedAddress
+    },
+    location: {
+      type: 'Point',
+      coordinates: cleanCoords
+    },
+    locationSource: locationSource === 'manual' ? 'manual' : 'gps',
+    isActive: true,
+    updatedAt: new Date()
+  };
+
+  if (!Array.isArray(provider.serviceAreasConfig)) {
+    provider.serviceAreasConfig = [];
+  }
+
+  const existingIdx = provider.serviceAreasConfig.findIndex(
+    (a) => a.category?.toString() === category._id.toString()
+  );
+
+  if (existingIdx >= 0) {
+    provider.serviceAreasConfig[existingIdx] = {
+      ...provider.serviceAreasConfig[existingIdx].toObject(),
+      ...areaConfigData
+    };
+  } else {
+    provider.serviceAreasConfig.push(areaConfigData);
+  }
+
+  if (!provider.categories.some((c) => c.toString() === category._id.toString())) {
+    provider.categories.push(category._id);
+  }
+
+  if (!provider.location || !isValidGeoJsonCoordinates(provider.location.coordinates)) {
+    provider.location = {
+      type: 'Point',
+      coordinates: cleanCoords
+    };
+  }
+
+  await provider.save();
+
+  return await getProviderServiceAreaConfigs(userId);
+};
+
+const deleteProviderServiceAreaConfig = async (userId, categoryId) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (Array.isArray(provider.serviceAreasConfig)) {
+    provider.serviceAreasConfig = provider.serviceAreasConfig.filter(
+      (a) => a.category?.toString() !== categoryId.toString()
+    );
+    await provider.save();
+  }
+
+  return await getProviderServiceAreaConfigs(userId);
+};
+
 module.exports = {
   getProviderProfileByUserId,
   updateProviderProfileByUserId,
@@ -1977,6 +2302,10 @@ module.exports = {
   addProviderServiceAreaByUserId,
   updateProviderServiceAreaByUserId,
   deleteProviderServiceAreaByUserId,
+  getProviderServiceAreaConfigs,
+  getProviderAllowedRadiusOptions,
+  updateProviderServiceAreaConfig,
+  deleteProviderServiceAreaConfig,
   addProviderServiceByUserId,
   updateProviderServiceByUserId,
   updateProviderServiceStatusByUserId,
