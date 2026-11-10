@@ -527,6 +527,14 @@ export const settingApi = {
   updateCommissionSetting: async (data) => {
     const response = await api.put('/admin/settings/commission', data);
     return response.data;
+  },
+  getLabourCommissionSetting: async () => {
+    const response = await api.get('/admin/settings/commission/labour');
+    return response.data;
+  },
+  updateLabourCommissionSetting: async (data) => {
+    const response = await api.put('/admin/settings/commission/labour', data);
+    return response.data;
   }
 };
 

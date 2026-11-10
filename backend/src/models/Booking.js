@@ -151,17 +151,32 @@ const bookingSchema = new mongoose.Schema(
       discount: { type: Number, default: 0, min: 0 },
       totalAmount: { type: Number, required: true, min: 0 }
     },
-    // Dedicated Accounting & Commission Breakdown
-    // Platform commission is calculated ONLY on originalServicePrice, never on spare parts/materials
+    // Dedicated Accounting & Dual Commission Breakdown (Service + Labour)
+    // Service commission is calculated strictly on originalServicePrice.
+    // Labour commission is calculated strictly on approvedLabourCharge.
+    // Physical spare parts and materials are 100% EXCLUDED from platform commission (0%).
     accounting: {
       originalServicePrice: { type: Number, default: 0, min: 0 },
       additionalPartsAmount: { type: Number, default: 0, min: 0 },
       partsDescription: { type: String, default: '', trim: true },
       customerApprovedPartsAmount: { type: Number, default: 0, min: 0 },
+      labourCharge: { type: Number, default: 0, min: 0 },
+      approvedLabourCharge: { type: Number, default: 0, min: 0 },
       totalCustomerPayable: { type: Number, default: 0, min: 0 },
       commissionableAmount: { type: Number, default: 0, min: 0 },
       platformCommissionRate: { type: Number, default: 15, min: 0 },
+      serviceCommissionRate: { type: Number, default: 15, min: 0 },
+      labourCommissionRate: { type: Number, default: 0, min: 0 },
+      serviceCommissionAmount: { type: Number, default: 0, min: 0 },
+      labourCommissionAmount: { type: Number, default: 0, min: 0 },
+      totalPlatformCommission: { type: Number, default: 0, min: 0 },
       platformCommissionAmount: { type: Number, default: 0, min: 0 },
+      labourCommissionStatus: {
+        type: String,
+        enum: ['not_applicable', 'pending_approval', 'approved', 'rejected', 'waived', 'deducted'],
+        default: 'not_applicable'
+      },
+      labourCommissionSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
       providerNetEarning: { type: Number, default: 0, min: 0 }
     },
     // Top-level fields for direct access and backward compatibility
@@ -169,10 +184,23 @@ const bookingSchema = new mongoose.Schema(
     additionalPartsAmount: { type: Number, default: 0 },
     partsDescription: { type: String, default: '' },
     customerApprovedPartsAmount: { type: Number, default: 0 },
+    labourCharge: { type: Number, default: 0 },
+    approvedLabourCharge: { type: Number, default: 0 },
     totalCustomerPayable: { type: Number, default: null },
     commissionableAmount: { type: Number, default: null },
     platformCommissionRate: { type: Number, default: null },
+    serviceCommissionRate: { type: Number, default: null },
+    labourCommissionRate: { type: Number, default: 0 },
+    serviceCommissionAmount: { type: Number, default: 0 },
+    labourCommissionAmount: { type: Number, default: 0 },
+    totalPlatformCommission: { type: Number, default: 0 },
     platformCommissionAmount: { type: Number, default: null },
+    labourCommissionStatus: {
+      type: String,
+      enum: ['not_applicable', 'pending_approval', 'approved', 'rejected', 'waived', 'deducted'],
+      default: 'not_applicable'
+    },
+    labourCommissionSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
     providerNetEarning: { type: Number, default: null },
     paymentStatus: {
       type: String,
@@ -356,7 +384,10 @@ bookingSchema.index({ 'address.location': '2dsphere' });
 
 /**
  * Pre-save middleware to keep accounting breakdown and originalServicePrice synchronized.
- * Enforces: Platform commission is calculated ONLY on originalServicePrice, never on spare parts.
+ * Enforces:
+ * - Service commission is calculated strictly on originalServicePrice.
+ * - Labour commission is calculated strictly on approvedLabourCharge.
+ * - Spare parts/materials are 100% EXCLUDED from platform commission.
  */
 bookingSchema.pre('save', function (next) {
   try {
@@ -368,10 +399,22 @@ bookingSchema.pre('save', function (next) {
       additionalPartsAmount: breakdown.additionalPartsAmount,
       partsDescription: breakdown.partsDescription,
       customerApprovedPartsAmount: breakdown.customerApprovedPartsAmount,
+      labourCharge: breakdown.labourCharge,
+      approvedLabourCharge: breakdown.approvedLabourCharge,
       totalCustomerPayable: breakdown.totalCustomerPayable,
       commissionableAmount: breakdown.commissionableAmount,
       platformCommissionRate: breakdown.platformCommissionRate,
+      serviceCommissionRate: breakdown.serviceCommissionRate,
+      labourCommissionRate: breakdown.labourCommissionRate,
+      serviceCommissionAmount: breakdown.serviceCommissionAmount,
+      labourCommissionAmount: breakdown.labourCommissionAmount,
+      totalPlatformCommission: breakdown.totalPlatformCommission,
       platformCommissionAmount: breakdown.platformCommissionAmount,
+      labourCommissionStatus: breakdown.labourCommissionStatus,
+      labourCommissionSnapshot: this.labourCommissionSnapshot || {
+        rate: breakdown.labourCommissionRate,
+        calculatedAt: new Date()
+      },
       providerNetEarning: breakdown.providerNetEarning
     };
 
@@ -379,10 +422,24 @@ bookingSchema.pre('save', function (next) {
     this.additionalPartsAmount = breakdown.additionalPartsAmount;
     this.partsDescription = breakdown.partsDescription;
     this.customerApprovedPartsAmount = breakdown.customerApprovedPartsAmount;
+    this.labourCharge = breakdown.labourCharge;
+    this.approvedLabourCharge = breakdown.approvedLabourCharge;
     this.totalCustomerPayable = breakdown.totalCustomerPayable;
     this.commissionableAmount = breakdown.commissionableAmount;
     this.platformCommissionRate = breakdown.platformCommissionRate;
+    this.serviceCommissionRate = breakdown.serviceCommissionRate;
+    this.labourCommissionRate = breakdown.labourCommissionRate;
+    this.serviceCommissionAmount = breakdown.serviceCommissionAmount;
+    this.labourCommissionAmount = breakdown.labourCommissionAmount;
+    this.totalPlatformCommission = breakdown.totalPlatformCommission;
     this.platformCommissionAmount = breakdown.platformCommissionAmount;
+    this.labourCommissionStatus = breakdown.labourCommissionStatus;
+    if (!this.labourCommissionSnapshot && breakdown.labourCommissionRate > 0) {
+      this.labourCommissionSnapshot = {
+        rate: breakdown.labourCommissionRate,
+        calculatedAt: new Date()
+      };
+    }
     this.providerNetEarning = breakdown.providerNetEarning;
 
     next();

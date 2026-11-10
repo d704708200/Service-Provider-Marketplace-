@@ -365,6 +365,7 @@ const SettingsPage = () => {
       {/* ========================================================================= */}
       {/* SECTION 0: PLATFORM COMMISSION SETTINGS */}
       {/* ========================================================================= */}
+      {/* TAB 1: DUAL COMMISSION SETTINGS (SERVICE + LABOUR) */}
       {activeTab === 'commission' && (
         <div className="space-y-6">
           {/* Audited Policy Banner */}
@@ -375,10 +376,14 @@ const SettingsPage = () => {
               </div>
               <div>
                 <h3 className="font-bold text-base text-indigo-950">
-                  Admin-Controlled Platform Commission Take-Rate
+                  Dual Platform Commission System (Service + Labour)
                 </h3>
-                <p className="text-xs text-indigo-800 mt-1 max-w-2xl leading-relaxed">
-                  Mendroo platform commission is calculated <strong>only once on original service base prices</strong>. Additional spare parts, materials, and replacement components supplied by providers are <strong>100% commission-free (0% fee)</strong>. When a booking is created, its commission rate is permanently frozen.
+                <p className="text-xs text-indigo-800 mt-1 max-w-3xl leading-relaxed">
+                  Mendroo operates two independently configurable platform commission take-rates:
+                  <strong className="text-indigo-950"> 1) Service Commission</strong> on the base booking price, and
+                  <strong className="text-indigo-950"> 2) Labour Commission</strong> strictly on customer-approved labour charges.
+                  Physical spare parts and materials supplied by providers are <strong className="text-emerald-700">100% commission-free (0% fee)</strong>.
+                  All booking rates are permanently frozen at creation time.
                 </p>
               </div>
             </div>
@@ -392,198 +397,500 @@ const SettingsPage = () => {
             </button>
           </div>
 
-          {/* Current Active Rate & Overview Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+          {/* Sub-navigation pills */}
+          <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+            <button
+              onClick={() => setCommissionSection('all')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                commissionSection === 'all'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Overview & Dual Settings
+            </button>
+            <button
+              onClick={() => setCommissionSection('service')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                commissionSection === 'service'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Service Commission (Base)
+            </button>
+            <button
+              onClick={() => setCommissionSection('labour')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                commissionSection === 'labour'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Labour Commission (Approved)
+            </button>
+          </div>
+
+          {/* Current Active Rates Overview Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Active Commission Rate
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Service Commission
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                   ACTIVE
                 </span>
               </div>
-              <div className="text-3xl font-extrabold text-indigo-600 mt-2 font-sans">
-                {isCommissionLoading ? '...' : `${commissionData?.percentage || 15}%`}
+              <div className="text-2xl font-extrabold text-indigo-600 mt-2 font-sans">
+                {isCommissionLoading ? '...' : `${commissionData?.serviceCommission?.percentage ?? commissionData?.percentage ?? 15}%`}
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Applied to all upcoming new bookings
+              <p className="text-[11px] text-slate-500 mt-1">
+                Base service price take-rate
               </p>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Effective Date & Time
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Labour Commission
                 </span>
-                <Clock className="w-4 h-4 text-slate-400" />
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300">
+                  ACTIVE
+                </span>
               </div>
-              <div className="text-sm font-bold text-slate-800 mt-2">
-                {commissionData?.effectiveFrom
-                  ? new Date(commissionData.effectiveFrom).toLocaleString('en-IN', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })
-                  : 'Platform Default (System Startup)'}
+              <div className="text-2xl font-extrabold text-indigo-600 mt-2 font-sans">
+                {isCommissionLoading ? '...' : `${commissionData?.labourCommission?.percentage ?? 0}%`}
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Existing bookings remain frozen at their creation rate
+              <p className="text-[11px] text-slate-500 mt-1">
+                Approved labour charges take-rate
               </p>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Authorized Admin
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Spare Parts / Materials
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  EXEMPT
+                </span>
+              </div>
+              <div className="text-2xl font-extrabold text-emerald-600 mt-2 font-sans">
+                0%
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                100% provider earnings (Parts Fee = ₹0)
+              </p>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Snapshot Rule
                 </span>
                 <ShieldCheck className="w-4 h-4 text-indigo-600" />
               </div>
               <div className="text-sm font-bold text-slate-800 mt-2">
-                {commissionData?.updatedBy?.name || 'Administrator'}
+                Immutable
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                {commissionData?.updatedBy?.email || 'admin@service-marketplace.com'}
+              <p className="text-[11px] text-slate-500 mt-1">
+                No retroactive changes to bookings
               </p>
             </div>
           </div>
 
-          {/* Update Commission Percentage Form */}
+          {/* Financial Preview Calculator */}
           <Card
-            title="Configure New Commission Percentage"
-            subtitle="Update the centralized platform take-rate applied to future customer bookings"
+            title="Interactive Financial Breakdown Preview"
+            subtitle="Test real-time calculation across base service, customer-approved labour, and spare parts"
           >
-            <form onSubmit={handleOpenConfirmModal} className="space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    New Commission Percentage (%)
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Base Service Price (₹)
                   </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      required
-                      placeholder="e.g. 20"
-                      value={newPercentage}
-                      onChange={(e) => setNewPercentage(e.target.value)}
-                      className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-bold text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
-                    />
-                    <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400 font-bold">
-                      %
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={previewServicePrice}
+                    onChange={(e) => setPreviewServicePrice(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Original service price agreed</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Approved Labour Charge (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={previewLabourCharge}
+                    onChange={(e) => setPreviewLabourCharge(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Customer-approved labour</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Physical Spare Parts (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={previewPartsAmount}
+                    onChange={(e) => setPreviewPartsAmount(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <span className="text-[10px] text-emerald-600 mt-0.5 block font-medium">100% Commission-Free</span>
+                </div>
+              </div>
+
+              {/* Live Preview Result Box */}
+              {(() => {
+                const sRate = Number(newServicePercentage !== '' ? newServicePercentage : (commissionData?.serviceCommission?.percentage ?? 15));
+                const lRate = Number(newLabourPercentage !== '' ? newLabourPercentage : (commissionData?.labourCommission?.percentage ?? 0));
+                const sComm = Math.round(previewServicePrice * (sRate / 100) * 100) / 100;
+                const lComm = Math.round(previewLabourCharge * (lRate / 100) * 100) / 100;
+                const totalCustomer = previewServicePrice + previewLabourCharge + previewPartsAmount;
+                const totalComm = Math.round((sComm + lComm) * 100) / 100;
+                const providerNet = Math.round((totalCustomer - totalComm) * 100) / 100;
+
+                return (
+                  <div className="p-4 bg-slate-900 text-white rounded-xl space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        Accounting Output Simulation
+                      </span>
+                      <span className="text-xs text-indigo-400 font-mono">
+                        Service Rate: {sRate}% | Labour Rate: {lRate}%
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-xs">
+                      <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                        <span className="text-slate-400 block text-[10px]">Service Comm</span>
+                        <span className="font-extrabold text-amber-400 text-sm mt-0.5 block">
+                          ₹{sComm.toFixed(2)}
+                        </span>
+                        <span className="text-[10px] text-slate-400">₹{previewServicePrice} × {sRate}%</span>
+                      </div>
+
+                      <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                        <span className="text-slate-400 block text-[10px]">Labour Comm</span>
+                        <span className="font-extrabold text-indigo-400 text-sm mt-0.5 block">
+                          ₹{lComm.toFixed(2)}
+                        </span>
+                        <span className="text-[10px] text-slate-400">₹{previewLabourCharge} × {lRate}%</span>
+                      </div>
+
+                      <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                        <span className="text-slate-400 block text-[10px]">Parts Comm</span>
+                        <span className="font-extrabold text-emerald-400 text-sm mt-0.5 block">
+                          ₹0.00
+                        </span>
+                        <span className="text-[10px] text-emerald-400 font-medium">Exempt (0%)</span>
+                      </div>
+
+                      <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                        <span className="text-slate-400 block text-[10px]">Total Platform Comm</span>
+                        <span className="font-extrabold text-rose-400 text-sm mt-0.5 block">
+                          ₹{totalComm.toFixed(2)}
+                        </span>
+                        <span className="text-[10px] text-slate-400">Service + Labour</span>
+                      </div>
+
+                      <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                        <span className="text-slate-400 block text-[10px]">Customer Payable</span>
+                        <span className="font-extrabold text-white text-sm mt-0.5 block">
+                          ₹{totalCustomer.toFixed(2)}
+                        </span>
+                        <span className="text-[10px] text-slate-400">Base + Labour + Parts</span>
+                      </div>
+
+                      <div className="p-2.5 bg-emerald-950/80 border border-emerald-500/40 rounded-lg">
+                        <span className="text-emerald-300 block text-[10px] font-semibold">Provider Net</span>
+                        <span className="font-extrabold text-emerald-400 text-sm mt-0.5 block">
+                          ₹{providerNet.toFixed(2)}
+                        </span>
+                        <span className="text-[10px] text-emerald-300">Payable - Comm</span>
+                      </div>
                     </div>
                   </div>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Enter a rate between 0% and 100%. (e.g. 15 for 15%, 20 for 20%).
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Audit Justification / Reason for Change (Required)
-                  </label>
-                  <textarea
-                    rows={2}
-                    required
-                    placeholder="e.g., Seasonal promotion rate adjustment, Approved board quarterly update..."
-                    value={changeReason}
-                    onChange={(e) => setChangeReason(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 resize-none"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Documented permanently in the system configuration audit log.
-                  </p>
-                </div>
-              </div>
-
-              {/* Formula & Rule Summary Pill */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
-                <div className="flex items-center gap-2 font-bold text-slate-800">
-                  <Shield className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Immutable Calculation Rule:</span>
-                </div>
-                <code className="block font-mono text-[11px] text-indigo-900 bg-white p-2 rounded-lg border border-slate-200">
-                  commissionAmount = originalServicePrice × {newPercentage || 15}% / 100 (Spare parts commission = ₹0)
-                </code>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={isCommissionLoading || isCommissionSaving}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Review & Apply New Rate</span>
-                </button>
-              </div>
-            </form>
+                );
+              })()}
+            </div>
           </Card>
 
-          {/* Change History / Audit Log */}
-          <Card
-            title="Commission Rate Audit Log & Change History"
-            subtitle="Immutable chronological ledger of all platform commission percentage modifications"
-          >
-            {(!commissionData?.history || commissionData.history.length === 0) ? (
-              <div className="py-8 text-center text-slate-400 text-xs">
-                <History className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                <span>No previous commission rate modifications recorded. Initial default rate active.</span>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
-                    <tr>
-                      <th className="py-3 px-4">Effective Date & Time</th>
-                      <th className="py-3 px-4">Rate Change</th>
-                      <th className="py-3 px-4">Changed By</th>
-                      <th className="py-3 px-4">Audit Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {commissionData.history.map((h, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
-                          {new Date(h.timestamp).toLocaleString('en-IN', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1.5 font-bold font-sans">
-                            <span className="text-slate-400">{h.previousPercentage}%</span>
-                            <ArrowRight className="w-3.5 h-3.5 text-indigo-500" />
-                            <span className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                              {h.newPercentage}%
-                            </span>
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 font-medium text-slate-800">
-                          {h.changedBy || 'Administrator'}
-                        </td>
-                        <td className="py-3 px-4 text-slate-600 max-w-md">
-                          {h.reason}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
+          {/* SECTION A: SERVICE COMMISSION */}
+          {(commissionSection === 'all' || commissionSection === 'service') && (
+            <div className="space-y-4">
+              <Card
+                title="Section A: Service Commission Configuration"
+                subtitle="Centralized take-rate applied strictly to base service/booking prices"
+              >
+                <form onSubmit={handleOpenServiceConfirm} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        Service Commission Percentage (%)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          required
+                          placeholder="e.g. 15"
+                          value={newServicePercentage}
+                          onChange={(e) => setNewServicePercentage(e.target.value)}
+                          className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-bold text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
+                        />
+                        <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400 font-bold">
+                          %
+                        </div>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Current effective: <strong className="text-slate-800">{commissionData?.serviceCommission?.percentage ?? commissionData?.percentage ?? 15}%</strong>. Applies only to originalServicePrice.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        Mandatory Audit Reason (Service Rate)
+                      </label>
+                      <textarea
+                        rows={2}
+                        required
+                        placeholder="e.g., Annual platform review, Category take-rate adjustment..."
+                        value={serviceChangeReason}
+                        onChange={(e) => setServiceChangeReason(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 resize-none"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Permanently recorded in the service commission audit log.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      disabled={isCommissionLoading || isCommissionSaving}
+                      className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Review & Update Service Commission</span>
+                    </button>
+                  </div>
+                </form>
+              </Card>
+
+              {/* Service Commission Audit History */}
+              <Card
+                title="Service Commission Audit History"
+                subtitle="Chronological audit trail of all Service Commission rate updates"
+              >
+                {(() => {
+                  const history = commissionData?.serviceCommission?.history || commissionData?.history || [];
+                  if (history.length === 0) {
+                    return (
+                      <div className="py-6 text-center text-slate-400 text-xs">
+                        <History className="w-7 h-7 mx-auto mb-2 text-slate-300" />
+                        <span>No previous service commission modifications recorded.</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+                          <tr>
+                            <th className="py-2.5 px-3">Effective Date</th>
+                            <th className="py-2.5 px-3">Rate Change</th>
+                            <th className="py-2.5 px-3">Changed By</th>
+                            <th className="py-2.5 px-3">Audit Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {history.map((h, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                                {new Date(h.timestamp).toLocaleString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </td>
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 font-bold font-sans">
+                                  <span className="text-slate-400">{h.previousPercentage}%</span>
+                                  <ArrowRight className="w-3 h-3 text-indigo-500" />
+                                  <span className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                                    {h.newPercentage}%
+                                  </span>
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 font-medium text-slate-800">
+                                {h.changedBy || 'Administrator'}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-600 max-w-md">
+                                {h.reason}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </Card>
+            </div>
+          )}
+
+          {/* SECTION B: LABOUR COMMISSION */}
+          {(commissionSection === 'all' || commissionSection === 'labour') && (
+            <div className="space-y-4">
+              <Card
+                title="Section B: Labour Commission Configuration"
+                subtitle="Independent take-rate applied strictly to customer-approved extra labour charges"
+              >
+                <form onSubmit={handleOpenLabourConfirm} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        Labour Commission Percentage (%)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          required
+                          placeholder="e.g. 5"
+                          value={newLabourPercentage}
+                          onChange={(e) => setNewLabourPercentage(e.target.value)}
+                          className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-bold text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
+                        />
+                        <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400 font-bold">
+                          %
+                        </div>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Current effective: <strong className="text-slate-800">{commissionData?.labourCommission?.percentage ?? 0}%</strong>. Defaults to 0% if unconfigured. Never applied to unapproved labour.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        Mandatory Audit Reason (Labour Rate)
+                      </label>
+                      <textarea
+                        rows={2}
+                        required
+                        placeholder="e.g., Setting initial labour take-rate, Seasonal labour fee update..."
+                        value={labourChangeReason}
+                        onChange={(e) => setLabourChangeReason(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 resize-none"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Permanently recorded in the labour commission audit log.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      disabled={isCommissionLoading || isCommissionSaving}
+                      className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Review & Update Labour Commission</span>
+                    </button>
+                  </div>
+                </form>
+              </Card>
+
+              {/* Labour Commission Audit History */}
+              <Card
+                title="Labour Commission Audit History"
+                subtitle="Chronological audit trail of all Labour Commission rate updates"
+              >
+                {(() => {
+                  const history = commissionData?.labourCommission?.history || [];
+                  if (history.length === 0) {
+                    return (
+                      <div className="py-6 text-center text-slate-400 text-xs">
+                        <History className="w-7 h-7 mx-auto mb-2 text-slate-300" />
+                        <span>No previous labour commission modifications recorded. Current rate is at initial default (0%).</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+                          <tr>
+                            <th className="py-2.5 px-3">Effective Date</th>
+                            <th className="py-2.5 px-3">Rate Change</th>
+                            <th className="py-2.5 px-3">Changed By</th>
+                            <th className="py-2.5 px-3">Audit Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {history.map((h, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                                {new Date(h.timestamp).toLocaleString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </td>
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 font-bold font-sans">
+                                  <span className="text-slate-400">{h.previousPercentage}%</span>
+                                  <ArrowRight className="w-3 h-3 text-indigo-500" />
+                                  <span className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                                    {h.newPercentage}%
+                                  </span>
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 font-medium text-slate-800">
+                                {h.changedBy || 'Administrator'}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-600 max-w-md">
+                                {h.reason}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </Card>
+            </div>
+          )}
         </div>
       )}
 
-      {/* CONFIRMATION MODAL FOR COMMISSION RATE UPDATE */}
-      {confirmModalOpen && (
+      {/* CONFIRMATION MODAL FOR COMMISSION RATE UPDATE (SERVICE OR LABOUR) */}
+      {confirmModalType && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg border border-slate-200 p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center gap-3">
@@ -592,10 +899,12 @@ const SettingsPage = () => {
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  Confirm Platform Commission Rate Update
+                  Confirm {confirmModalType === 'service' ? 'Service' : 'Labour'} Commission Rate Update
                 </h3>
                 <p className="text-xs text-slate-500">
-                  This setting applies globally to all future service bookings.
+                  {confirmModalType === 'service'
+                    ? 'Applies globally to original service prices on upcoming bookings.'
+                    : 'Applies strictly to customer-approved labour charges on upcoming bookings.'}
                 </p>
               </div>
             </div>
@@ -604,19 +913,27 @@ const SettingsPage = () => {
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
               <div className="flex items-center justify-between text-sm">
                 <div>
-                  <span className="text-xs text-slate-400 block">Current Rate:</span>
-                  <span className="font-bold text-slate-700">{commissionData?.percentage || 15}%</span>
+                  <span className="text-xs text-slate-400 block">Current {confirmModalType === 'service' ? 'Service' : 'Labour'} Rate:</span>
+                  <span className="font-bold text-slate-700">
+                    {confirmModalType === 'service'
+                      ? `${commissionData?.serviceCommission?.percentage ?? commissionData?.percentage ?? 15}%`
+                      : `${commissionData?.labourCommission?.percentage ?? 0}%`}
+                  </span>
                 </div>
                 <ArrowRight className="w-5 h-5 text-indigo-500" />
                 <div className="text-right">
                   <span className="text-xs text-indigo-600 block font-semibold">New Rate:</span>
-                  <span className="font-extrabold text-indigo-600 text-lg">{newPercentage}%</span>
+                  <span className="font-extrabold text-indigo-600 text-lg">
+                    {confirmModalType === 'service' ? newServicePercentage : newLabourPercentage}%
+                  </span>
                 </div>
               </div>
 
               <div className="pt-2 border-t border-slate-200 text-xs">
                 <span className="font-semibold text-slate-700 block">Documented Reason:</span>
-                <span className="text-slate-600 italic">"{changeReason}"</span>
+                <span className="text-slate-600 italic">
+                  "{confirmModalType === 'service' ? serviceChangeReason : labourChangeReason}"
+                </span>
               </div>
             </div>
 
@@ -626,7 +943,10 @@ const SettingsPage = () => {
               <ul className="list-disc pl-4 space-y-0.5 text-amber-800 text-[11px]">
                 <li>All <strong>existing bookings</strong> preserve their frozen creation rate.</li>
                 <li>Completed transactions and cash commission dues are <strong>never recalculated</strong>.</li>
-                <li>Additional spare parts and materials remain <strong>100% commission-free (0%)</strong>.</li>
+                <li>Physical spare parts and materials remain <strong>100% commission-free (0%)</strong>.</li>
+                {confirmModalType === 'labour' && (
+                  <li>Labour commission applies <strong>only when customer explicitly approves</strong> the labour charge.</li>
+                )}
               </ul>
             </div>
 
@@ -634,7 +954,7 @@ const SettingsPage = () => {
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setConfirmModalOpen(false)}
+                onClick={() => setConfirmModalType(null)}
                 disabled={isCommissionSaving}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
               >
@@ -652,7 +972,7 @@ const SettingsPage = () => {
                     <span>Applying...</span>
                   </>
                 ) : (
-                  <span>Confirm & Apply {newPercentage}% Rate</span>
+                  <span>Confirm & Apply {confirmModalType === 'service' ? newServicePercentage : newLabourPercentage}% Rate</span>
                 )}
               </button>
             </div>

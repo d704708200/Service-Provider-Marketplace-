@@ -222,9 +222,30 @@ export default function SelectLocationModal({
                 </TouchableOpacity>
 
                 {gpsError && (
-                  <View style={styles.errorBox}>
-                    <Ionicons name="alert-circle" size={16} color={colors.danger} />
-                    <Text style={styles.errorText}>{gpsError}</Text>
+                  <View style={styles.errorBoxContainer}>
+                    <View style={styles.errorBox}>
+                      <Ionicons name="alert-circle" size={16} color={colors.danger} />
+                      <Text style={styles.errorText}>{gpsError}</Text>
+                    </View>
+                    <View style={styles.errorActionRow}>
+                      <TouchableOpacity
+                        style={styles.retryBtn}
+                        onPress={handleUseCurrentLocation}
+                        activeOpacity={0.8}
+                        disabled={isDetecting}
+                      >
+                        <Ionicons name="refresh" size={14} color="#fff" />
+                        <Text style={styles.retryBtnText}>Retry GPS</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.switchManualBtn}
+                        onPress={() => setActiveTab('manual')}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="search" size={14} color={colors.primaryLight} />
+                        <Text style={styles.switchManualBtnText}>Enter Manually</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 )}
 
@@ -474,6 +495,9 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 4
   },
+  errorBoxContainer: {
+    marginBottom: spacing.sm
+  },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -483,12 +507,46 @@ const styles = StyleSheet.create({
     borderColor: colors.danger,
     padding: spacing.sm,
     borderRadius: borderRadius.md,
-    marginBottom: spacing.sm
+    marginBottom: 6
   },
   errorText: {
     flex: 1,
     fontSize: fontSizes.xs,
     color: colors.danger
+  },
+  errorActionRow: {
+    flexDirection: 'row',
+    gap: spacing.xs
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    paddingVertical: 5,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm
+  },
+  retryBtnText: {
+    color: '#fff',
+    fontSize: fontSizes.xs,
+    fontWeight: fontWeights.semibold
+  },
+  switchManualBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+    paddingVertical: 5,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm
+  },
+  switchManualBtnText: {
+    color: colors.primaryLight,
+    fontSize: fontSizes.xs,
+    fontWeight: fontWeights.semibold
   },
   searchBar: {
     flexDirection: 'row',

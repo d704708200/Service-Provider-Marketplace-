@@ -544,6 +544,27 @@ export default function WalletScreen({ navigation }) {
             </Text>
           </View>
 
+          {commissionPayable > 0 && (
+            <View style={styles.dualCommissionPillRow}>
+              <View style={styles.dualCommissionPill}>
+                <Text style={styles.dualCommissionPillLabel}>Service Comm:</Text>
+                <Text style={styles.dualCommissionPillVal}>
+                  ₹{(commissionData?.serviceCommissionDue !== undefined ? commissionData.serviceCommissionDue : commissionPayable).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Text>
+              </View>
+              <View style={[styles.dualCommissionPill, { borderColor: 'rgba(129, 140, 248, 0.35)', backgroundColor: 'rgba(129, 140, 248, 0.08)' }]}>
+                <Text style={[styles.dualCommissionPillLabel, { color: '#818CF8' }]}>Labour Comm:</Text>
+                <Text style={[styles.dualCommissionPillVal, { color: '#C7D2FE' }]}>
+                  ₹{(commissionData?.labourCommissionDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Text>
+              </View>
+              <View style={[styles.dualCommissionPill, { borderColor: 'rgba(16, 185, 129, 0.35)', backgroundColor: 'rgba(16, 185, 129, 0.08)' }]}>
+                <Text style={[styles.dualCommissionPillLabel, { color: '#10B981' }]}>Parts (0%):</Text>
+                <Text style={[styles.dualCommissionPillVal, { color: '#A7F3D0' }]}>₹0.00</Text>
+              </View>
+            </View>
+          )}
+
           {commissionPayFeedback && (
             <View style={[
               styles.feedbackBanner,
@@ -911,6 +932,23 @@ export default function WalletScreen({ navigation }) {
               <Text style={styles.modalDueSummaryValue}>
                 ₹{commissionPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginVertical: 8 }}>
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.08)', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 }}>
+                  <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '600' }}>
+                    Service: ₹{(commissionData?.serviceCommissionDue !== undefined ? commissionData.serviceCommissionDue : commissionPayable).toFixed(2)}
+                  </Text>
+                </View>
+                <View style={{ backgroundColor: 'rgba(129, 140, 248, 0.15)', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 }}>
+                  <Text style={{ color: '#C7D2FE', fontSize: 11, fontWeight: '600' }}>
+                    Labour: ₹{(commissionData?.labourCommissionDue || 0).toFixed(2)}
+                  </Text>
+                </View>
+                <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 }}>
+                  <Text style={{ color: '#A7F3D0', fontSize: 11, fontWeight: '600' }}>
+                    Parts: ₹0 (0% Exempt)
+                  </Text>
+                </View>
+              </View>
               <Text style={styles.modalDueSummaryNote}>
                 Never deducted from your withdrawable Available Balance. Settled in full via Razorpay or automatic future earnings adjustment.
               </Text>

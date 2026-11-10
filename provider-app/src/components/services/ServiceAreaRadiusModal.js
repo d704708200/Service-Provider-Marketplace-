@@ -9,13 +9,207 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Platform
+  Platform,
+  Linking
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { providerServiceAreaRadiusApi } from '../../services/api';
 import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
+
+export const GPS_ERROR_CODES = {
+  PERMISSION_DENIED: 1,
+  POSITION_UNAVAILABLE: 2,
+  TIMEOUT: 3
+};
+
+export const GPS_ERROR_TYPES = {
+  PERMISSION_DENIED: 'PERMISSION_DENIED',
+  SYSTEM_DENIED: 'SYSTEM_DENIED',
+  POSITION_UNAVAILABLE: 'POSITION_UNAVAILABLE',
+  TIMEOUT: 'TIMEOUT',
+  SERVICES_DISABLED: 'SERVICES_DISABLED',
+  UNSUPPORTED: 'UNSUPPORTED',
+  UNKNOWN: 'UNKNOWN'
+};
+
+/**
+ * Web Geolocation detection with permission pre-check,
+ * fallback for high accuracy failures, and error distinction.
+ */
+async function detectWebLocation() {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+    const error = new Error('Geolocation is not supported by your browser.');
+    error.errorType = GPS_ERROR_TYPES.UNSUPPORTED;
+    throw error;
+  }
+
+  // 1. Pre-check browser origin permission status if supported
+  let browserPermState = 'prompt';
+  if (navigator.permissions && navigator.permissions.query) {
+    try {
+      const permResult = await navigator.permissions.query({ name: 'geolocation' });
+      browserPermState = permResult.state; // 'granted' | 'prompt' | 'denied'
+    } catch (e) {
+      // Some browsers don't support querying 'geolocation'
+    }
+  }
+
+  if (browserPermState === 'denied') {
+    const error = new Error(
+      'Location permission is blocked in your browser. Please click the lock or site settings icon next to the address bar to allow Location access, then click "Retry GPS".'
+    );
+    error.code = GPS_ERROR_CODES.PERMISSION_DENIED;
+    error.errorType = GPS_ERROR_TYPES.PERMISSION_DENIED;
+    throw error;
+  }
+
+  const getPositionPromise = (options) => {
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    });
+  };
+
+  // 2. Attempt high accuracy first (GPS / Wi-Fi Triangulation)
+  try {
+    const pos = await getPositionPromise({
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 30000
+    });
+    return {
+      latitude: pos.coords.latitude,
+      longitude: pos.coords.longitude,
+      accuracy: pos.coords.accuracy
+    };
+  } catch (initialErr) {
+    const code = initialErr.code; // 1: PERMISSION_DENIED, 2: POSITION_UNAVAILABLE, 3: TIMEOUT
+
+    // If initial error was POSITION_UNAVAILABLE or TIMEOUT, try low accuracy / cached / network IP
+    if (code === GPS_ERROR_CODES.POSITION_UNAVAILABLE || code === GPS_ERROR_CODES.TIMEOUT) {
+      try {
+        const fallbackPos = await getPositionPromise({
+          enableHighAccuracy: false,
+          timeout: 15000,
+          maximumAge: 300000
+        });
+        return {
+          latitude: fallbackPos.coords.latitude,
+          longitude: fallbackPos.coords.longitude,
+          accuracy: fallbackPos.coords.accuracy
+        };
+      } catch (fallbackErr) {
+        const fbCode = fallbackErr.code;
+        const err = new Error();
+        err.code = fbCode;
+        if (fbCode === GPS_ERROR_CODES.TIMEOUT) {
+          err.message =
+            'GPS location request timed out. Your device took too long to acquire coordinates. Please click "Retry GPS" or switch to manual address entry.';
+          err.errorType = GPS_ERROR_TYPES.TIMEOUT;
+        } else if (fbCode === GPS_ERROR_CODES.POSITION_UNAVAILABLE) {
+          err.message =
+            'Unable to determine your GPS location. Satellites or network positioning could not be reached. Please click "Retry GPS" or switch to manual address entry.';
+          err.errorType = GPS_ERROR_TYPES.POSITION_UNAVAILABLE;
+        } else {
+          err.message = fallbackErr.message || 'Failed to detect location.';
+          err.errorType = GPS_ERROR_TYPES.UNKNOWN;
+        }
+        throw err;
+      }
+    }
+
+    // If code === 1 (PERMISSION_DENIED)
+    if (code === GPS_ERROR_CODES.PERMISSION_DENIED) {
+      const err = new Error();
+      err.code = 1;
+      // If browser site permission was already granted, the OS (Windows Location Service or desktop app permission) blocked Chrome
+      if (browserPermState === 'granted') {
+        err.errorType = GPS_ERROR_TYPES.SYSTEM_DENIED;
+        err.message =
+          'Location is Allowed in your browser, but access was denied by your operating system. In Windows Settings > Privacy & security > Location, ensure "Location services" and "Let desktop apps access your location" are ON. Alternatively, click "Switch to Manual Entry".';
+      } else {
+        err.errorType = GPS_ERROR_TYPES.PERMISSION_DENIED;
+        err.message =
+          'Location permission was denied. Please allow location access in your browser prompt or address bar settings, or switch to manual address entry.';
+      }
+      throw err;
+    }
+
+    const finalErr = new Error(initialErr.message || 'Failed to detect location.');
+    finalErr.code = code;
+    finalErr.errorType = GPS_ERROR_TYPES.UNKNOWN;
+    throw finalErr;
+  }
+}
+
+/**
+ * Native Android / iOS location detection with expo-location:
+ * - Checks if device location services (GPS hardware) are turned on.
+ * - Checks and requests foreground permissions.
+ * - Distinguishes between permissions, disabled service, timeout, and position unavailable.
+ */
+async function detectNativeLocation() {
+  const servicesEnabled = await Location.hasServicesEnabledAsync();
+  if (!servicesEnabled) {
+    const error = new Error(
+      'Device location services (GPS) are turned off. Please turn on Location/GPS in your device quick settings, then tap "Retry GPS".'
+    );
+    error.errorType = GPS_ERROR_TYPES.SERVICES_DISABLED;
+    throw error;
+  }
+
+  const perm = await Location.getForegroundPermissionsAsync();
+  let status = perm.status;
+  let canAskAgain = perm.canAskAgain;
+
+  if (status !== 'granted') {
+    if (canAskAgain) {
+      const req = await Location.requestForegroundPermissionsAsync();
+      status = req.status;
+      canAskAgain = req.canAskAgain;
+    }
+  }
+
+  if (status !== 'granted') {
+    const error = new Error(
+      !canAskAgain
+        ? 'Location permission is permanently denied for Provider App. Please tap "Open Settings" to enable Location in App Permissions, or enter your address manually.'
+        : 'Location permission was denied. Please allow location access to automatically detect your service location, or enter your address manually.'
+    );
+    error.errorType = GPS_ERROR_TYPES.PERMISSION_DENIED;
+    error.canAskAgain = canAskAgain;
+    throw error;
+  }
+
+  try {
+    const pos = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+      timeout: 15000
+    });
+    return {
+      latitude: pos.coords.latitude,
+      longitude: pos.coords.longitude,
+      accuracy: pos.coords.accuracy
+    };
+  } catch (posErr) {
+    const msg = (posErr.message || '').toLowerCase();
+    const error = new Error();
+
+    if (msg.includes('timeout') || msg.includes('timed out')) {
+      error.message = 'GPS request timed out. Please tap "Retry GPS" or switch to manual address entry.';
+      error.errorType = GPS_ERROR_TYPES.TIMEOUT;
+    } else if (msg.includes('service') || msg.includes('disabled')) {
+      error.message = 'Location services are disabled on your device. Please turn on GPS and retry.';
+      error.errorType = GPS_ERROR_TYPES.SERVICES_DISABLED;
+    } else {
+      error.message =
+        'Unable to acquire GPS coordinates. Please move to an open area, tap "Retry GPS", or enter your address manually.';
+      error.errorType = GPS_ERROR_TYPES.POSITION_UNAVAILABLE;
+    }
+    throw error;
+  }
+}
 
 export default function ServiceAreaRadiusModal({
   visible,
@@ -28,6 +222,7 @@ export default function ServiceAreaRadiusModal({
   // GPS State
   const [isDetectingGps, setIsDetectingGps] = useState(false);
   const [gpsError, setGpsError] = useState(null);
+  const [gpsErrorDetail, setGpsErrorDetail] = useState(null); // { type, code, canAskAgain }
   const [detectedLocation, setDetectedLocation] = useState(null); // { latitude, longitude, address }
 
   // Manual State
@@ -47,6 +242,7 @@ export default function ServiceAreaRadiusModal({
     if (visible && serviceItem) {
       setErrorMessage(null);
       setGpsError(null);
+      setGpsErrorDetail(null);
       const existing = serviceItem.serviceArea;
 
       if (existing) {
@@ -85,39 +281,18 @@ export default function ServiceAreaRadiusModal({
   const handleDetectLocation = async () => {
     setIsDetectingGps(true);
     setGpsError(null);
+    setGpsErrorDetail(null);
     try {
-      let lat = null;
-      let lon = null;
-
-      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
-        const pos = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 12000
-          });
-        });
-        lat = pos.coords.latitude;
-        lon = pos.coords.longitude;
+      let coords = null;
+      if (Platform.OS === 'web') {
+        coords = await detectWebLocation();
       } else {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          setGpsError(
-            'Location permission denied. Please enable permission in system settings or choose manual address entry.'
-          );
-          setIsDetectingGps(false);
-          return;
-        }
-
-        const position = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-          timeout: 12000
-        });
-        lat = position.coords.latitude;
-        lon = position.coords.longitude;
+        coords = await detectNativeLocation();
       }
 
-      if (lat == null || lon == null) {
-        throw new Error('Unable to obtain coordinates from GPS sensor.');
+      const { latitude: lat, longitude: lon } = coords;
+      if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) {
+        throw new Error('Unable to obtain valid coordinates from location sensor.');
       }
 
       // Reverse geocode via backend proxy
@@ -154,6 +329,11 @@ export default function ServiceAreaRadiusModal({
       });
     } catch (err) {
       setGpsError(err.message || 'Failed to detect device location.');
+      setGpsErrorDetail({
+        type: err.errorType || GPS_ERROR_TYPES.UNKNOWN,
+        code: err.code || null,
+        canAskAgain: err.canAskAgain !== false
+      });
     } finally {
       setIsDetectingGps(false);
     }
@@ -364,9 +544,73 @@ export default function ServiceAreaRadiusModal({
                 </TouchableOpacity>
 
                 {gpsError && (
-                  <View style={styles.errorBox}>
-                    <Ionicons name="alert-circle" size={16} color={colors.danger} />
-                    <Text style={styles.errorBoxText}>{gpsError}</Text>
+                  <View style={styles.gpsErrorContainer}>
+                    <View style={styles.gpsErrorHeader}>
+                      <Ionicons
+                        name={
+                          gpsErrorDetail?.type === GPS_ERROR_TYPES.TIMEOUT
+                            ? 'timer-outline'
+                            : gpsErrorDetail?.type === GPS_ERROR_TYPES.POSITION_UNAVAILABLE
+                            ? 'location-outline'
+                            : gpsErrorDetail?.type === GPS_ERROR_TYPES.SERVICES_DISABLED
+                            ? 'power-outline'
+                            : 'alert-circle-outline'
+                        }
+                        size={18}
+                        color={colors.danger}
+                      />
+                      <Text style={styles.gpsErrorTitle}>
+                        {gpsErrorDetail?.type === GPS_ERROR_TYPES.TIMEOUT
+                          ? 'GPS Request Timed Out'
+                          : gpsErrorDetail?.type === GPS_ERROR_TYPES.POSITION_UNAVAILABLE
+                          ? 'Location Position Unavailable'
+                          : gpsErrorDetail?.type === GPS_ERROR_TYPES.SYSTEM_DENIED
+                          ? 'Operating System Location Blocked'
+                          : gpsErrorDetail?.type === GPS_ERROR_TYPES.SERVICES_DISABLED
+                          ? 'Device Location Services Off'
+                          : 'Location Permission Required'}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.gpsErrorText}>{gpsError}</Text>
+
+                    <View style={styles.gpsErrorActions}>
+                      <TouchableOpacity
+                        style={styles.retryButton}
+                        onPress={handleDetectLocation}
+                        activeOpacity={0.8}
+                        disabled={isDetectingGps}
+                      >
+                        {isDetectingGps ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Ionicons name="refresh" size={14} color="#fff" />
+                        )}
+                        <Text style={styles.retryButtonText}>
+                          {isDetectingGps ? 'Retrying...' : 'Retry GPS'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.switchManualButton}
+                        onPress={() => setLocationMode('manual')}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="search" size={14} color={colors.primaryLight} />
+                        <Text style={styles.switchManualButtonText}>Switch to Manual Entry</Text>
+                      </TouchableOpacity>
+
+                      {Platform.OS !== 'web' && gpsErrorDetail?.canAskAgain === false && (
+                        <TouchableOpacity
+                          style={styles.settingsButton}
+                          onPress={() => Linking.openSettings()}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons name="settings-outline" size={14} color={colors.textMuted} />
+                          <Text style={styles.settingsButtonText}>Open Settings</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                 )}
 
@@ -810,6 +1054,84 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: fontSizes.xs,
     color: colors.danger
+  },
+  gpsErrorContainer: {
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    marginVertical: spacing.xs
+  },
+  gpsErrorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4
+  },
+  gpsErrorTitle: {
+    fontSize: fontSizes.xs,
+    fontWeight: fontWeights.bold,
+    color: colors.danger
+  },
+  gpsErrorText: {
+    fontSize: fontSizes.xs,
+    color: colors.text,
+    lineHeight: 18,
+    marginTop: 2,
+    marginBottom: spacing.xs
+  },
+  gpsErrorActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: 6
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: fontSizes.xs,
+    fontWeight: fontWeights.semibold
+  },
+  switchManualButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+    paddingVertical: 5,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm
+  },
+  switchManualButtonText: {
+    color: colors.primaryLight,
+    fontSize: fontSizes.xs,
+    fontWeight: fontWeights.semibold
+  },
+  settingsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 5,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm
+  },
+  settingsButtonText: {
+    color: colors.textMuted,
+    fontSize: fontSizes.xs,
+    fontWeight: fontWeights.medium
   },
   modalFooter: {
     flexDirection: 'row',

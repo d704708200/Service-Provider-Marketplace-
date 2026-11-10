@@ -1263,9 +1263,17 @@ const WalletsPage = () => {
                         </td>
                         <td className="py-3.5 px-4 font-bold font-sans">
                           {c.commissionDue > 0 ? (
-                            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                              ₹{(c.commissionDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </span>
+                            <div>
+                              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                ₹{(c.commissionDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </span>
+                              {(c.serviceCommissionDue > 0 || c.labourCommissionDue > 0) && (
+                                <div className="text-[10px] text-slate-500 font-normal mt-1 flex flex-col gap-0.5">
+                                  <span>Service: ₹{(c.serviceCommissionDue || 0).toFixed(2)}</span>
+                                  <span>Labour: ₹{(c.labourCommissionDue || 0).toFixed(2)}</span>
+                                </div>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-slate-400 font-normal">₹0.00 (Settled)</span>
                           )}

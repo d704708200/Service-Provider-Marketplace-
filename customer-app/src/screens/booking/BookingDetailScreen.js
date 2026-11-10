@@ -712,14 +712,36 @@ export default function BookingDetailScreen({ route, navigation }) {
             </View>
           )}
 
-          {booking.spareParts?.status === 'approved' && booking.spareParts?.totalAdditionalAmount > 0 && (
+          {/* Approved Labour and Parts Separated Line Items */}
+          {booking.spareParts?.status === 'approved' && (Number(booking.approvedLabourCharge) > 0 || Number(booking.spareParts?.labourSubtotal) > 0) && (
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Approved Extra Materials</Text>
-              <Text style={[styles.summaryVal, { color: '#F59E0B' }]}>
-                +₹{booking.spareParts.totalAdditionalAmount}
+              <Text style={styles.summaryLabel}>Approved Labour Charge</Text>
+              <Text style={[styles.summaryVal, { color: '#818CF8' }]}>
+                +₹{booking.approvedLabourCharge !== undefined ? booking.approvedLabourCharge : (booking.spareParts?.labourSubtotal || 0)}
               </Text>
             </View>
           )}
+
+          {booking.spareParts?.status === 'approved' && (Number(booking.customerApprovedPartsAmount) > 0 || Number(booking.spareParts?.partsSubtotal) > 0) && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Additional Parts / Materials</Text>
+              <Text style={[styles.summaryVal, { color: '#F59E0B' }]}>
+                +₹{booking.customerApprovedPartsAmount !== undefined ? booking.customerApprovedPartsAmount : (booking.spareParts?.partsSubtotal || 0)}
+              </Text>
+            </View>
+          )}
+
+          {booking.spareParts?.status === 'approved' &&
+            !booking.spareParts?.partsSubtotal &&
+            !booking.spareParts?.labourSubtotal &&
+            booking.spareParts?.totalAdditionalAmount > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Approved Extra Materials</Text>
+                <Text style={[styles.summaryVal, { color: '#F59E0B' }]}>
+                  +₹{booking.spareParts.totalAdditionalAmount}
+                </Text>
+              </View>
+            )}
 
           <View style={styles.totalBox}>
             <View>
@@ -754,14 +776,35 @@ export default function BookingDetailScreen({ route, navigation }) {
                   ₹{booking.originalServicePrice || booking.pricing?.basePrice || 0}
                 </Text>
               </View>
-              {booking.spareParts?.status === 'approved' && booking.spareParts?.totalAdditionalAmount > 0 && (
+              {booking.spareParts?.status === 'approved' && (Number(booking.approvedLabourCharge) > 0 || Number(booking.spareParts?.labourSubtotal) > 0) && (
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Approved Extra Parts / Materials</Text>
-                  <Text style={[styles.summaryVal, { color: '#F59E0B' }]}>
-                    +₹{booking.spareParts.totalAdditionalAmount}
+                  <Text style={styles.summaryLabel}>Approved Labour Charge</Text>
+                  <Text style={[styles.summaryVal, { color: '#818CF8' }]}>
+                    +₹{booking.approvedLabourCharge !== undefined ? booking.approvedLabourCharge : (booking.spareParts?.labourSubtotal || 0)}
                   </Text>
                 </View>
               )}
+
+              {booking.spareParts?.status === 'approved' && (Number(booking.customerApprovedPartsAmount) > 0 || Number(booking.spareParts?.partsSubtotal) > 0) && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Additional Parts / Materials</Text>
+                  <Text style={[styles.summaryVal, { color: '#F59E0B' }]}>
+                    +₹{booking.customerApprovedPartsAmount !== undefined ? booking.customerApprovedPartsAmount : (booking.spareParts?.partsSubtotal || 0)}
+                  </Text>
+                </View>
+              )}
+
+              {booking.spareParts?.status === 'approved' &&
+                !booking.spareParts?.partsSubtotal &&
+                !booking.spareParts?.labourSubtotal &&
+                booking.spareParts?.totalAdditionalAmount > 0 && (
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Approved Extra Parts / Materials</Text>
+                    <Text style={[styles.summaryVal, { color: '#F59E0B' }]}>
+                      +₹{booking.spareParts.totalAdditionalAmount}
+                    </Text>
+                  </View>
+                )}
               <View style={styles.postServiceTotalRow}>
                 <Text style={styles.postServiceTotalLabel}>Total Payable Amount</Text>
                 <Text style={styles.postServiceTotalVal}>₹{booking.pricing?.totalAmount || 0}</Text>

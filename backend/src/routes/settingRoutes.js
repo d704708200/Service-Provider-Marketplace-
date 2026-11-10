@@ -7,9 +7,11 @@ const { authenticate, requireRole } = require('../middleware/auth');
 router.use(authenticate);
 router.use(requireRole('admin'));
 
-// Platform Commission Settings
+// Platform Commission Settings (Service & Labour)
 router.get('/commission', settingController.getCommissionSetting);
 router.put('/commission', settingController.updateCommissionSetting);
+router.get('/commission/labour', settingController.getLabourCommissionSetting);
+router.put('/commission/labour', settingController.updateLabourCommissionSetting);
 
 module.exports = router;
 

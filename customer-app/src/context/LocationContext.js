@@ -93,14 +93,31 @@ export const LocationProvider = ({ children }) => {
 
       // 2. Fetch position
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
-        // Direct browser Geolocation API
-        const webPosition = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
+        // Direct browser Geolocation API with high-accuracy fallback
+        const getWebPos = (options) =>
+          new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, options);
+          });
+
+        let webPosition;
+        try {
+          webPosition = await getWebPos({
             enableHighAccuracy: true,
             timeout: 10000,
-            maximumAge: 60000
+            maximumAge: 30000
           });
-        });
+        } catch (initialErr) {
+          // If high accuracy timed out or was unavailable, retry with low accuracy/network
+          if (initialErr.code === 2 || initialErr.code === 3) {
+            webPosition = await getWebPos({
+              enableHighAccuracy: false,
+              timeout: 15000,
+              maximumAge: 300000
+            });
+          } else {
+            throw initialErr;
+          }
+        }
         latitude = webPosition.coords.latitude;
         longitude = webPosition.coords.longitude;
       } else {

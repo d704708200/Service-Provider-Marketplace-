@@ -175,7 +175,7 @@ async function runAdminCommissionTestSuite() {
       bookingMode: 'scheduled',
       scheduledDate: new Date(),
       scheduledTimeSlot: { startTime: '10:00', endTime: '11:00' },
-      address: { street: '200 Customer Rd', city: 'Indore' },
+      address: { street: '200 Customer Rd', city: 'Indore', latitude: 22.7196, longitude: 75.8577 },
       paymentMethod: 'cash'
     });
 
@@ -214,7 +214,7 @@ async function runAdminCommissionTestSuite() {
       bookingMode: 'scheduled',
       scheduledDate: new Date(),
       scheduledTimeSlot: { startTime: '11:00', endTime: '12:00' },
-      address: { street: '200 Customer Rd', city: 'Indore' },
+      address: { street: '200 Customer Rd', city: 'Indore', latitude: 22.7196, longitude: 75.8577 },
       paymentMethod: 'cash'
     });
 
@@ -282,7 +282,7 @@ async function runAdminCommissionTestSuite() {
       bookingMode: 'scheduled',
       scheduledDate: new Date(),
       scheduledTimeSlot: { startTime: '13:00', endTime: '14:00' },
-      address: { street: '200 Customer Rd', city: 'Indore' },
+      address: { street: '200 Customer Rd', city: 'Indore', latitude: 22.7196, longitude: 75.8577 },
       paymentMethod: 'online'
     });
 

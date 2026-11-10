@@ -405,11 +405,12 @@ const createBooking = async (userId, bookingData) => {
 
     const effectiveNotes = (bookingData.notes || bookingData.problemDescription || '').trim();
 
-    // Freeze active platform commission rate snapshot for this booking
-    const { getActiveCommissionRate } = require('../utils/commissionCalculator');
-    const activeCommission = await getActiveCommissionRate();
-    const activeRate = activeCommission.ratePercentage;
-    const initialCommissionAmount = Math.round(basePrice * (activeRate / 100) * 100) / 100;
+    // Freeze active platform commission rate snapshots (Service + Labour) for this booking
+    const { getActiveCommissionRates } = require('../utils/commissionCalculator');
+    const activeRates = await getActiveCommissionRates();
+    const activeServiceRate = activeRates.serviceRatePercentage;
+    const activeLabourRate = activeRates.labourRatePercentage;
+    const initialCommissionAmount = Math.round(basePrice * (activeServiceRate / 100) * 100) / 100;
     const initialProviderNet = Math.round((basePrice - initialCommissionAmount) * 100) / 100;
 
     newBooking = await Booking.create({
@@ -452,18 +453,40 @@ const createBooking = async (userId, bookingData) => {
       },
       originalServicePrice: basePrice,
       commissionableAmount: basePrice,
-      platformCommissionRate: activeRate,
+      platformCommissionRate: activeServiceRate,
+      serviceCommissionRate: activeServiceRate,
+      labourCommissionRate: activeLabourRate,
+      serviceCommissionAmount: initialCommissionAmount,
+      labourCommissionAmount: 0,
+      totalPlatformCommission: initialCommissionAmount,
       platformCommissionAmount: initialCommissionAmount,
+      labourCommissionStatus: 'not_applicable',
+      labourCommissionSnapshot: {
+        rate: activeLabourRate,
+        calculatedAt: new Date()
+      },
       providerNetEarning: initialProviderNet,
       accounting: {
         originalServicePrice: basePrice,
         additionalPartsAmount: 0,
         partsDescription: '',
         customerApprovedPartsAmount: 0,
+        labourCharge: 0,
+        approvedLabourCharge: 0,
         totalCustomerPayable: totalAmount,
         commissionableAmount: basePrice,
-        platformCommissionRate: activeRate,
+        platformCommissionRate: activeServiceRate,
+        serviceCommissionRate: activeServiceRate,
+        labourCommissionRate: activeLabourRate,
+        serviceCommissionAmount: initialCommissionAmount,
+        labourCommissionAmount: 0,
+        totalPlatformCommission: initialCommissionAmount,
         platformCommissionAmount: initialCommissionAmount,
+        labourCommissionStatus: 'not_applicable',
+        labourCommissionSnapshot: {
+          rate: activeLabourRate,
+          calculatedAt: new Date()
+        },
         providerNetEarning: initialProviderNet
       },
       paymentStatus: 'pending',
@@ -1994,6 +2017,13 @@ const submitSpareParts = async (userId, bookingId, { items }) => {
     }
   };
 
+  // Synchronize top-level fields for labour and physical parts proposal
+  booking.additionalPartsAmount = partsSubtotal;
+  booking.labourCharge = labourSubtotal;
+  booking.approvedLabourCharge = 0; // Customer has NOT approved yet
+  booking.customerApprovedPartsAmount = 0;
+  booking.labourCommissionStatus = hasItems && labourSubtotal > 0 ? 'pending_approval' : 'not_applicable';
+
   // If no materials are added, ensure final pricing remains the original base service amount
   if (!hasItems && originalServiceAmount) {
     booking.pricing.totalAmount = originalServiceAmount;
@@ -2072,6 +2102,11 @@ const reviewSpareParts = async (userId, bookingId, { action, rejectionReason }) 
     booking.spareParts.reviewedAt = new Date();
     booking.spareParts.rejectionReason = null;
 
+    // Synchronize customer-approved labour and physical parts
+    booking.approvedLabourCharge = booking.spareParts.labourSubtotal || 0;
+    booking.customerApprovedPartsAmount = booking.spareParts.partsSubtotal || 0;
+    booking.labourCommissionStatus = (booking.spareParts.labourSubtotal || 0) > 0 ? 'approved' : 'not_applicable';
+
     // Recalculate final totalAmount on booking pricing
     const baseServiceAmount = booking.spareParts.originalServiceAmount || booking.pricing.totalAmount;
     const additional = booking.spareParts.totalAdditionalAmount || 0;
@@ -2080,6 +2115,12 @@ const reviewSpareParts = async (userId, bookingId, { action, rejectionReason }) 
     booking.spareParts.status = 'rejected';
     booking.spareParts.reviewedAt = new Date();
     booking.spareParts.rejectionReason = (rejectionReason || 'Customer declined proposed parts and charges').trim();
+
+    // Revert approved charges
+    booking.approvedLabourCharge = 0;
+    booking.customerApprovedPartsAmount = 0;
+    booking.labourCommissionStatus = (booking.spareParts.labourSubtotal || 0) > 0 ? 'rejected' : 'not_applicable';
+
     // Revert pricing total to originalServiceAmount
     if (booking.spareParts.originalServiceAmount) {
       booking.pricing.totalAmount = booking.spareParts.originalServiceAmount;

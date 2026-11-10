@@ -852,21 +852,43 @@ const BookingsPage = () => {
                 selectedBooking.accounting?.platformCommissionRate ||
                 15
               );
-              const platformCommissionAmount = Number(
+              const serviceCommissionAmount = Number(
+                selectedBooking.serviceCommissionAmount ||
+                selectedBooking.accounting?.serviceCommissionAmount ||
                 selectedBooking.platformCommissionAmount ||
                 selectedBooking.accounting?.platformCommissionAmount ||
                 (Math.round(commissionableAmount * (commissionRate / 100) * 100) / 100)
+              );
+              const labourRate = Number(
+                selectedBooking.labourCommissionRate ||
+                selectedBooking.accounting?.labourCommissionRate ||
+                0
+              );
+              const approvedLabourCharge = Number(
+                selectedBooking.approvedLabourCharge ||
+                selectedBooking.accounting?.approvedLabourCharge ||
+                (selectedBooking.spareParts?.status === 'approved' ? (selectedBooking.spareParts?.labourSubtotal || selectedBooking.labourCharge || 0) : 0)
+              );
+              const labourCommissionAmount = Number(
+                selectedBooking.labourCommissionAmount ||
+                selectedBooking.accounting?.labourCommissionAmount ||
+                (Math.round(approvedLabourCharge * (labourRate / 100) * 100) / 100)
+              );
+              const totalPlatformCommission = Number(
+                selectedBooking.totalPlatformCommission ||
+                selectedBooking.accounting?.totalPlatformCommission ||
+                (serviceCommissionAmount + labourCommissionAmount)
               );
               const totalCustomerPayable = Number(
                 selectedBooking.totalCustomerPayable ||
                 selectedBooking.accounting?.totalCustomerPayable ||
                 selectedBooking.pricing?.totalAmount ||
-                (originalServicePrice + customerApprovedPartsAmount)
+                (originalServicePrice + customerApprovedPartsAmount + approvedLabourCharge)
               );
               const providerNetEarning = Number(
                 selectedBooking.providerNetEarning ||
                 selectedBooking.accounting?.providerNetEarning ||
-                (Math.round(((originalServicePrice - platformCommissionAmount) + customerApprovedPartsAmount) * 100) / 100)
+                (Math.round((totalCustomerPayable - totalPlatformCommission) * 100) / 100)
               );
 
               return (
@@ -875,16 +897,16 @@ const BookingsPage = () => {
                     <div className="flex items-center gap-2">
                       <ShieldCheck className="w-4 h-4 text-indigo-600" />
                       <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        Mendroo Platform Commission & Financial Audit
+                        Dual Platform Commission & Financial Audit
                       </span>
                     </div>
                     <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/80 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                      Parts Excluded from Commission (0%)
+                      Parts Excluded (0%)
                     </span>
                   </div>
 
                   <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Platform commission is calculated <strong className="text-slate-700">only once</strong> on the original service price agreed at booking time. Spare parts and replacement components supplied by the provider are <strong className="text-slate-700">100% commission-free</strong>.
+                    Independent dual commission system: <strong className="text-slate-700">Service Commission</strong> applies only to base service price ({commissionRate}%). <strong className="text-slate-700">Labour Commission</strong> applies only to customer-approved additional labour ({labourRate}%). Physical spare parts/materials are <strong className="text-slate-700">100% commission-free</strong>.
                   </p>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-1">
@@ -893,6 +915,15 @@ const BookingsPage = () => {
                       <span className="font-bold text-slate-900 text-sm mt-0.5 block">
                         ₹{originalServicePrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </span>
+                      <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">Comm: ₹{serviceCommissionAmount.toFixed(2)} ({commissionRate}%)</span>
+                    </div>
+
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px]">Approved Labour Charge</span>
+                      <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+                        ₹{approvedLabourCharge.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-[10px] text-amber-600 block mt-0.5 font-medium">Comm: ₹{labourCommissionAmount.toFixed(2)} ({labourRate}%)</span>
                     </div>
 
                     <div className="p-2.5 bg-white rounded-lg border border-slate-200">
@@ -900,7 +931,7 @@ const BookingsPage = () => {
                       <span className="font-bold text-slate-900 text-sm mt-0.5 block">
                         ₹{customerApprovedPartsAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </span>
-                      <span className="text-[10px] text-emerald-600 block mt-0.5 font-medium">Parts Comm: ₹0 (0%)</span>
+                      <span className="text-[10px] text-emerald-600 block mt-0.5 font-medium">Parts Comm: ₹0 (0% Exempt)</span>
                     </div>
 
                     <div className="p-2.5 bg-white rounded-lg border border-slate-200">
@@ -908,42 +939,46 @@ const BookingsPage = () => {
                       <span className="font-bold text-indigo-900 text-sm mt-0.5 block">
                         ₹{totalCustomerPayable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">Base + Approved Parts</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">Service + Labour + Parts</span>
                     </div>
 
-                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                      <span className="text-slate-500 block text-[11px]">Commissionable Amount</span>
-                      <span className="font-bold text-slate-900 text-sm mt-0.5 block">
-                        ₹{commissionableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    <div className="p-2.5 bg-indigo-50/80 rounded-lg border border-indigo-200">
+                      <span className="text-indigo-700 block text-[11px] font-medium">Service Commission</span>
+                      <span className="font-bold text-indigo-900 text-sm mt-0.5 block">
+                        ₹{serviceCommissionAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </span>
-                      <span className="text-[10px] text-slate-500 block mt-0.5">Base Service Only</span>
-                    </div>
-
-                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                      <span className="text-slate-500 block text-[11px]">Platform Commission Rate</span>
-                      <span className="font-bold text-indigo-600 text-sm mt-0.5 block">
-                        {commissionRate}%
+                      <span className="text-[10px] text-indigo-700 block mt-0.5 font-sans">
+                        ₹{originalServicePrice} × {commissionRate}%
                       </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">Configured Take-Rate</span>
                     </div>
 
                     <div className="p-2.5 bg-amber-50/80 rounded-lg border border-amber-200">
-                      <span className="text-amber-700 block text-[11px] font-medium">Platform Commission Amount</span>
+                      <span className="text-amber-700 block text-[11px] font-medium">Labour Commission</span>
                       <span className="font-bold text-amber-900 text-sm mt-0.5 block">
-                        ₹{platformCommissionAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        ₹{labourCommissionAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </span>
                       <span className="text-[10px] text-amber-700 block mt-0.5 font-sans">
-                        ₹{commissionableAmount} × {commissionRate}% = ₹{platformCommissionAmount}
+                        ₹{approvedLabourCharge} × {labourRate}%
                       </span>
                     </div>
 
-                    <div className="p-2.5 bg-emerald-50/80 rounded-lg border border-emerald-200 sm:col-span-2">
+                    <div className="p-2.5 bg-purple-50/80 rounded-lg border border-purple-200">
+                      <span className="text-purple-700 block text-[11px] font-medium">Total Platform Commission</span>
+                      <span className="font-bold text-purple-900 text-sm mt-0.5 block">
+                        ₹{totalPlatformCommission.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-[10px] text-purple-700 block mt-0.5 font-sans">
+                        Service ₹{serviceCommissionAmount.toFixed(2)} + Labour ₹{labourCommissionAmount.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 bg-emerald-50/80 rounded-lg border border-emerald-200">
                       <span className="text-emerald-700 block text-[11px] font-medium">Provider Net Earning</span>
                       <span className="font-bold text-emerald-900 text-sm mt-0.5 block">
                         ₹{providerNetEarning.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </span>
                       <span className="text-[10px] text-emerald-700 block mt-0.5">
-                        Service (₹{(originalServicePrice - platformCommissionAmount).toFixed(2)}) + 100% Parts (₹{customerApprovedPartsAmount.toFixed(2)})
+                        Total ₹{totalCustomerPayable.toFixed(2)} - Comm ₹{totalPlatformCommission.toFixed(2)}
                       </span>
                     </div>
                   </div>

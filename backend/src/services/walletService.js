@@ -726,7 +726,9 @@ const creditBookingEarnings = async (bookingId) => {
     throw err;
   }
 
-  // Critical Business Rule: Commission calculated ONLY ONCE on original base service price.
+  // Critical Business Rule: Dual Commission System (Service Commission + Labour Commission).
+  // Service commission is calculated strictly on original base service price.
+  // Labour commission is calculated strictly on customer-approved labour charges.
   // Spare parts, materials, and replacement components are 100% EXCLUDED from platform commission (partsCommission = 0).
   const { calculateBookingCommission } = require('../utils/commissionCalculator');
   const accounting = calculateBookingCommission(booking);
@@ -734,11 +736,16 @@ const creditBookingEarnings = async (bookingId) => {
   const originalServicePrice = accounting.originalServicePrice;
   const additionalPartsAmount = accounting.additionalPartsAmount;
   const customerApprovedPartsAmount = accounting.customerApprovedPartsAmount;
+  const labourCharge = accounting.labourCharge;
+  const approvedLabourCharge = accounting.approvedLabourCharge;
   const commissionableAmount = accounting.commissionableAmount;
-  const platformCommission = accounting.platformCommissionAmount; // paise precision, calculated on originalServicePrice only
+  const serviceCommissionAmount = accounting.serviceCommissionAmount;
+  const labourCommissionAmount = accounting.labourCommissionAmount;
+  const totalPlatformCommission = accounting.totalPlatformCommission;
+  const platformCommission = totalPlatformCommission; // paise precision total commission
   const providerNetEarnings = accounting.providerNetEarning;
   const totalGrossAmount = accounting.totalCustomerPayable;
-  const commissionRateFormatted = `${accounting.platformCommissionRate}%`;
+  const commissionRateFormatted = `${accounting.serviceCommissionRate}% Service + ${accounting.labourCommissionRate}% Labour`;
   const partsCommission = 0;
 
   const wallet = await getOrCreateWallet(booking.provider);
@@ -770,13 +777,20 @@ const creditBookingEarnings = async (bookingId) => {
           originalServicePrice,
           additionalPartsAmount,
           customerApprovedPartsAmount,
+          labourCharge,
+          approvedLabourCharge,
           commissionableAmount,
+          serviceCommissionAmount,
+          labourCommissionAmount,
+          totalPlatformCommission,
           platformCommission,
           partsCommission: 0,
           grossAmount: totalGrossAmount,
           totalCustomerPayable: totalGrossAmount,
           providerNetEarnings,
-          commissionRate: commissionRateFormatted,
+          commissionRate: `${accounting.serviceCommissionRate}%`,
+          serviceCommissionRate: `${accounting.serviceCommissionRate}%`,
+          labourCommissionRate: `${accounting.labourCommissionRate}%`,
           paymentMethod: 'online'
         }
       });
@@ -819,11 +833,16 @@ const creditBookingEarnings = async (bookingId) => {
     return {
       success: true,
       providerNetEarnings,
+      netCredit: providerNetEarnings,
       platformCommission,
+      serviceCommissionAmount,
+      labourCommissionAmount,
+      totalPlatformCommission,
       partsCommission: 0,
       commissionableAmount,
       originalServicePrice,
       additionalPartsAmount: customerApprovedPartsAmount,
+      approvedLabourCharge,
       totalGrossAmount,
       balanceAfter: updatedWallet.availableBalance,
       commissionDue: updatedWallet.commissionDue || 0,
@@ -834,7 +853,7 @@ const creditBookingEarnings = async (bookingId) => {
     // Booking was paid in CASH.
     // Provider collected 100% cash in hand from the customer directly.
     // RULE:
-    // 1. Commission is calculated ONLY on original base service price, NEVER on spare parts.
+    // 1. Commission is calculated strictly on original base service price and approved labour charges, NEVER on spare parts.
     // 2. NEVER make the provider's availableBalance negative to represent outstanding commission!
     // 3. Keep commission payable separate from withdrawable wallet balance (in commissionDue).
     // 4. Do not credit gross cash to availableBalance.
@@ -857,20 +876,27 @@ const creditBookingEarnings = async (bookingId) => {
         status: 'completed',
         booking: booking._id,
         paymentMethod: 'cash',
-        description: `Platform Commission Due for Cash Booking #${booking.bookingReference} (Base: ₹${commissionableAmount}, Parts: ₹${customerApprovedPartsAmount} @ 0% comm)`,
+        description: `Platform Commission Due for Cash Booking #${booking.bookingReference} (Service: ₹${serviceCommissionAmount} @ ${accounting.serviceCommissionRate}%, Labour: ₹${labourCommissionAmount} @ ${accounting.labourCommissionRate}%, Parts: ₹${customerApprovedPartsAmount} @ 0% comm)`,
         metadata: {
           bookingReference: booking.bookingReference,
           serviceName: booking.service?.name,
           originalServicePrice,
           additionalPartsAmount,
           customerApprovedPartsAmount,
+          labourCharge,
+          approvedLabourCharge,
           commissionableAmount,
+          serviceCommissionAmount,
+          labourCommissionAmount,
+          totalPlatformCommission,
           platformCommission,
           partsCommission: 0,
           grossAmount: totalGrossAmount,
           totalCustomerPayable: totalGrossAmount,
           providerNetEarnings,
-          commissionRate: commissionRateFormatted,
+          commissionRate: `${accounting.serviceCommissionRate}%`,
+          serviceCommissionRate: `${accounting.serviceCommissionRate}%`,
+          labourCommissionRate: `${accounting.labourCommissionRate}%`,
           paymentMethod: 'cash'
         }
       });
@@ -885,7 +911,7 @@ const creditBookingEarnings = async (bookingId) => {
       throw createErr;
     }
 
-    const updatedWallet = await ProviderWallet.findByIdAndUpdate(
+    let updatedWallet = await ProviderWallet.findByIdAndUpdate(
       wallet._id,
       {
         $inc: {
@@ -905,16 +931,22 @@ const creditBookingEarnings = async (bookingId) => {
         await sendNotification({
           recipientIds: [providerDoc.user],
           title: 'Commission Payable to Mendroo',
-          body: `₹${platformCommission} platform commission is due for cash booking #${booking.bookingReference}.`,
+          body: `₹${platformCommission} platform commission (Service: ₹${serviceCommissionAmount}, Labour: ₹${labourCommissionAmount}) is due for cash booking #${booking.bookingReference}.`,
           type: 'wallet',
           data: {
+            bookingId: booking._id.toString(),
+            bookingReference: booking.bookingReference,
             commissionDue: updatedWallet.commissionDue,
-            bookingId: String(booking._id)
-          }
+            serviceCommissionAmount,
+            labourCommissionAmount,
+            totalPlatformCommission
+          },
+          bookingId: booking._id,
+          idempotencyKey: `cash_comm_due_${booking._id}`
         });
       }
     } catch (notifErr) {
-      console.warn('[WALLET_CASH_DUE_NOTIF_ERROR]', notifErr.message);
+      console.warn('[CASH_COMMISSION_NOTIFICATION_WARN]', notifErr.message);
     }
 
     // Trigger 1: Automatic Commission Deduction Check
@@ -936,14 +968,22 @@ const creditBookingEarnings = async (bookingId) => {
       success: true,
       providerNetEarnings,
       platformCommission,
+      serviceCommissionAmount,
+      labourCommissionAmount,
+      serviceCommissionDue: serviceCommissionAmount,
+      labourCommissionDue: labourCommissionAmount,
+      totalPlatformCommission,
       partsCommission: 0,
       commissionableAmount,
       originalServicePrice,
       additionalPartsAmount: customerApprovedPartsAmount,
+      approvedLabourCharge,
       totalGrossAmount,
       balanceAfter: updatedWallet.availableBalance,
-      commissionDue: updatedWallet.commissionDue,
+      commissionDue: updatedWallet.commissionDue || 0,
       transaction,
+      autoDeducted: Boolean(autoDeductResult && autoDeductResult.deducted),
+      deductedAmount: autoDeductResult && autoDeductResult.deducted ? (autoDeductResult.deductedAmount || platformCommission) : 0,
       autoDeductResult
     };
   }
@@ -1371,6 +1411,7 @@ const adminAdjustWallet = async (walletId, adminUserId, { type, amount, reason }
 
 /**
  * Get Commission Payable breakdown & cash booking history for provider
+ * Exposes both Service Commission and Labour Commission breakdown transparently.
  */
 const getCommissionDetails = async (providerId) => {
   const wallet = await getOrCreateWallet(providerId);
@@ -1385,20 +1426,50 @@ const getCommissionDetails = async (providerId) => {
     .lean();
 
   const currentCommissionDue = wallet.commissionDue || 0;
-  const { getActiveCommissionRate } = require('../utils/commissionCalculator');
-  const activeConfig = await getActiveCommissionRate();
-  const configuredRate = activeConfig.rateDecimal;
+  const { getActiveCommissionRates } = require('../utils/commissionCalculator');
+  const activeRates = await getActiveCommissionRates();
+
+  // Aggregate separate service vs labour components from un-settled cash transactions
+  let serviceCommissionDue = 0;
+  let labourCommissionDue = 0;
+
+  if (currentCommissionDue > 0) {
+    const cashDueTxns = commissionTxns.filter(t => t.type === 'CASH_BOOKING_COMMISSION_DUE');
+    let totalRecordedDue = 0;
+    cashDueTxns.forEach(t => {
+      const sAmt = Number(t.metadata?.serviceCommissionAmount !== undefined ? t.metadata.serviceCommissionAmount : t.amount);
+      const lAmt = Number(t.metadata?.labourCommissionAmount || 0);
+      serviceCommissionDue += sAmt;
+      labourCommissionDue += lAmt;
+      totalRecordedDue += (sAmt + lAmt);
+    });
+
+    // If totalRecordedDue matches currentCommissionDue, keep exact breakdown.
+    // If partial or difference due to past adjustments, normalize proportionally to match exact currentCommissionDue.
+    if (totalRecordedDue > 0 && Math.abs(totalRecordedDue - currentCommissionDue) > 0.01) {
+      const ratio = currentCommissionDue / totalRecordedDue;
+      serviceCommissionDue = Math.round(serviceCommissionDue * ratio * 100) / 100;
+      labourCommissionDue = Math.round((currentCommissionDue - serviceCommissionDue) * 100) / 100;
+    } else if (totalRecordedDue === 0) {
+      serviceCommissionDue = currentCommissionDue;
+      labourCommissionDue = 0;
+    }
+  }
 
   return {
     commissionDue: currentCommissionDue,
+    serviceCommissionDue,
+    labourCommissionDue,
+    totalCommissionPayable: currentCommissionDue,
     availableBalance: wallet.availableBalance || 0,
     autoDeductCommissionFromWallet: Boolean(wallet.autoDeductCommissionFromWallet),
     autoCommissionAdjustment: Boolean(wallet.autoDeductCommissionFromWallet || wallet.autoCommissionAdjustment),
     lastAutoDeductionAt: wallet.lastAutoDeductionAt || null,
     reconciliationFlagged: Boolean(wallet.reconciliationFlagged),
     reconciliationReason: wallet.reconciliationReason || null,
-    configuredCommissionRate: configuredRate,
-    commissionRateText: `${activeConfig.ratePercentage}% Platform Take-Rate`,
+    configuredCommissionRate: activeRates.serviceRateDecimal,
+    configuredLabourCommissionRate: activeRates.labourRateDecimal,
+    commissionRateText: `${activeRates.serviceRatePercentage}% Service + ${activeRates.labourRatePercentage}% Labour Take-Rate`,
     activeOrder: wallet.activeCommissionOrder?.status === 'pending' ? {
       orderId: wallet.activeCommissionOrder.orderId,
       amount: wallet.activeCommissionOrder.amount,
@@ -1416,10 +1487,17 @@ const getCommissionDetails = async (providerId) => {
       originalServicePrice: t.metadata?.originalServicePrice || t.metadata?.commissionableAmount || t.metadata?.grossAmount || 0,
       additionalPartsAmount: t.metadata?.customerApprovedPartsAmount || t.metadata?.additionalPartsAmount || 0,
       customerApprovedPartsAmount: t.metadata?.customerApprovedPartsAmount || t.metadata?.additionalPartsAmount || 0,
+      labourCharge: t.metadata?.labourCharge || 0,
+      approvedLabourCharge: t.metadata?.approvedLabourCharge || 0,
       commissionableAmount: t.metadata?.commissionableAmount || t.metadata?.originalServicePrice || t.metadata?.grossAmount || 0,
+      serviceCommissionAmount: t.metadata?.serviceCommissionAmount !== undefined ? t.metadata.serviceCommissionAmount : t.amount,
+      labourCommissionAmount: t.metadata?.labourCommissionAmount || 0,
+      totalPlatformCommission: t.metadata?.totalPlatformCommission || t.amount,
       platformCommissionAmount: t.amount,
       partsCommission: 0,
-      commissionPercentage: t.metadata?.commissionRate || `${Math.round(configuredRate * 100)}%`,
+      serviceCommissionRate: t.metadata?.serviceCommissionRate || `${Math.round(activeRates.serviceRateDecimal * 100)}%`,
+      labourCommissionRate: t.metadata?.labourCommissionRate || `${Math.round(activeRates.labourRateDecimal * 100)}%`,
+      commissionPercentage: t.metadata?.commissionRate || `${Math.round(activeRates.serviceRateDecimal * 100)}%`,
       createdAt: t.createdAt,
       status: t.status,
       description: t.description
@@ -2098,15 +2176,17 @@ const adminListCommissions = async (query = {}) => {
     providersWithOutstandingCount: 0
   };
 
-  const { getActiveCommissionRate } = require('../utils/commissionCalculator');
-  const activeCommissionConfig = await getActiveCommissionRate();
+  const { getActiveCommissionRates } = require('../utils/commissionCalculator');
+  const activeCommissionConfig = await getActiveCommissionRates();
 
   return {
     summary: {
       totalOutstandingCommission: summary.totalOutstandingCommission || 0,
       providersWithOutstandingCount: summary.providersWithOutstandingCount || 0,
-      activeCommissionRate: activeCommissionConfig.ratePercentage,
-      activeCommissionRateFormatted: activeCommissionConfig.rateFormatted
+      activeCommissionRate: activeCommissionConfig.serviceRatePercentage,
+      activeCommissionRateFormatted: activeCommissionConfig.serviceRateFormatted,
+      activeLabourCommissionRate: activeCommissionConfig.labourRatePercentage,
+      activeLabourCommissionRateFormatted: activeCommissionConfig.labourRateFormatted
     },
     wallets: wallets.map((w) => ({
       _id: w._id,
