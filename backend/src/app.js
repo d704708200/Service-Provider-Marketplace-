@@ -72,6 +72,16 @@ app.get('/api/health', (req, res) => {
       configured: isFirebaseConfigured(),
       projectId: getFirebaseProjectId()
     },
+    smtp: {
+      configured: Boolean(process.env.SMTP_USER && process.env.SMTP_PASS),
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.SMTP_PORT, 10) || 587,
+      secure: (parseInt(process.env.SMTP_PORT, 10) || 587) === 465,
+      requireTLS: (parseInt(process.env.SMTP_PORT, 10) || 587) === 587,
+      hasUser: Boolean(process.env.SMTP_USER),
+      hasPass: Boolean(process.env.SMTP_PASS),
+      hasFrom: Boolean(process.env.SMTP_FROM)
+    },
     environment: process.env.NODE_ENV || 'development'
   });
 });

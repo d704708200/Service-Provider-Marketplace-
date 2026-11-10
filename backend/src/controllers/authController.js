@@ -1,4 +1,5 @@
 const authService = require('../services/authService');
+const emailService = require('../services/emailService');
 
 const registerCustomer = async (req, res, next) => {
   try {
@@ -375,6 +376,35 @@ const renderResetPasswordPage = (req, res) => {
   res.status(200).send(html);
 };
 
+const verifySmtp = async (req, res, next) => {
+  try {
+    const result = await emailService.verifyTransporter();
+    res.status(result.success ? 200 : (result.configured ? 502 : 400)).json({
+      success: result.success,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const sendTestEmail = async (req, res, next) => {
+  try {
+    const { to } = req.body;
+    if (!to || typeof to !== 'string' || !to.includes('@')) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid recipient email address is required in request body: { "to": "user@example.com" }'
+      });
+    }
+
+    const result = await emailService.sendTestEmail({ to: to.trim().toLowerCase() });
+    res.status(result.success ? 200 : 500).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   registerCustomer,
   loginCustomer,
@@ -384,5 +414,7 @@ module.exports = {
   getMe,
   forgotPassword,
   resetPassword,
-  renderResetPasswordPage
+  renderResetPasswordPage,
+  verifySmtp,
+  sendTestEmail
 };

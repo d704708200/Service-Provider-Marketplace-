@@ -2,15 +2,16 @@ const nodemailer = require('nodemailer');
 
 /**
  * Create SMTP transporter using environment variables.
- * Supports standard SMTP (e.g. AWS SES, Mailgun, SendGrid) and Gmail SMTP.
+ * Configured for Gmail SMTP on port 587 with STARTTLS by default.
  */
 const createTransporter = () => {
-  const host = process.env.SMTP_HOST || (process.env.SMTP_USER?.includes('@gmail.com') ? 'smtp.gmail.com' : null);
-  const port = parseInt(process.env.SMTP_PORT, 10) || (host === 'smtp.gmail.com' ? 465 : 587);
+  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
+  // Use port 587 with STARTTLS by default for Gmail SMTP
+  const port = parseInt(process.env.SMTP_PORT, 10) || 587;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
 
-  if (!host || !user || !pass) {
+  if (!user || !pass) {
     return null;
   }
 
@@ -19,15 +20,115 @@ const createTransporter = () => {
   return nodemailer.createTransport({
     host,
     port,
-    secure: isSecure,
+    secure: isSecure, // false for port 587
+    requireTLS: port === 587, // explicitly enforce STARTTLS on port 587
     auth: {
       user,
       pass
     },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
     tls: {
       rejectUnauthorized: process.env.NODE_ENV === 'production'
     }
   });
+};
+
+/**
+ * Run SMTP transporter verification to test connection & auth handshake
+ */
+const verifyTransporter = async () => {
+  const transporter = createTransporter();
+  if (!transporter) {
+    return {
+      success: false,
+      configured: false,
+      error: 'SMTP credentials missing: SMTP_USER and/or SMTP_PASS are not configured in environment.'
+    };
+  }
+
+  try {
+    await transporter.verify();
+    return {
+      success: true,
+      configured: true,
+      host: transporter.options.host,
+      port: transporter.options.port,
+      secure: transporter.options.secure,
+      requireTLS: transporter.options.requireTLS
+    };
+  } catch (err) {
+    return {
+      success: false,
+      configured: true,
+      host: transporter.options.host,
+      port: transporter.options.port,
+      error: err.message
+    };
+  }
+};
+
+/**
+ * Send one genuine test email to an authorized test mailbox
+ */
+const sendTestEmail = async ({ to }) => {
+  const transporter = createTransporter();
+  if (!transporter) {
+    return {
+      success: false,
+      configured: false,
+      simulated: true,
+      error: 'SMTP credentials missing. Email NOT sent.'
+    };
+  }
+
+  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || 'Mendroo Marketplace <no-reply@mendroo.com>';
+  const subject = 'Mendroo Marketplace - Gmail SMTP Integration Verification';
+  const text = `This is a genuine verification email from Mendroo Marketplace confirming Gmail SMTP integration on port 587 with STARTTLS.\n\nTimestamp: ${new Date().toISOString()}`;
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; background-color: #0B0B0E; color: #E2E8F0; border-radius: 12px; border: 1px solid #28233D; max-width: 500px;">
+      <h2 style="color: #A78BFA; margin-top: 0;">Mendroo Marketplace - SMTP Verification</h2>
+      <p style="font-size: 14px; line-height: 22px; color: #CBD5E1;">
+        This is a genuine verification email confirming that Gmail SMTP is operating properly on <strong>smtp.gmail.com:587</strong> with <strong>STARTTLS</strong>.
+      </p>
+      <div style="background-color: #161424; padding: 12px 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #28233D; font-size: 13px;">
+        <p style="margin: 4px 0;"><strong>Status:</strong> ✅ Verified Connected</p>
+        <p style="margin: 4px 0;"><strong>Server:</strong> smtp.gmail.com:587 (STARTTLS)</p>
+        <p style="margin: 4px 0;"><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+      </div>
+      <p style="font-size: 12px; color: #64748B; margin-bottom: 0;">
+        &copy; ${new Date().getFullYear()} Mendroo Service Provider Marketplace. All rights reserved.
+      </p>
+    </div>
+  `.trim();
+
+  try {
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to,
+      subject,
+      text,
+      html
+    });
+
+    console.log(`[EMAIL SERVICE] Test verification email sent to ${to} (Message ID: ${info.messageId})`);
+    return {
+      success: true,
+      configured: true,
+      simulated: false,
+      messageId: info.messageId,
+      recipient: to
+    };
+  } catch (err) {
+    console.error(`[EMAIL SERVICE ERROR] Test email delivery failed to ${to}:`, err.message);
+    return {
+      success: false,
+      configured: true,
+      simulated: false,
+      error: err.message
+    };
+  }
 };
 
 /**
@@ -207,18 +308,12 @@ If you did not request this password reset, please ignore this email. Your passw
   `.trim();
 
   if (!transporter) {
-    // Graceful simulation when SMTP is not configured in local development
-    console.log('\n==================================================');
-    console.log('[EMAIL SERVICE - SIMULATED DELIVERY]');
-    console.log(`To: ${to}`);
-    console.log(`Subject: ${subject}`);
-    console.log(`Reset URL: ${resetUrl}`);
-    console.log('NOTE: Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS in .env to deliver live emails.');
-    console.log('==================================================\n');
+    // When SMTP is not configured in local development, record notice without reporting false success
+    console.warn('[EMAIL SERVICE] SMTP transporter not configured (SMTP_USER or SMTP_PASS missing). Email NOT sent.');
     return {
-      success: true,
+      success: false,
       simulated: true,
-      messageId: `simulated_${Date.now()}`,
+      error: 'SMTP transporter not configured. Set SMTP_USER and SMTP_PASS in environment variables.',
       resetUrl
     };
   }
@@ -244,6 +339,7 @@ If you did not request this password reset, please ignore this email. Your passw
     // Return error without crashing callers
     return {
       success: false,
+      simulated: false,
       error: err.message,
       resetUrl
     };
@@ -252,6 +348,8 @@ If you did not request this password reset, please ignore this email. Your passw
 
 module.exports = {
   sendPasswordResetEmail,
-  createTransporter
+  createTransporter,
+  verifyTransporter,
+  sendTestEmail
 };
 

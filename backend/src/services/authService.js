@@ -494,13 +494,18 @@ const forgotPassword = async ({ email, origin }) => {
   await user.save({ validateModifiedOnly: true });
 
   // Determine reset URL:
-  const baseUrl = process.env.RESET_PASSWORD_BASE_URL || origin || `http://localhost:${process.env.PORT || 5000}`;
-  const resetUrl = baseUrl.includes('/reset-password')
-    ? `${baseUrl}?token=${rawToken}`
-    : `${baseUrl}/api/auth/reset-password?token=${rawToken}`;
+  const productionBaseUrl = 'https://service-provider-marketplace.onrender.com';
+  const baseUrl = process.env.RESET_PASSWORD_BASE_URL ||
+    (process.env.NODE_ENV === 'production' ? productionBaseUrl : (origin || `http://localhost:${process.env.PORT || 5000}`));
 
+  const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
+  const resetUrl = cleanBaseUrl.includes('/reset-password')
+    ? `${cleanBaseUrl}?token=${rawToken}`
+    : `${cleanBaseUrl}/api/auth/reset-password?token=${rawToken}`;
+
+  let emailDelivery = null;
   try {
-    await emailService.sendPasswordResetEmail({
+    emailDelivery = await emailService.sendPasswordResetEmail({
       to: user.email,
       name: user.name,
       resetUrl,
@@ -508,11 +513,14 @@ const forgotPassword = async ({ email, origin }) => {
     });
   } catch (emailErr) {
     console.error('[AUTH SERVICE] Error sending reset email:', emailErr.message);
+    emailDelivery = { success: false, error: emailErr.message };
   }
 
   return {
     ...genericResponse,
-    ...(process.env.NODE_ENV === 'test' ? { testToken: rawToken } : {})
+    emailDelivered: Boolean(emailDelivery?.success && !emailDelivery?.simulated),
+    deliveryStatus: emailDelivery?.simulated ? 'simulated' : (emailDelivery?.success ? 'delivered' : 'failed'),
+    ...(process.env.NODE_ENV === 'test' ? { testToken: rawToken, resetUrl } : {})
   };
 };
 

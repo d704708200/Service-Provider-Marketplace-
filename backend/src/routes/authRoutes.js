@@ -26,6 +26,10 @@ router.post('/forgot-password', validateForgotPassword, authController.forgotPas
 router.post('/reset-password', validateResetPassword, authController.resetPassword);
 router.get('/reset-password', authController.renderResetPasswordPage);
 
+// SMTP Transporter Diagnostics (credentials and secrets are strictly redacted)
+router.get('/smtp-verify', authController.verifySmtp);
+router.post('/smtp-test-email', authController.sendTestEmail);
+
 // Current Authenticated User Profile
 router.get('/me', authenticate, authController.getMe);
 
