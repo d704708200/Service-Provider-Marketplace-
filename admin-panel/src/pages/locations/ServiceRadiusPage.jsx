@@ -69,16 +69,41 @@ const ServiceRadiusPage = () => {
     setIsLoading(true);
     setApiError(null);
     try {
+      const fetchCategories = async () => {
+        try {
+          if (typeof categoryApi.getAdminCategories === 'function') {
+            return await categoryApi.getAdminCategories({ limit: 100, isActive: true });
+          }
+          if (typeof categoryApi.getAll === 'function') {
+            return await categoryApi.getAll({ limit: 100, isActive: true });
+          }
+          if (typeof categoryApi.getCategories === 'function') {
+            return await categoryApi.getCategories({ limit: 100, isActive: true });
+          }
+        } catch (adminErr) {
+          console.warn('Admin categories endpoint failed, falling back to public:', adminErr.message);
+        }
+        if (typeof categoryApi.getPublicCategories === 'function') {
+          return await categoryApi.getPublicCategories({ limit: 100 });
+        }
+        return { success: false, data: [] };
+      };
+
       const [configsRes, catsRes] = await Promise.all([
         serviceRadiusApi.getAll(),
-        categoryApi.getAll({ isActive: true })
+        fetchCategories()
       ]);
 
       if (configsRes?.success) {
         setConfigs(configsRes.data || []);
       }
       if (catsRes?.success) {
-        setCategories(catsRes.data || []);
+        const catList = Array.isArray(catsRes.data)
+          ? catsRes.data
+          : Array.isArray(catsRes.data?.categories)
+          ? catsRes.data.categories
+          : [];
+        setCategories(catList);
       }
     } catch (err) {
       setApiError(err.userMessage || err.message || 'Failed to load service radius configurations');
@@ -301,6 +326,30 @@ const ServiceRadiusPage = () => {
         error: err.userMessage || err.message || 'Failed to load providers'
       }));
     }
+  };
+
+  // Delete whole config
+  const handleDeleteConfig = (config) => {
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete Radius Rule for ${config.serviceName}`,
+      message: `Are you sure you want to remove the service radius configuration for "${config.serviceName}"? Providers will no longer be restricted by these radius options.`,
+      confirmText: 'Delete Configuration',
+      confirmVariant: 'danger',
+      onConfirm: async () => {
+        try {
+          const res = await serviceRadiusApi.delete(config._id);
+          if (res?.success) {
+            setSuccessMessage(`Radius configuration for "${config.serviceName}" deleted.`);
+            setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+            await loadData();
+          }
+        } catch (err) {
+          setApiError(err.userMessage || err.message || 'Failed to delete configuration');
+          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        }
+      }
+    });
   };
 
   // Filtered configs for display
@@ -538,6 +587,13 @@ const ServiceRadiusPage = () => {
                           title="Edit Radius Options"
                         >
                           <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteConfig(config)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                          title="Delete Configuration Rule"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -875,6 +931,16 @@ const ServiceRadiusPage = () => {
           </div>
         </div>
       )}
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmModal.onConfirm}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        variant={confirmModal.confirmVariant}
+      />
     </div>
   );
 };

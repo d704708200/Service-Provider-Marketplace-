@@ -5,19 +5,21 @@ import axios from 'axios';
 // 2. If running on public hosting (e.g. Netlify, Vercel), default to the live production Render backend
 // 3. Fall back to local development server (localhost:5000) only when developing on localhost
 const resolveBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
   if (typeof window !== 'undefined' && window.location) {
     const isLocalhost =
       window.location.hostname === 'localhost' ||
       window.location.hostname === '127.0.0.1' ||
       window.location.hostname === '[::1]';
     if (!isLocalhost) {
+      // In production hosting (e.g. Netlify), use configured non-localhost VITE_API_URL or live Render backend
+      const envUrl = import.meta.env.VITE_API_URL;
+      if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
+        return envUrl;
+      }
       return 'https://service-provider-marketplace.onrender.com/api';
     }
   }
-  return 'http://localhost:5000/api';
+  return import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 };
 
 const BASE_URL = resolveBaseUrl();
@@ -113,6 +115,18 @@ export const authApi = {
 
 // Categories API Methods
 export const categoryApi = {
+  getAll: async (params = {}) => {
+    try {
+      const response = await api.get('/categories/admin', { params });
+      return response.data;
+    } catch (err) {
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        const fallback = await api.get('/categories', { params });
+        return fallback.data;
+      }
+      throw err;
+    }
+  },
   getAdminCategories: async (params = {}) => {
     const response = await api.get('/categories/admin', { params });
     return response.data;
@@ -540,6 +554,10 @@ export const settingApi = {
 
 export const serviceRadiusApi = {
   getAll: async (params = {}) => {
+    const response = await api.get('/service-radii', { params });
+    return response.data;
+  },
+  list: async (params = {}) => {
     const response = await api.get('/service-radii', { params });
     return response.data;
   },
