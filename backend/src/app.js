@@ -107,6 +107,7 @@ app.use('/api/admin/tags', tagRoutes);
 app.use('/api/provider/my-services', providerMyServicesRoutes);
 app.use('/api/service-radii', serviceRadiusRoutes);
 app.use('/api/admin/service-radii', serviceRadiusRoutes);
+app.use('/api/settings', settingRoutes);
 app.use('/api/admin/settings', settingRoutes);
 
 // 404 Handler

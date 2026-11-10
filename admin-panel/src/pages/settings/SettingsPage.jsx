@@ -46,12 +46,65 @@ const SettingsPage = () => {
 
   // Navigation Tabs: 'commission' | 'banner' | 'system'
   const tabParam = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState(tabParam === 'banner' || tabParam === 'system' ? tabParam : 'commission');
+  const sectionParam = searchParams.get('section');
+
+  const getInitialActiveTab = () => {
+    if (tabParam === 'banner' || tabParam === 'system') return tabParam;
+    return 'commission';
+  };
+
+  const getInitialSection = () => {
+    if (sectionParam === 'service' || sectionParam === 'labour' || sectionParam === 'all') {
+      return sectionParam;
+    }
+    if (tabParam === 'service' || tabParam === 'labour') {
+      return tabParam;
+    }
+    if (tabParam === 'overview') {
+      return 'all';
+    }
+    return 'all';
+  };
+
+  const [activeTab, setActiveTab] = useState(getInitialActiveTab);
+  const [commissionSection, setCommissionSection] = useState(getInitialSection);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
-    setSearchParams({ tab });
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      if (tab !== 'commission') {
+        next.delete('section');
+      }
+      return next;
+    }, { replace: true });
   };
+
+  const handleCommissionSectionChange = (section) => {
+    setCommissionSection(section);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', 'commission');
+      next.set('section', section);
+      return next;
+    }, { replace: true });
+  };
+
+  useEffect(() => {
+    if (tabParam === 'banner' || tabParam === 'system') {
+      setActiveTab(tabParam);
+    } else {
+      setActiveTab('commission');
+      if (sectionParam === 'service' || sectionParam === 'labour' || sectionParam === 'all') {
+        setCommissionSection(sectionParam);
+      } else if (tabParam === 'service' || tabParam === 'labour') {
+        setCommissionSection(tabParam);
+      } else if (tabParam === 'overview') {
+        setCommissionSection('all');
+      }
+    }
+  }, [tabParam, sectionParam]);
 
   // =========================================================================
   // 1. PLATFORM COMMISSION SETTINGS STATE (DUAL: SERVICE + LABOUR)
@@ -61,9 +114,6 @@ const SettingsPage = () => {
   const [isCommissionSaving, setIsCommissionSaving] = useState(false);
   const [commissionSuccess, setCommissionSuccess] = useState(null);
   const [commissionError, setCommissionError] = useState(null);
-
-  // Sub-navigation section within commission tab: 'all' | 'service' | 'labour'
-  const [commissionSection, setCommissionSection] = useState('all');
 
   // Interactive Financial Preview Calculator values
   const [previewServicePrice, setPreviewServicePrice] = useState(500);
@@ -454,243 +504,322 @@ const SettingsPage = () => {
             </button>
           </div>
 
-          {/* Sub-navigation pills */}
-          <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+          {/* Sub-navigation tabs */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3" role="tablist">
             <button
-              onClick={() => setCommissionSection('all')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              type="button"
+              role="tab"
+              aria-selected={commissionSection === 'all'}
+              onClick={() => handleCommissionSectionChange('all')}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 commissionSection === 'all'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20 ring-2 ring-indigo-600/30'
+                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              Overview & Dual Settings
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Overview & Dual Settings</span>
             </button>
             <button
-              onClick={() => setCommissionSection('service')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              type="button"
+              role="tab"
+              aria-selected={commissionSection === 'service'}
+              onClick={() => handleCommissionSectionChange('service')}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 commissionSection === 'service'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20 ring-2 ring-indigo-600/30'
+                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              Service Commission (Base)
+              <Percent className="w-3.5 h-3.5" />
+              <span>Service Commission (Base)</span>
             </button>
             <button
-              onClick={() => setCommissionSection('labour')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              type="button"
+              role="tab"
+              aria-selected={commissionSection === 'labour'}
+              onClick={() => handleCommissionSectionChange('labour')}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 commissionSection === 'labour'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20 ring-2 ring-indigo-600/30'
+                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              Labour Commission (Approved)
+              <Percent className="w-3.5 h-3.5" />
+              <span>Labour Commission (Approved)</span>
             </button>
           </div>
 
-          {/* Current Active Rates Overview Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Service Commission
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  ACTIVE
-                </span>
-              </div>
-              <div className="text-2xl font-extrabold text-indigo-600 mt-2 font-sans">
-                {isCommissionLoading ? '...' : `${commissionData?.serviceCommission?.percentage ?? commissionData?.percentage ?? 15}%`}
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Base service price take-rate
-              </p>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Labour Commission
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300">
-                  ACTIVE
-                </span>
-              </div>
-              <div className="text-2xl font-extrabold text-indigo-600 mt-2 font-sans">
-                {isCommissionLoading ? '...' : `${commissionData?.labourCommission?.percentage ?? 0}%`}
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Approved labour charges take-rate
-              </p>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Spare Parts / Materials
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  EXEMPT
-                </span>
-              </div>
-              <div className="text-2xl font-extrabold text-emerald-600 mt-2 font-sans">
-                0%
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                100% provider earnings (Parts Fee = ₹0)
-              </p>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Snapshot Rule
-                </span>
-                <ShieldCheck className="w-4 h-4 text-indigo-600" />
-              </div>
-              <div className="text-sm font-bold text-slate-800 mt-2">
-                Immutable
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                No retroactive changes to bookings
-              </p>
-            </div>
-          </div>
-
-          {/* Financial Preview Calculator */}
-          <Card
-            title="Interactive Financial Breakdown Preview"
-            subtitle="Test real-time calculation across base service, customer-approved labour, and spare parts"
-          >
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Base Service Price (₹)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={previewServicePrice}
-                    onChange={(e) => setPreviewServicePrice(Math.max(0, Number(e.target.value) || 0))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Original service price agreed</span>
+          {/* TAB 1: OVERVIEW & DUAL SETTINGS */}
+          {commissionSection === 'all' && (
+            <div className="space-y-6">
+              {/* Current Active Rates Overview Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      Service Commission
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      ACTIVE
+                    </span>
+                  </div>
+                  <div className="text-2xl font-extrabold text-indigo-600 mt-2 font-sans">
+                    {isCommissionLoading ? '...' : `${commissionData?.serviceCommission?.percentage ?? commissionData?.percentage ?? 15}%`}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Base service price take-rate
+                  </p>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Approved Labour Charge (₹)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={previewLabourCharge}
-                    onChange={(e) => setPreviewLabourCharge(Math.max(0, Number(e.target.value) || 0))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Customer-approved labour</span>
+                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      Labour Commission
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300">
+                      ACTIVE
+                    </span>
+                  </div>
+                  <div className="text-2xl font-extrabold text-indigo-600 mt-2 font-sans">
+                    {isCommissionLoading ? '...' : `${commissionData?.labourCommission?.percentage ?? 0}%`}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Approved labour charges take-rate
+                  </p>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Physical Spare Parts (₹)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={previewPartsAmount}
-                    onChange={(e) => setPreviewPartsAmount(Math.max(0, Number(e.target.value) || 0))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <span className="text-[10px] text-emerald-600 mt-0.5 block font-medium">100% Commission-Free</span>
+                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      Spare Parts / Materials
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      EXEMPT
+                    </span>
+                  </div>
+                  <div className="text-2xl font-extrabold text-emerald-600 mt-2 font-sans">
+                    0%
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    100% provider earnings (Parts Fee = ₹0)
+                  </p>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      Snapshot Rule
+                    </span>
+                    <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div className="text-sm font-bold text-slate-800 mt-2">
+                    Immutable
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    No retroactive changes to bookings
+                  </p>
                 </div>
               </div>
 
-              {/* Live Preview Result Box */}
-              {(() => {
-                const sRate = Number(newServicePercentage !== '' ? newServicePercentage : (commissionData?.serviceCommission?.percentage ?? 15));
-                const lRate = Number(newLabourPercentage !== '' ? newLabourPercentage : (commissionData?.labourCommission?.percentage ?? 0));
-                const sComm = Math.round(previewServicePrice * (sRate / 100) * 100) / 100;
-                const lComm = Math.round(previewLabourCharge * (lRate / 100) * 100) / 100;
-                const totalCustomer = previewServicePrice + previewLabourCharge + previewPartsAmount;
-                const totalComm = Math.round((sComm + lComm) * 100) / 100;
-                const providerNet = Math.round((totalCustomer - totalComm) * 100) / 100;
-
-                return (
-                  <div className="p-4 bg-slate-900 text-white rounded-xl space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                        Accounting Output Simulation
-                      </span>
-                      <span className="text-xs text-indigo-400 font-mono">
-                        Service Rate: {sRate}% | Labour Rate: {lRate}%
-                      </span>
+              {/* Financial Preview Calculator */}
+              <Card
+                title="Interactive Financial Breakdown Preview"
+                subtitle="Test real-time calculation across base service, customer-approved labour, and spare parts"
+              >
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        Base Service Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={previewServicePrice}
+                        onChange={(e) => setPreviewServicePrice(Math.max(0, Number(e.target.value) || 0))}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">Original service price agreed</span>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-xs">
-                      <div className="p-2.5 bg-slate-800/80 rounded-lg">
-                        <span className="text-slate-400 block text-[10px]">Service Comm</span>
-                        <span className="font-extrabold text-amber-400 text-sm mt-0.5 block">
-                          ₹{sComm.toFixed(2)}
-                        </span>
-                        <span className="text-[10px] text-slate-400">₹{previewServicePrice} × {sRate}%</span>
-                      </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        Approved Labour Charge (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={previewLabourCharge}
+                        onChange={(e) => setPreviewLabourCharge(Math.max(0, Number(e.target.value) || 0))}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">Customer-approved labour</span>
+                    </div>
 
-                      <div className="p-2.5 bg-slate-800/80 rounded-lg">
-                        <span className="text-slate-400 block text-[10px]">Labour Comm</span>
-                        <span className="font-extrabold text-indigo-400 text-sm mt-0.5 block">
-                          ₹{lComm.toFixed(2)}
-                        </span>
-                        <span className="text-[10px] text-slate-400">₹{previewLabourCharge} × {lRate}%</span>
-                      </div>
-
-                      <div className="p-2.5 bg-slate-800/80 rounded-lg">
-                        <span className="text-slate-400 block text-[10px]">Parts Comm</span>
-                        <span className="font-extrabold text-emerald-400 text-sm mt-0.5 block">
-                          ₹0.00
-                        </span>
-                        <span className="text-[10px] text-emerald-400 font-medium">Exempt (0%)</span>
-                      </div>
-
-                      <div className="p-2.5 bg-slate-800/80 rounded-lg">
-                        <span className="text-slate-400 block text-[10px]">Total Platform Comm</span>
-                        <span className="font-extrabold text-rose-400 text-sm mt-0.5 block">
-                          ₹{totalComm.toFixed(2)}
-                        </span>
-                        <span className="text-[10px] text-slate-400">Service + Labour</span>
-                      </div>
-
-                      <div className="p-2.5 bg-slate-800/80 rounded-lg">
-                        <span className="text-slate-400 block text-[10px]">Customer Payable</span>
-                        <span className="font-extrabold text-white text-sm mt-0.5 block">
-                          ₹{totalCustomer.toFixed(2)}
-                        </span>
-                        <span className="text-[10px] text-slate-400">Base + Labour + Parts</span>
-                      </div>
-
-                      <div className="p-2.5 bg-emerald-950/80 border border-emerald-500/40 rounded-lg">
-                        <span className="text-emerald-300 block text-[10px] font-semibold">Provider Net</span>
-                        <span className="font-extrabold text-emerald-400 text-sm mt-0.5 block">
-                          ₹{providerNet.toFixed(2)}
-                        </span>
-                        <span className="text-[10px] text-emerald-300">Payable - Comm</span>
-                      </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        Physical Spare Parts (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={previewPartsAmount}
+                        onChange={(e) => setPreviewPartsAmount(Math.max(0, Number(e.target.value) || 0))}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="text-[10px] text-emerald-600 mt-0.5 block font-medium">100% Commission-Free</span>
                     </div>
                   </div>
-                );
-              })()}
-            </div>
-          </Card>
 
-          {/* SECTION A: SERVICE COMMISSION */}
-          {(commissionSection === 'all' || commissionSection === 'service') && (
-            <div className="space-y-4">
+                  {/* Live Preview Result Box */}
+                  {(() => {
+                    const sRate = Number(newServicePercentage !== '' ? newServicePercentage : (commissionData?.serviceCommission?.percentage ?? 15));
+                    const lRate = Number(newLabourPercentage !== '' ? newLabourPercentage : (commissionData?.labourCommission?.percentage ?? 0));
+                    const sComm = Math.round(previewServicePrice * (sRate / 100) * 100) / 100;
+                    const lComm = Math.round(previewLabourCharge * (lRate / 100) * 100) / 100;
+                    const totalCustomer = previewServicePrice + previewLabourCharge + previewPartsAmount;
+                    const totalComm = Math.round((sComm + lComm) * 100) / 100;
+                    const providerNet = Math.round((totalCustomer - totalComm) * 100) / 100;
+
+                    return (
+                      <div className="p-4 bg-slate-900 text-white rounded-xl space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                            Accounting Output Simulation
+                          </span>
+                          <span className="text-xs text-indigo-400 font-mono">
+                            Service Rate: {sRate}% | Labour Rate: {lRate}%
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-xs">
+                          <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                            <span className="text-slate-400 block text-[10px]">Service Comm</span>
+                            <span className="font-extrabold text-amber-400 text-sm mt-0.5 block">
+                              ₹{sComm.toFixed(2)}
+                            </span>
+                            <span className="text-[10px] text-slate-400">₹{previewServicePrice} × {sRate}%</span>
+                          </div>
+
+                          <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                            <span className="text-slate-400 block text-[10px]">Labour Comm</span>
+                            <span className="font-extrabold text-indigo-400 text-sm mt-0.5 block">
+                              ₹{lComm.toFixed(2)}
+                            </span>
+                            <span className="text-[10px] text-slate-400">₹{previewLabourCharge} × {lRate}%</span>
+                          </div>
+
+                          <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                            <span className="text-slate-400 block text-[10px]">Parts Comm</span>
+                            <span className="font-extrabold text-emerald-400 text-sm mt-0.5 block">
+                              ₹0.00
+                            </span>
+                            <span className="text-[10px] text-emerald-400 font-medium">Exempt (0%)</span>
+                          </div>
+
+                          <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                            <span className="text-slate-400 block text-[10px]">Total Platform Comm</span>
+                            <span className="font-extrabold text-rose-400 text-sm mt-0.5 block">
+                              ₹{totalComm.toFixed(2)}
+                            </span>
+                            <span className="text-[10px] text-slate-400">Service + Labour</span>
+                          </div>
+
+                          <div className="p-2.5 bg-slate-800/80 rounded-lg">
+                            <span className="text-slate-400 block text-[10px]">Customer Payable</span>
+                            <span className="font-extrabold text-white text-sm mt-0.5 block">
+                              ₹{totalCustomer.toFixed(2)}
+                            </span>
+                            <span className="text-[10px] text-slate-400">Base + Labour + Parts</span>
+                          </div>
+
+                          <div className="p-2.5 bg-emerald-950/80 border border-emerald-500/40 rounded-lg">
+                            <span className="text-emerald-300 block text-[10px] font-semibold">Provider Net</span>
+                            <span className="font-extrabold text-emerald-400 text-sm mt-0.5 block">
+                              ₹{providerNet.toFixed(2)}
+                            </span>
+                            <span className="text-[10px] text-emerald-300">Payable - Comm</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </Card>
+
+              {/* Navigation Quick Shortcuts */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white border border-indigo-200 rounded-2xl p-5 flex items-center justify-between shadow-xs hover:border-indigo-300 transition-colors">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Percent className="w-4 h-4 text-indigo-600" />
+                      <h4 className="font-bold text-sm text-slate-900">Service Commission Settings</h4>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Currently <strong className="text-indigo-600">{commissionData?.serviceCommission?.percentage ?? commissionData?.percentage ?? 15}%</strong>. Applied strictly to originalServicePrice.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCommissionSectionChange('service')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer shrink-0 ml-4"
+                  >
+                    <span>Configure</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="bg-white border border-purple-200 rounded-2xl p-5 flex items-center justify-between shadow-xs hover:border-purple-300 transition-colors">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Percent className="w-4 h-4 text-purple-600" />
+                      <h4 className="font-bold text-sm text-slate-900">Labour Commission Settings</h4>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Currently <strong className="text-purple-600">{commissionData?.labourCommission?.percentage ?? 0}%</strong>. Applied strictly to customer-approved labour charges.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCommissionSectionChange('labour')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer shrink-0 ml-4"
+                  >
+                    <span>Configure</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: SERVICE COMMISSION (BASE) ONLY */}
+          {commissionSection === 'service' && (
+            <div className="space-y-6">
+              {/* Active Rate Summary Banner */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+                <div>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                    Current Effective Service Commission
+                  </span>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className="text-3xl font-black text-indigo-600 font-sans">
+                      {isCommissionLoading ? '...' : `${commissionData?.serviceCommission?.percentage ?? commissionData?.percentage ?? 15}%`}
+                    </span>
+                    <span className="text-xs text-slate-500">of originalServicePrice</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Centralized platform take-rate applied to original service booking prices. Spare parts (0%) and extra labour are handled separately.
+                  </p>
+                </div>
+                <Badge variant="success">ACTIVE TAKE-RATE</Badge>
+              </div>
+
               <Card
-                title="Section A: Service Commission Configuration"
+                title="Service Commission Rate Configuration"
                 subtitle="Centralized take-rate applied strictly to base service/booking prices"
               >
                 <form onSubmit={handleOpenServiceConfirm} className="space-y-4">
@@ -815,11 +944,30 @@ const SettingsPage = () => {
             </div>
           )}
 
-          {/* SECTION B: LABOUR COMMISSION */}
-          {(commissionSection === 'all' || commissionSection === 'labour') && (
-            <div className="space-y-4">
+          {/* TAB 3: LABOUR COMMISSION (APPROVED) ONLY */}
+          {commissionSection === 'labour' && (
+            <div className="space-y-6">
+              {/* Active Rate Summary Banner */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+                <div>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                    Current Effective Labour Commission
+                  </span>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className="text-3xl font-black text-indigo-600 font-sans">
+                      {isCommissionLoading ? '...' : `${commissionData?.labourCommission?.percentage ?? 0}%`}
+                    </span>
+                    <span className="text-xs text-slate-500">of customer-approved extra labour charges</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Independent take-rate applied strictly to customer-approved labour charges. Unapproved labour and parts are exempt.
+                  </p>
+                </div>
+                <Badge variant="indigo">ACTIVE TAKE-RATE</Badge>
+              </div>
+
               <Card
-                title="Section B: Labour Commission Configuration"
+                title="Labour Commission Rate Configuration"
                 subtitle="Independent take-rate applied strictly to customer-approved extra labour charges"
               >
                 <form onSubmit={handleOpenLabourConfirm} className="space-y-4">
