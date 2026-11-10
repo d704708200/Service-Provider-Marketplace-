@@ -54,16 +54,32 @@ const SettingsPage = () => {
   };
 
   // =========================================================================
-  // 1. PLATFORM COMMISSION SETTINGS STATE
+  // 1. PLATFORM COMMISSION SETTINGS STATE (DUAL: SERVICE + LABOUR)
   // =========================================================================
   const [commissionData, setCommissionData] = useState(null);
   const [isCommissionLoading, setIsCommissionLoading] = useState(true);
   const [isCommissionSaving, setIsCommissionSaving] = useState(false);
   const [commissionSuccess, setCommissionSuccess] = useState(null);
   const [commissionError, setCommissionError] = useState(null);
-  const [newPercentage, setNewPercentage] = useState('');
-  const [changeReason, setChangeReason] = useState('');
-  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+
+  // Sub-navigation section within commission tab: 'all' | 'service' | 'labour'
+  const [commissionSection, setCommissionSection] = useState('all');
+
+  // Interactive Financial Preview Calculator values
+  const [previewServicePrice, setPreviewServicePrice] = useState(500);
+  const [previewLabourCharge, setPreviewLabourCharge] = useState(200);
+  const [previewPartsAmount, setPreviewPartsAmount] = useState(350);
+
+  // Section A: Service Commission Form
+  const [newServicePercentage, setNewServicePercentage] = useState('');
+  const [serviceChangeReason, setServiceChangeReason] = useState('');
+
+  // Section B: Labour Commission Form
+  const [newLabourPercentage, setNewLabourPercentage] = useState('');
+  const [labourChangeReason, setLabourChangeReason] = useState('');
+
+  // Confirmation Modal Type: 'service' | 'labour' | null
+  const [confirmModalType, setConfirmModalType] = useState(null);
 
   const fetchCommissionSetting = useCallback(async () => {
     setIsCommissionLoading(true);
@@ -72,7 +88,10 @@ const SettingsPage = () => {
       const res = await settingApi.getCommissionSetting();
       if (res?.success && res.data) {
         setCommissionData(res.data);
-        setNewPercentage(String(res.data.percentage));
+        const sRate = res.data?.serviceCommission?.percentage ?? res.data?.percentage ?? 15;
+        const lRate = res.data?.labourCommission?.percentage ?? 0;
+        setNewServicePercentage(String(sRate));
+        setNewLabourPercentage(String(lRate));
       }
     } catch (err) {
       setCommissionError(err.userMessage || err.message || 'Failed to load platform commission configuration.');
@@ -92,43 +111,81 @@ const SettingsPage = () => {
     }
   }, [commissionSuccess]);
 
-  const handleOpenConfirmModal = (e) => {
+  const handleOpenServiceConfirm = (e) => {
     e.preventDefault();
     setCommissionError(null);
 
-    const num = Number(newPercentage);
+    const num = Number(newServicePercentage);
     if (isNaN(num) || num < 0 || num > 100) {
-      setCommissionError('Please enter a valid commission percentage between 0% and 100%.');
+      setCommissionError('Please enter a valid service commission percentage between 0% and 100%.');
       return;
     }
 
-    if (!changeReason.trim() || changeReason.trim().length < 3) {
-      setCommissionError('Please provide a descriptive reason for this commission rate change (minimum 3 characters).');
+    if (!serviceChangeReason.trim() || serviceChangeReason.trim().length < 3) {
+      setCommissionError('Please provide a descriptive reason for this service commission rate change (minimum 3 characters).');
       return;
     }
 
-    setConfirmModalOpen(true);
+    setConfirmModalType('service');
+  };
+
+  const handleOpenLabourConfirm = (e) => {
+    e.preventDefault();
+    setCommissionError(null);
+
+    const num = Number(newLabourPercentage);
+    if (isNaN(num) || num < 0 || num > 100) {
+      setCommissionError('Please enter a valid labour commission percentage between 0% and 100%.');
+      return;
+    }
+
+    if (!labourChangeReason.trim() || labourChangeReason.trim().length < 3) {
+      setCommissionError('Please provide a descriptive reason for this labour commission rate change (minimum 3 characters).');
+      return;
+    }
+
+    setConfirmModalType('labour');
   };
 
   const handleConfirmSaveCommission = async () => {
+    if (!confirmModalType) return;
     setIsCommissionSaving(true);
     setCommissionError(null);
-    try {
-      const res = await settingApi.updateCommissionSetting({
-        percentage: Number(newPercentage),
-        reason: changeReason.trim()
-      });
 
-      if (res?.success) {
-        setCommissionSuccess(`Platform commission rate updated to ${res.data.percentage}% successfully!`);
-        setCommissionData(res.data);
-        setChangeReason('');
-        setConfirmModalOpen(false);
-      } else {
-        setCommissionError(res?.message || 'Failed to update commission setting.');
+    try {
+      if (confirmModalType === 'service') {
+        const res = await settingApi.updateCommissionSetting({
+          percentage: Number(newServicePercentage),
+          reason: serviceChangeReason.trim()
+        });
+
+        if (res?.success) {
+          const appliedRate = res.data?.percentage ?? newServicePercentage;
+          setCommissionSuccess(`Platform service commission rate updated to ${appliedRate}% successfully!`);
+          setServiceChangeReason('');
+          setConfirmModalType(null);
+          await fetchCommissionSetting();
+        } else {
+          setCommissionError(res?.message || 'Failed to update service commission setting.');
+        }
+      } else if (confirmModalType === 'labour') {
+        const res = await settingApi.updateLabourCommissionSetting({
+          percentage: Number(newLabourPercentage),
+          reason: labourChangeReason.trim()
+        });
+
+        if (res?.success) {
+          const appliedRate = res.data?.percentage ?? newLabourPercentage;
+          setCommissionSuccess(`Platform labour commission rate updated to ${appliedRate}% successfully!`);
+          setLabourChangeReason('');
+          setConfirmModalType(null);
+          await fetchCommissionSetting();
+        } else {
+          setCommissionError(res?.message || 'Failed to update labour commission setting.');
+        }
       }
     } catch (err) {
-      setCommissionError(err.userMessage || err.message || 'Failed to save commission setting.');
+      setCommissionError(err.userMessage || err.message || `Failed to save ${confirmModalType} commission setting.`);
     } finally {
       setIsCommissionSaving(false);
     }
