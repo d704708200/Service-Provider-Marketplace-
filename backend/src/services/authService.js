@@ -501,7 +501,7 @@ const forgotPassword = async ({ email, origin, isAdminTest = false }) => {
   const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
   const resetUrl = cleanBaseUrl.includes('/reset-password')
     ? `${cleanBaseUrl}?token=${rawToken}`
-    : `${cleanBaseUrl}/api/auth/reset-password?token=${rawToken}`;
+    : `${cleanBaseUrl}/reset-password?token=${rawToken}`;
 
   let emailDelivery = null;
   try {

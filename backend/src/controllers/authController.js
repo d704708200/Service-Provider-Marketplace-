@@ -249,9 +249,37 @@ const renderErrorHtml = (errorMessage, token) => `<!DOCTYPE html>
 </body>
 </html>`;
 
-const renderResetPasswordPage = (req, res) => {
+const renderResetPasswordPage = async (req, res) => {
   const nonce = crypto.randomBytes(16).toString('base64');
   const safeToken = (req.query.token || '').toString().replace(/[^a-zA-Z0-9]/g, '');
+
+  let accountEmail = '';
+  let tokenInvalidOrExpired = false;
+
+  if (safeToken && safeToken.length >= 32) {
+    try {
+      const hashedToken = crypto.createHash('sha256').update(safeToken).digest('hex');
+      const User = require('../models/User');
+      const matchedUser = await User.findOne({
+        passwordResetToken: hashedToken,
+        isDeleted: { $ne: true }
+      }).select('+passwordResetToken +passwordResetExpires');
+
+      if (matchedUser) {
+        if (!matchedUser.passwordResetExpires || matchedUser.passwordResetExpires.getTime() < Date.now()) {
+          tokenInvalidOrExpired = true;
+        } else {
+          accountEmail = matchedUser.email;
+        }
+      } else {
+        tokenInvalidOrExpired = true;
+      }
+    } catch (err) {
+      // Fallback gracefully on DB lookup issue
+    }
+  } else if (safeToken) {
+    tokenInvalidOrExpired = true;
+  }
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader(
@@ -262,6 +290,8 @@ const renderResetPasswordPage = (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
+  const gVerification = process.env.GOOGLE_SITE_VERIFICATION ? `<meta name="google-site-verification" content="${process.env.GOOGLE_SITE_VERIFICATION}">` : '';
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -271,7 +301,8 @@ const renderResetPasswordPage = (req, res) => {
   <meta name="robots" content="noindex, nofollow, noarchive">
   <meta name="theme-color" content="#7C3AED">
   <meta name="application-name" content="Mendroo Marketplace">
-  <link rel="canonical" href="https://service-provider-marketplace.onrender.com/api/auth/reset-password">
+  ${gVerification}
+  <link rel="canonical" href="https://service-provider-marketplace.onrender.com/reset-password">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%237C3AED'/%3E%3Ctext x='50%25' y='65%25' font-size='56' font-weight='800' fill='white' text-anchor='middle' font-family='system-ui, sans-serif'%3EM%3C/text%3E%3C/svg%3E">
   <title>Reset Password - Mendroo Service Provider Marketplace</title>
   <style>
@@ -487,19 +518,38 @@ const renderResetPasswordPage = (req, res) => {
     </div>
 
     <div class="security-notice">
-      🔒 <strong>Verified Endpoint:</strong> This password update form connects directly to <code>https://service-provider-marketplace.onrender.com</code>.
+      🔒 <strong>Verified Endpoint:</strong> This password update form connects directly to <code>service-provider-marketplace.onrender.com</code>.
     </div>
+
+    ${tokenInvalidOrExpired ? `
+    <div class="alert alert-error" style="display: block;">
+      ⚠️ <strong>Invalid or Expired Link</strong><br>
+      This password reset link is invalid, has expired (links expire after 15 minutes), or has already been used.<br>
+      Please return to the Mendroo Customer or Provider App to request a new link.
+    </div>
+    ` : ''}
 
     <div id="alertError" class="alert alert-error"></div>
     <div id="alertSuccess" class="alert alert-success"></div>
 
-    <form id="resetForm" method="POST" action="/api/auth/reset-password" enctype="application/x-www-form-urlencoded">
+    <form id="resetForm" method="POST" action="/reset-password" enctype="application/x-www-form-urlencoded">
       <input type="hidden" name="token" id="token" value="${safeToken}">
+
+      ${accountEmail ? `
+      <div class="form-group">
+        <label for="username">Account Identifier</label>
+        <div class="input-wrapper">
+          <input type="text" name="username" id="username" value="${accountEmail}" autocomplete="username" readonly style="color: #94A3B8; background: #0D0C17; cursor: default;">
+        </div>
+      </div>
+      ` : `
+      <input type="hidden" name="username" id="username" value="user" autocomplete="username">
+      `}
 
       <div class="form-group">
         <label for="newPassword">New Password</label>
         <div class="input-wrapper">
-          <input type="password" name="newPassword" id="newPassword" placeholder="Minimum 6 characters" required minlength="6" autocomplete="new-password">
+          <input type="password" name="newPassword" id="newPassword" placeholder="Minimum 6 characters" required minlength="6" autocomplete="new-password" ${tokenInvalidOrExpired ? 'disabled' : ''}>
         </div>
         <div class="requirements">Must be at least 6 characters long</div>
       </div>
@@ -507,17 +557,17 @@ const renderResetPasswordPage = (req, res) => {
       <div class="form-group">
         <label for="confirmPassword">Confirm New Password</label>
         <div class="input-wrapper">
-          <input type="password" name="confirmPassword" id="confirmPassword" placeholder="Re-enter new password" required minlength="6" autocomplete="new-password">
+          <input type="password" name="confirmPassword" id="confirmPassword" placeholder="Re-enter new password" required minlength="6" autocomplete="new-password" ${tokenInvalidOrExpired ? 'disabled' : ''}>
         </div>
       </div>
 
       <div class="form-group">
         <label class="show-password-container">
-          <input type="checkbox" id="showPasswords"> Show Passwords
+          <input type="checkbox" id="showPasswords" ${tokenInvalidOrExpired ? 'disabled' : ''}> Show Passwords
         </label>
       </div>
 
-      <button type="submit" id="submitBtn" class="btn">Reset Password</button>
+      <button type="submit" id="submitBtn" class="btn" ${tokenInvalidOrExpired ? 'disabled' : ''}>Reset Password</button>
     </form>
 
     <div class="footer">
@@ -581,7 +631,8 @@ const renderResetPasswordPage = (req, res) => {
       submitBtn.textContent = 'Resetting Password...';
 
       try {
-        const response = await fetch('/api/auth/reset-password', {
+        const postUrl = form.action || window.location.pathname || '/reset-password';
+        const response = await fetch(postUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
           body: JSON.stringify({ token, newPassword, confirmPassword })
@@ -610,6 +661,9 @@ const renderResetPasswordPage = (req, res) => {
   </script>
 </body>
 </html>`;
+
+  res.send(html);
+};
 
   res.send(html);
 };

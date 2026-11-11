@@ -25,6 +25,8 @@ const settingRoutes = require('./routes/settingRoutes');
 const { initializeFirebase, isFirebaseConfigured, getFirebaseProjectId } = require('./config/firebase');
 const emailService = require('./services/emailService');
 const { renderPrivacyPage, renderTermsPage, renderSupportPage } = require('./controllers/legalController');
+const authController = require('./controllers/authController');
+const { validateResetPassword } = require('./middleware/validation');
 
 // Initialize Firebase Admin SDK (safe startup)
 initializeFirebase();
@@ -114,6 +116,17 @@ app.get('/', (req, res) => {
 app.get('/privacy', renderPrivacyPage);
 app.get('/terms', renderTermsPage);
 app.get('/support', renderSupportPage);
+
+// Clean Password Reset Web Pages
+app.get('/reset-password', authController.renderResetPasswordPage);
+app.post('/reset-password', validateResetPassword, authController.resetPassword);
+
+// Google Search Console Site Verification Endpoint
+app.get('/google:code.html', (req, res) => {
+  const code = req.params.code;
+  res.setHeader('Content-Type', 'text/html');
+  res.send(`google-site-verification: google${code}.html`);
+});
 
 // API Routes
 app.use('/api/auth', authRoutes);
