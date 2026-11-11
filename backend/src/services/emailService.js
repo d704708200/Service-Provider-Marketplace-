@@ -1,4 +1,159 @@
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+
+/**
+ * Determine the active email provider based on environment configuration.
+ * Prioritizes 'google-apps-script' when configured on Render to bypass outbound SMTP port blocks.
+ */
+const getActiveProvider = () => {
+  const envProvider = (process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
+
+  if (envProvider === 'google-apps-script' || envProvider === 'appsscript' || envProvider === 'apps-script') {
+    return 'google-apps-script';
+  }
+
+  if (envProvider === 'brevo') {
+    return 'brevo';
+  }
+
+  if (envProvider === 'smtp' || envProvider === 'gmail') {
+    return 'smtp';
+  }
+
+  // Fallback auto-detection if EMAIL_PROVIDER is not explicitly set:
+  if (process.env.GOOGLE_APPS_SCRIPT_URL && process.env.GOOGLE_APPS_SCRIPT_SECRET) {
+    return 'google-apps-script';
+  }
+
+  if (process.env.BREVO_API_KEY) {
+    return 'brevo';
+  }
+
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    return 'smtp';
+  }
+
+  return 'none';
+};
+
+/**
+ * Check if the active email provider is properly configured
+ */
+const isConfigured = () => {
+  const provider = getActiveProvider();
+  if (provider === 'google-apps-script') {
+    return Boolean(process.env.GOOGLE_APPS_SCRIPT_URL && process.env.GOOGLE_APPS_SCRIPT_SECRET);
+  }
+  if (provider === 'smtp') {
+    return Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
+  }
+  if (provider === 'brevo') {
+    return Boolean(process.env.BREVO_API_KEY);
+  }
+  return false;
+};
+
+/**
+ * Send email via Google Apps Script Web App Relay.
+ * Handles ContentService 302 redirects automatically and parses JSON output.
+ */
+const sendViaAppsScript = async ({ to, subject, htmlBody, textBody, senderName }) => {
+  const scriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
+  const secret = process.env.GOOGLE_APPS_SCRIPT_SECRET;
+
+  if (!scriptUrl || !secret) {
+    return {
+      success: false,
+      provider: 'google-apps-script',
+      configured: false,
+      error: 'Google Apps Script configuration missing: GOOGLE_APPS_SCRIPT_URL or GOOGLE_APPS_SCRIPT_SECRET is unset.'
+    };
+  }
+
+  // Unique requestId between 16 and 100 characters (e.g. 41 chars)
+  const requestId = `req_${Date.now()}_${crypto.randomBytes(12).toString('hex')}`;
+
+  const payload = {
+    action: 'sendEmail',
+    secret,
+    to,
+    subject,
+    htmlBody,
+    textBody,
+    requestId,
+    senderName: senderName || process.env.EMAIL_SENDER_NAME || 'Mendroo Marketplace'
+  };
+
+  try {
+    let response = await fetch(scriptUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+    });
+
+    // Fallback: If 302/301 redirect wasn't followed automatically
+    if ((response.status === 301 || response.status === 302 || response.status === 307) && response.headers.get('location')) {
+      const redirectUrl = response.headers.get('location');
+      response = await fetch(redirectUrl, {
+        method: 'GET',
+        redirect: 'follow'
+      });
+    }
+
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      return {
+        success: false,
+        provider: 'google-apps-script',
+        configured: true,
+        simulated: false,
+        error: `Invalid response format from Apps Script (HTTP ${response.status}): ${text.slice(0, 200)}`,
+        requestId
+      };
+    }
+
+    if (data.success === true) {
+      console.log(`[EMAIL SERVICE] Email successfully delivered to ${to} via Google Apps Script (Request ID: ${requestId})`);
+      return {
+        success: true,
+        provider: 'google-apps-script',
+        configured: true,
+        simulated: false,
+        messageId: data.messageId || requestId,
+        requestId,
+        recipient: to,
+        response: data
+      };
+    }
+
+    console.error(`[EMAIL SERVICE ERROR] Google Apps Script rejected email to ${to}:`, data.error || data.message || 'Unknown error');
+    return {
+      success: false,
+      provider: 'google-apps-script',
+      configured: true,
+      simulated: false,
+      error: data.error || data.message || 'Apps Script returned success=false',
+      requestId,
+      response: data
+    };
+  } catch (err) {
+    console.error(`[EMAIL SERVICE ERROR] Failed to connect to Google Apps Script relay:`, err.message);
+    return {
+      success: false,
+      provider: 'google-apps-script',
+      configured: true,
+      simulated: false,
+      error: err.message,
+      requestId
+    };
+  }
+};
 
 /**
  * Create SMTP transporter using environment variables.
@@ -6,7 +161,6 @@ const nodemailer = require('nodemailer');
  */
 const createTransporter = () => {
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-  // Use port 587 with STARTTLS by default for Gmail SMTP
   const port = parseInt(process.env.SMTP_PORT, 10) || 587;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
@@ -20,8 +174,8 @@ const createTransporter = () => {
   return nodemailer.createTransport({
     host,
     port,
-    secure: isSecure, // false for port 587
-    requireTLS: port === 587, // explicitly enforce STARTTLS on port 587
+    secure: isSecure,
+    requireTLS: port === 587,
     auth: {
       user,
       pass
@@ -36,114 +190,115 @@ const createTransporter = () => {
 };
 
 /**
- * Run SMTP transporter verification to test connection & auth handshake
+ * Verify email provider connection and authentication
  */
-const verifyTransporter = async () => {
-  const transporter = createTransporter();
-  if (!transporter) {
-    return {
-      success: false,
-      configured: false,
-      error: 'SMTP credentials missing: SMTP_USER and/or SMTP_PASS are not configured in environment.'
-    };
+const verifyEmailProvider = async () => {
+  const provider = getActiveProvider();
+
+  if (provider === 'google-apps-script') {
+    const scriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
+    const secret = process.env.GOOGLE_APPS_SCRIPT_SECRET;
+
+    if (!scriptUrl || !secret) {
+      return {
+        success: false,
+        provider: 'google-apps-script',
+        configured: false,
+        error: 'GOOGLE_APPS_SCRIPT_URL or GOOGLE_APPS_SCRIPT_SECRET is missing.'
+      };
+    }
+
+    // Ping or verify connection to Apps Script Web App
+    const requestId = `ping_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
+    try {
+      let response = await fetch(scriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'ping',
+          secret,
+          requestId
+        }),
+        redirect: 'follow'
+      });
+
+      if ((response.status === 301 || response.status === 302 || response.status === 307) && response.headers.get('location')) {
+        response = await fetch(response.headers.get('location'), {
+          method: 'GET',
+          redirect: 'follow'
+        });
+      }
+
+      const text = await response.text();
+      let data = {};
+      try { data = JSON.parse(text); } catch (e) { data = { raw: text }; }
+
+      // If ping returns success=true or endpoint responded with valid HTTP status
+      const isOk = response.status >= 200 && response.status < 400 && data.success !== false;
+
+      return {
+        success: isOk,
+        provider: 'google-apps-script',
+        configured: true,
+        status: response.status,
+        data: data.success !== undefined ? { success: data.success, message: data.message || 'Relay reachable' } : { reachable: true }
+      };
+    } catch (err) {
+      return {
+        success: false,
+        provider: 'google-apps-script',
+        configured: true,
+        error: err.message
+      };
+    }
   }
 
-  try {
-    await transporter.verify();
-    return {
-      success: true,
-      configured: true,
-      host: transporter.options.host,
-      port: transporter.options.port,
-      secure: transporter.options.secure,
-      requireTLS: transporter.options.requireTLS
-    };
-  } catch (err) {
-    return {
-      success: false,
-      configured: true,
-      host: transporter.options.host,
-      port: transporter.options.port,
-      error: err.message
-    };
+  if (provider === 'smtp') {
+    const transporter = createTransporter();
+    if (!transporter) {
+      return {
+        success: false,
+        provider: 'smtp',
+        configured: false,
+        error: 'SMTP credentials missing: SMTP_USER and/or SMTP_PASS are not configured.'
+      };
+    }
+
+    try {
+      await transporter.verify();
+      return {
+        success: true,
+        provider: 'smtp',
+        configured: true,
+        host: transporter.options.host,
+        port: transporter.options.port,
+        secure: transporter.options.secure,
+        requireTLS: transporter.options.requireTLS
+      };
+    } catch (err) {
+      return {
+        success: false,
+        provider: 'smtp',
+        configured: true,
+        host: transporter.options.host,
+        port: transporter.options.port,
+        error: err.message
+      };
+    }
   }
+
+  return {
+    success: false,
+    provider: 'none',
+    configured: false,
+    error: 'No email provider configured in environment.'
+  };
 };
 
 /**
- * Send one genuine test email to an authorized test mailbox
- */
-const sendTestEmail = async ({ to }) => {
-  const transporter = createTransporter();
-  if (!transporter) {
-    return {
-      success: false,
-      configured: false,
-      simulated: true,
-      error: 'SMTP credentials missing. Email NOT sent.'
-    };
-  }
-
-  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || 'Mendroo Marketplace <no-reply@mendroo.com>';
-  const subject = 'Mendroo Marketplace - Gmail SMTP Integration Verification';
-  const text = `This is a genuine verification email from Mendroo Marketplace confirming Gmail SMTP integration on port 587 with STARTTLS.\n\nTimestamp: ${new Date().toISOString()}`;
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; background-color: #0B0B0E; color: #E2E8F0; border-radius: 12px; border: 1px solid #28233D; max-width: 500px;">
-      <h2 style="color: #A78BFA; margin-top: 0;">Mendroo Marketplace - SMTP Verification</h2>
-      <p style="font-size: 14px; line-height: 22px; color: #CBD5E1;">
-        This is a genuine verification email confirming that Gmail SMTP is operating properly on <strong>smtp.gmail.com:587</strong> with <strong>STARTTLS</strong>.
-      </p>
-      <div style="background-color: #161424; padding: 12px 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #28233D; font-size: 13px;">
-        <p style="margin: 4px 0;"><strong>Status:</strong> ✅ Verified Connected</p>
-        <p style="margin: 4px 0;"><strong>Server:</strong> smtp.gmail.com:587 (STARTTLS)</p>
-        <p style="margin: 4px 0;"><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
-      </div>
-      <p style="font-size: 12px; color: #64748B; margin-bottom: 0;">
-        &copy; ${new Date().getFullYear()} Mendroo Service Provider Marketplace. All rights reserved.
-      </p>
-    </div>
-  `.trim();
-
-  try {
-    const info = await transporter.sendMail({
-      from: fromAddress,
-      to,
-      subject,
-      text,
-      html
-    });
-
-    console.log(`[EMAIL SERVICE] Test verification email sent to ${to} (Message ID: ${info.messageId})`);
-    return {
-      success: true,
-      configured: true,
-      simulated: false,
-      messageId: info.messageId,
-      recipient: to
-    };
-  } catch (err) {
-    console.error(`[EMAIL SERVICE ERROR] Test email delivery failed to ${to}:`, err.message);
-    return {
-      success: false,
-      configured: true,
-      simulated: false,
-      error: err.message
-    };
-  }
-};
-
-/**
- * Send Password Reset Email
- * 
- * @param {Object} options
- * @param {string} options.to - Recipient email address
- * @param {string} options.name - Recipient user name
- * @param {string} options.resetUrl - Password reset action link
- * @param {number} options.expiresInMinutes - Expiration time in minutes (default 15)
+ * Send Password Reset Email using the active provider
  */
 const sendPasswordResetEmail = async ({ to, name, resetUrl, expiresInMinutes = 15 }) => {
-  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || 'Mendroo Marketplace <no-reply@mendroo.com>';
-  const transporter = createTransporter();
-
   const subject = 'Reset Your Mendroo Account Password';
 
   const htmlContent = `
@@ -307,49 +462,166 @@ If you did not request this password reset, please ignore this email. Your passw
 - The Mendroo Marketplace Team
   `.trim();
 
-  if (!transporter) {
-    // When SMTP is not configured in local development, record notice without reporting false success
-    console.warn('[EMAIL SERVICE] SMTP transporter not configured (SMTP_USER or SMTP_PASS missing). Email NOT sent.');
-    return {
-      success: false,
-      simulated: true,
-      error: 'SMTP transporter not configured. Set SMTP_USER and SMTP_PASS in environment variables.',
-      resetUrl
-    };
-  }
+  const provider = getActiveProvider();
 
-  try {
-    const info = await transporter.sendMail({
-      from: fromAddress,
+  if (provider === 'google-apps-script') {
+    const result = await sendViaAppsScript({
       to,
       subject,
-      text: textContent,
-      html: htmlContent
+      htmlBody: htmlContent,
+      textBody: textContent,
+      senderName: 'Mendroo Marketplace'
     });
 
-    console.log(`[EMAIL SERVICE] Password reset email sent to ${to} (Message ID: ${info.messageId})`);
     return {
-      success: true,
-      simulated: false,
-      messageId: info.messageId,
-      resetUrl
-    };
-  } catch (err) {
-    console.error(`[EMAIL SERVICE ERROR] Failed to send email to ${to}:`, err.message);
-    // Return error without crashing callers
-    return {
-      success: false,
-      simulated: false,
-      error: err.message,
+      ...result,
       resetUrl
     };
   }
+
+  if (provider === 'smtp') {
+    const transporter = createTransporter();
+    if (!transporter) {
+      console.warn('[EMAIL SERVICE] SMTP transporter not configured (SMTP_USER or SMTP_PASS missing). Email NOT sent.');
+      return {
+        success: false,
+        provider: 'smtp',
+        simulated: true,
+        error: 'SMTP transporter not configured. Set SMTP_USER and SMTP_PASS in environment variables.',
+        resetUrl
+      };
+    }
+
+    try {
+      const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || 'Mendroo Marketplace <no-reply@mendroo.com>';
+      const info = await transporter.sendMail({
+        from: fromAddress,
+        to,
+        subject,
+        text: textContent,
+        html: htmlContent
+      });
+
+      console.log(`[EMAIL SERVICE] Password reset email sent to ${to} via SMTP (Message ID: ${info.messageId})`);
+      return {
+        success: true,
+        provider: 'smtp',
+        simulated: false,
+        messageId: info.messageId,
+        resetUrl
+      };
+    } catch (err) {
+      console.error(`[EMAIL SERVICE ERROR] Failed to send email to ${to} via SMTP:`, err.message);
+      return {
+        success: false,
+        provider: 'smtp',
+        simulated: false,
+        error: err.message,
+        resetUrl
+      };
+    }
+  }
+
+  console.warn('[EMAIL SERVICE] No active email provider configured (EMAIL_PROVIDER unset or missing credentials). Email NOT sent.');
+  return {
+    success: false,
+    provider: 'none',
+    simulated: true,
+    error: 'No email provider configured. Set EMAIL_PROVIDER=google-apps-script with GOOGLE_APPS_SCRIPT_URL and GOOGLE_APPS_SCRIPT_SECRET.',
+    resetUrl
+  };
+};
+
+/**
+ * Send one genuine test email to an authorized test mailbox
+ */
+const sendTestEmail = async ({ to }) => {
+  const provider = getActiveProvider();
+  const subject = 'Mendroo Marketplace - Email Relay Verification';
+  const text = `This is a genuine verification email confirming that the Mendroo Marketplace email relay (${provider}) is operating properly.\n\nTimestamp: ${new Date().toISOString()}`;
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; background-color: #0B0B0E; color: #E2E8F0; border-radius: 12px; border: 1px solid #28233D; max-width: 500px;">
+      <h2 style="color: #A78BFA; margin-top: 0;">Mendroo Marketplace - Email Verification</h2>
+      <p style="font-size: 14px; line-height: 22px; color: #CBD5E1;">
+        This is a genuine verification email confirming that the <strong>${provider}</strong> email relay is operating properly and delivering messages to recipient mailboxes.
+      </p>
+      <div style="background-color: #161424; padding: 12px 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #28233D; font-size: 13px;">
+        <p style="margin: 4px 0;"><strong>Active Provider:</strong> ${provider}</p>
+        <p style="margin: 4px 0;"><strong>Status:</strong> ✅ Genuine Live Delivery</p>
+        <p style="margin: 4px 0;"><strong>Recipient:</strong> ${to}</p>
+        <p style="margin: 4px 0;"><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+      </div>
+      <p style="font-size: 12px; color: #64748B; margin-bottom: 0;">
+        &copy; ${new Date().getFullYear()} Mendroo Service Provider Marketplace. All rights reserved.
+      </p>
+    </div>
+  `.trim();
+
+  if (provider === 'google-apps-script') {
+    return await sendViaAppsScript({
+      to,
+      subject,
+      htmlBody: html,
+      textBody: text,
+      senderName: 'Mendroo Marketplace'
+    });
+  }
+
+  if (provider === 'smtp') {
+    const transporter = createTransporter();
+    if (!transporter) {
+      return {
+        success: false,
+        provider: 'smtp',
+        configured: false,
+        simulated: true,
+        error: 'SMTP credentials missing. Email NOT sent.'
+      };
+    }
+    const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || 'Mendroo Marketplace <no-reply@mendroo.com>';
+    try {
+      const info = await transporter.sendMail({
+        from: fromAddress,
+        to,
+        subject,
+        text,
+        html
+      });
+      return {
+        success: true,
+        provider: 'smtp',
+        configured: true,
+        simulated: false,
+        messageId: info.messageId,
+        recipient: to
+      };
+    } catch (err) {
+      return {
+        success: false,
+        provider: 'smtp',
+        configured: true,
+        simulated: false,
+        error: err.message
+      };
+    }
+  }
+
+  return {
+    success: false,
+    provider: 'none',
+    configured: false,
+    simulated: true,
+    error: 'No email provider configured. Email NOT sent.'
+  };
 };
 
 module.exports = {
+  getActiveProvider,
+  isConfigured,
+  sendViaAppsScript,
   sendPasswordResetEmail,
-  createTransporter,
-  verifyTransporter,
-  sendTestEmail
+  sendTestEmail,
+  verifyEmailProvider,
+  verifyTransporter: verifyEmailProvider,
+  createTransporter
 };
-

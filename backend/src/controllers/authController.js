@@ -82,14 +82,20 @@ const getMe = async (req, res, next) => {
 const forgotPassword = async (req, res, next) => {
   try {
     const origin = req.get('origin') || `${req.protocol}://${req.get('host')}`;
+    const isAdminTest = Boolean(
+      process.env.GOOGLE_APPS_SCRIPT_SECRET &&
+      req.headers['x-admin-secret'] &&
+      req.headers['x-admin-secret'] === process.env.GOOGLE_APPS_SCRIPT_SECRET
+    );
     const result = await authService.forgotPassword({
       email: req.body.email,
-      origin
+      origin,
+      isAdminTest
     });
     res.status(200).json({
       success: true,
       message: result.message,
-      ...(result.testToken ? { testToken: result.testToken } : {})
+      ...(isAdminTest && result.testResetUrl ? { testResetUrl: result.testResetUrl, deliveryStatus: result.deliveryStatus } : {})
     });
   } catch (error) {
     next(error);

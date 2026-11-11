@@ -23,6 +23,7 @@ const providerMyServicesRoutes = require('./routes/providerMyServicesRoutes');
 const serviceRadiusRoutes = require('./routes/serviceRadiusRoutes');
 const settingRoutes = require('./routes/settingRoutes');
 const { initializeFirebase, isFirebaseConfigured, getFirebaseProjectId } = require('./config/firebase');
+const emailService = require('./services/emailService');
 
 // Initialize Firebase Admin SDK (safe startup)
 initializeFirebase();
@@ -71,6 +72,15 @@ app.get('/api/health', (req, res) => {
     firebase: {
       configured: isFirebaseConfigured(),
       projectId: getFirebaseProjectId()
+    },
+    email: {
+      provider: emailService.getActiveProvider(),
+      configured: emailService.isConfigured(),
+      hasEmailProviderEnv: Boolean(process.env.EMAIL_PROVIDER),
+      hasAppsScriptUrl: Boolean(process.env.GOOGLE_APPS_SCRIPT_URL),
+      hasAppsScriptSecret: Boolean(process.env.GOOGLE_APPS_SCRIPT_SECRET),
+      smtpConfigured: Boolean(process.env.SMTP_USER && process.env.SMTP_PASS),
+      brevoConfigured: Boolean(process.env.BREVO_API_KEY)
     },
     smtp: {
       configured: Boolean(process.env.SMTP_USER && process.env.SMTP_PASS),
