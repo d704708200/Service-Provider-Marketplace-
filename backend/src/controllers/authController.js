@@ -665,9 +665,6 @@ const renderResetPasswordPage = async (req, res) => {
   res.send(html);
 };
 
-  res.send(html);
-};
-
 const verifySmtp = async (req, res, next) => {
   try {
     const result = await emailService.verifyTransporter();
