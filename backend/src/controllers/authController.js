@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const authService = require('../services/authService');
 const emailService = require('../services/emailService');
 
@@ -103,29 +104,50 @@ const forgotPassword = async (req, res, next) => {
 };
 
 const resetPassword = async (req, res, next) => {
+  const isHtmlSubmission = Boolean(
+    req.headers.accept &&
+    req.headers.accept.includes('text/html') &&
+    !req.xhr &&
+    !req.is('json')
+  );
+
   try {
     const result = await authService.resetPassword({
       token: req.body.token,
       newPassword: req.body.newPassword,
       confirmPassword: req.body.confirmPassword
     });
+
+    if (isHtmlSubmission) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      return res.status(200).send(renderSuccessHtml(result.message));
+    }
+
     res.status(200).json({
       success: true,
       message: result.message
     });
   } catch (error) {
+    if (isHtmlSubmission) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      return res.status(error.statusCode || 400).send(renderErrorHtml(error.message, req.body.token));
+    }
     next(error);
   }
 };
 
-const renderResetPasswordPage = (req, res) => {
-  const token = req.query.token || '';
-  const html = `<!DOCTYPE html>
+const renderSuccessHtml = (message) => `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reset Password - Mendroo Marketplace</title>
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>Password Reset Successful - Mendroo Marketplace</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%237C3AED'/%3E%3Ctext x='50%25' y='65%25' font-size='56' font-weight='800' fill='white' text-anchor='middle' font-family='system-ui, sans-serif'%3EM%3C/text%3E%3C/svg%3E">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -140,7 +162,133 @@ const renderResetPasswordPage = (req, res) => {
     }
     .container {
       width: 100%;
-      max-width: 440px;
+      max-width: 460px;
+      background: #161424;
+      border: 1px solid #28233D;
+      border-radius: 16px;
+      padding: 36px 28px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    }
+    .icon { font-size: 48px; margin-bottom: 16px; }
+    .brand { font-size: 24px; font-weight: 800; color: #FFFFFF; text-transform: uppercase; margin-bottom: 6px; }
+    .brand span { color: #8B5CF6; }
+    h1 { font-size: 20px; font-weight: 700; color: #10B981; margin-bottom: 12px; }
+    p { font-size: 14px; color: #CBD5E1; line-height: 1.6; margin-bottom: 24px; }
+    .footer { font-size: 12px; color: #64748B; border-top: 1px solid #28233D; padding-top: 18px; margin-top: 18px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="brand">Mend<span>roo</span> Marketplace</div>
+    <div class="icon">✅</div>
+    <h1>Password Reset Successful</h1>
+    <p>${message || 'Your password has been reset successfully. You can now return to the Mendroo Customer or Provider App to log in.'}</p>
+    <div class="footer">&copy; ${new Date().getFullYear()} Mendroo Service Provider Marketplace. All rights reserved.</div>
+  </div>
+</body>
+</html>`;
+
+const renderErrorHtml = (errorMessage, token) => `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>Reset Failed - Mendroo Marketplace</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%237C3AED'/%3E%3Ctext x='50%25' y='65%25' font-size='56' font-weight='800' fill='white' text-anchor='middle' font-family='system-ui, sans-serif'%3EM%3C/text%3E%3C/svg%3E">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #0B0B0E;
+      color: #E2E8F0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      width: 100%;
+      max-width: 460px;
+      background: #161424;
+      border: 1px solid #28233D;
+      border-radius: 16px;
+      padding: 36px 28px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    }
+    .icon { font-size: 48px; margin-bottom: 16px; }
+    .brand { font-size: 24px; font-weight: 800; color: #FFFFFF; text-transform: uppercase; margin-bottom: 6px; }
+    .brand span { color: #8B5CF6; }
+    h1 { font-size: 20px; font-weight: 700; color: #EF4444; margin-bottom: 12px; }
+    p { font-size: 14px; color: #CBD5E1; line-height: 1.6; margin-bottom: 24px; }
+    .btn {
+      display: inline-block;
+      background: #7C3AED;
+      color: #FFFFFF;
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .footer { font-size: 12px; color: #64748B; border-top: 1px solid #28233D; padding-top: 18px; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="brand">Mend<span>roo</span> Marketplace</div>
+    <div class="icon">⚠️</div>
+    <h1>Password Reset Failed</h1>
+    <p>${errorMessage || 'The reset link may have expired or was already used. Please request a new reset email from the app.'}</p>
+    <a href="/api/auth/reset-password?token=${token || ''}" class="btn">Try Again</a>
+    <div class="footer">&copy; ${new Date().getFullYear()} Mendroo Service Provider Marketplace. All rights reserved.</div>
+  </div>
+</body>
+</html>`;
+
+const renderResetPasswordPage = (req, res) => {
+  const nonce = crypto.randomBytes(16).toString('base64');
+  const safeToken = (req.query.token || '').toString().replace(/[^a-zA-Z0-9]/g, '');
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader(
+    'Content-Security-Policy',
+    `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https: data:; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests`
+  );
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Official password recovery portal for Mendroo Service Provider Marketplace. Securely choose a new password for your customer or provider account.">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="theme-color" content="#7C3AED">
+  <meta name="application-name" content="Mendroo Marketplace">
+  <link rel="canonical" href="https://service-provider-marketplace.onrender.com/api/auth/reset-password">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%237C3AED'/%3E%3Ctext x='50%25' y='65%25' font-size='56' font-weight='800' fill='white' text-anchor='middle' font-family='system-ui, sans-serif'%3EM%3C/text%3E%3C/svg%3E">
+  <title>Reset Password - Mendroo Service Provider Marketplace</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #0B0B0E;
+      color: #E2E8F0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+    .container {
+      width: 100%;
+      max-width: 460px;
       background: #161424;
       border: 1px solid #28233D;
       border-radius: 16px;
@@ -149,10 +297,10 @@ const renderResetPasswordPage = (req, res) => {
     }
     .header {
       text-align: center;
-      margin-bottom: 28px;
+      margin-bottom: 24px;
     }
     .brand {
-      font-size: 26px;
+      font-size: 24px;
       font-weight: 800;
       color: #FFFFFF;
       letter-spacing: 0.5px;
@@ -161,6 +309,26 @@ const renderResetPasswordPage = (req, res) => {
     }
     .brand span {
       color: #8B5CF6;
+    }
+    .brand-sub {
+      color: #94A3B8;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .official-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(124, 58, 237, 0.15);
+      border: 1px solid rgba(124, 58, 237, 0.35);
+      color: #C4B5FD;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
     .title {
       font-size: 20px;
@@ -171,17 +339,33 @@ const renderResetPasswordPage = (req, res) => {
     .subtitle {
       font-size: 13px;
       color: #94A3B8;
+      line-height: 1.5;
+    }
+    .security-notice {
+      background: #12101F;
+      border-left: 3px solid #8B5CF6;
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 22px;
+      font-size: 12px;
+      color: #CBD5E1;
       line-height: 1.4;
     }
+    .security-notice code {
+      color: #A78BFA;
+      font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 11px;
+      word-break: break-all;
+    }
     .form-group {
-      margin-bottom: 20px;
+      margin-bottom: 18px;
     }
     label {
       display: block;
       font-size: 13px;
       font-weight: 600;
       color: #CBD5E1;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
     .input-wrapper {
       position: relative;
@@ -245,7 +429,7 @@ const renderResetPasswordPage = (req, res) => {
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-top: 10px;
+      margin-top: 8px;
       font-size: 12px;
       color: #94A3B8;
       cursor: pointer;
@@ -257,28 +441,65 @@ const renderResetPasswordPage = (req, res) => {
     .requirements {
       font-size: 11px;
       color: #64748B;
-      margin-top: 6px;
+      margin-top: 4px;
+    }
+    .footer {
+      border-top: 1px solid #28233D;
+      padding-top: 20px;
+      margin-top: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: #64748B;
+    }
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      margin-bottom: 8px;
+    }
+    .footer-links a {
+      color: #94A3B8;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover {
+      color: #A78BFA;
+    }
+    .sep {
+      color: #475569;
+    }
+    .copyright {
+      font-size: 11px;
+      color: #475569;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <div class="brand">Mend<span>roo</span></div>
-      <div class="title">Set New Password</div>
-      <div class="subtitle">Enter and confirm your new password below.</div>
+      <div class="brand">Mend<span>roo</span> <span class="brand-sub">Marketplace</span></div>
+      <div class="official-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        Official Account Security Portal
+      </div>
+      <h1 class="title">Set New Password</h1>
+      <p class="subtitle">Secure password recovery for your Customer or Service Provider account.</p>
+    </div>
+
+    <div class="security-notice">
+      🔒 <strong>Verified Endpoint:</strong> This password update form connects directly to <code>https://service-provider-marketplace.onrender.com</code>.
     </div>
 
     <div id="alertError" class="alert alert-error"></div>
     <div id="alertSuccess" class="alert alert-success"></div>
 
-    <form id="resetForm">
-      <input type="hidden" id="token" value="${token}">
+    <form id="resetForm" method="POST" action="/api/auth/reset-password" enctype="application/x-www-form-urlencoded">
+      <input type="hidden" name="token" id="token" value="${safeToken}">
 
       <div class="form-group">
         <label for="newPassword">New Password</label>
         <div class="input-wrapper">
-          <input type="password" id="newPassword" placeholder="Minimum 6 characters" required autocomplete="new-password">
+          <input type="password" name="newPassword" id="newPassword" placeholder="Minimum 6 characters" required minlength="6" autocomplete="new-password">
         </div>
         <div class="requirements">Must be at least 6 characters long</div>
       </div>
@@ -286,7 +507,7 @@ const renderResetPasswordPage = (req, res) => {
       <div class="form-group">
         <label for="confirmPassword">Confirm New Password</label>
         <div class="input-wrapper">
-          <input type="password" id="confirmPassword" placeholder="Re-enter new password" required autocomplete="new-password">
+          <input type="password" name="confirmPassword" id="confirmPassword" placeholder="Re-enter new password" required minlength="6" autocomplete="new-password">
         </div>
       </div>
 
@@ -298,9 +519,20 @@ const renderResetPasswordPage = (req, res) => {
 
       <button type="submit" id="submitBtn" class="btn">Reset Password</button>
     </form>
+
+    <div class="footer">
+      <div class="footer-links">
+        <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+        <span class="sep">&bull;</span>
+        <a href="/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
+        <span class="sep">&bull;</span>
+        <a href="/support" target="_blank" rel="noopener noreferrer">Help &amp; Support</a>
+      </div>
+      <div class="copyright">&copy; ${new Date().getFullYear()} Mendroo Service Provider Marketplace. All rights reserved.</div>
+    </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const form = document.getElementById('resetForm');
     const newPasswordInput = document.getElementById('newPassword');
     const confirmPasswordInput = document.getElementById('confirmPassword');
@@ -314,7 +546,7 @@ const renderResetPasswordPage = (req, res) => {
     const token = document.getElementById('token').value || urlParams.get('token') || '';
 
     if (!token) {
-      alertError.textContent = 'Invalid or missing password reset token. Please request a new password reset email.';
+      alertError.textContent = 'Invalid or missing password reset token. Please request a new password reset email from your Mendroo Customer or Provider App.';
       alertError.style.display = 'block';
       submitBtn.disabled = true;
     }
@@ -351,7 +583,7 @@ const renderResetPasswordPage = (req, res) => {
       try {
         const response = await fetch('/api/auth/reset-password', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
           body: JSON.stringify({ token, newPassword, confirmPassword })
         });
 
@@ -359,10 +591,10 @@ const renderResetPasswordPage = (req, res) => {
 
         if (response.ok && data.success) {
           form.style.display = 'none';
-          alertSuccess.innerHTML = '<strong>Success!</strong><br>' + (data.message || 'Your password has been reset successfully. You can now return to the app and log in.');
+          alertSuccess.innerHTML = '<strong>Success!</strong><br>' + (data.message || 'Your password has been reset successfully. You can now return to the Mendroo Customer or Provider App to log in.');
           alertSuccess.style.display = 'block';
         } else {
-          const errMsg = data.error?.message || data.message || 'Failed to reset password. The link may have expired.';
+          const errMsg = data.error?.message || data.message || 'Failed to reset password. The link may have expired or was already used.';
           alertError.textContent = errMsg;
           alertError.style.display = 'block';
           submitBtn.disabled = false;
@@ -378,8 +610,8 @@ const renderResetPasswordPage = (req, res) => {
   </script>
 </body>
 </html>`;
-  res.setHeader('Content-Type', 'text/html');
-  res.status(200).send(html);
+
+  res.send(html);
 };
 
 const verifySmtp = async (req, res, next) => {

@@ -24,6 +24,7 @@ const serviceRadiusRoutes = require('./routes/serviceRadiusRoutes');
 const settingRoutes = require('./routes/settingRoutes');
 const { initializeFirebase, isFirebaseConfigured, getFirebaseProjectId } = require('./config/firebase');
 const emailService = require('./services/emailService');
+const { renderPrivacyPage, renderTermsPage, renderSupportPage } = require('./controllers/legalController');
 
 // Initialize Firebase Admin SDK (safe startup)
 initializeFirebase();
@@ -102,9 +103,17 @@ app.get('/', (req, res) => {
     name: 'Service Provider Marketplace API',
     version: '1.0.0',
     documentation: '/docs',
-    health: '/api/health'
+    health: '/api/health',
+    privacy: '/privacy',
+    terms: '/terms',
+    support: '/support'
   });
 });
+
+// Transparency & Legal Documentation Pages
+app.get('/privacy', renderPrivacyPage);
+app.get('/terms', renderTermsPage);
+app.get('/support', renderSupportPage);
 
 // API Routes
 app.use('/api/auth', authRoutes);

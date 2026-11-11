@@ -14,3 +14,5 @@ cloudflared.exe
 *.aab
 *.xml
 release-apks/
+.build-temp/
+**/.build-temp/
