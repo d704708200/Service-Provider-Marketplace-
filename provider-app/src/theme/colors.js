@@ -23,6 +23,10 @@ export const colors = {
   background: '#0B0B0E', // True Figma canvas deep black
   card: '#16141F', // Deep dark purple-tinted card surface
   cardSecondary: '#1C1929', // Elevated card / row surface
+  surface: '#16141F', // Surface alias for cards and modal dialogs
+  surfaceSecondary: '#1C1929',
+  surfaceElevated: '#1F1B30',
+  surfaceOverlay: 'rgba(0, 0, 0, 0.75)',
   border: '#252136', // Subtle purple-gray card border
   borderLight: '#36314D', // Slightly brighter border for active/focused elements
   inputBackground: '#161420', // Input field dark background
@@ -32,6 +36,7 @@ export const colors = {
   textPrimary: '#FFFFFF',
   textSecondary: '#9CA3AF',
   textMuted: '#6B7280',
+  text: '#FFFFFF', // High-contrast default text alias
 
   // Slate mapping for full backwards compatibility
   slate900: '#FFFFFF', // High-contrast headers

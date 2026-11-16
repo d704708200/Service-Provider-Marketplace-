@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Linking
+  Linking,
+  AppState
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -34,6 +35,17 @@ export const GPS_ERROR_TYPES = {
   UNKNOWN: 'UNKNOWN'
 };
 
+export const PERMISSION_STATES = {
+  NOT_REQUESTED: 'NOT_REQUESTED',
+  REQUESTED: 'REQUESTED',
+  GRANTED: 'GRANTED',
+  DENIED: 'DENIED',
+  PERMANENTLY_DENIED: 'PERMANENTLY_DENIED',
+  SERVICES_DISABLED: 'SERVICES_DISABLED',
+  TIMEOUT: 'TIMEOUT',
+  UNAVAILABLE: 'UNAVAILABLE'
+};
+
 /**
  * Web Geolocation detection with permission pre-check,
  * fallback for high accuracy failures, and error distinction.
@@ -45,20 +57,20 @@ async function detectWebLocation() {
     throw error;
   }
 
-  // 1. Pre-check browser origin permission status if supported
+  // Pre-check browser origin permission status if supported
   let browserPermState = 'prompt';
   if (navigator.permissions && navigator.permissions.query) {
     try {
       const permResult = await navigator.permissions.query({ name: 'geolocation' });
-      browserPermState = permResult.state; // 'granted' | 'prompt' | 'denied'
+      browserPermState = permResult.state;
     } catch (e) {
-      // Some browsers don't support querying 'geolocation'
+      // Query not supported in some browsers
     }
   }
 
   if (browserPermState === 'denied') {
     const error = new Error(
-      'Location permission is blocked in your browser. Please click the lock or site settings icon next to the address bar to allow Location access, then click "Retry GPS".'
+      'Location permission is blocked in your browser. Please allow Location access in your browser settings, then click "Retry GPS".'
     );
     error.code = GPS_ERROR_CODES.PERMISSION_DENIED;
     error.errorType = GPS_ERROR_TYPES.PERMISSION_DENIED;
@@ -71,7 +83,6 @@ async function detectWebLocation() {
     });
   };
 
-  // 2. Attempt high accuracy first (GPS / Wi-Fi Triangulation)
   try {
     const pos = await getPositionPromise({
       enableHighAccuracy: true,
@@ -84,9 +95,7 @@ async function detectWebLocation() {
       accuracy: pos.coords.accuracy
     };
   } catch (initialErr) {
-    const code = initialErr.code; // 1: PERMISSION_DENIED, 2: POSITION_UNAVAILABLE, 3: TIMEOUT
-
-    // If initial error was POSITION_UNAVAILABLE or TIMEOUT, try low accuracy / cached / network IP
+    const code = initialErr.code;
     if (code === GPS_ERROR_CODES.POSITION_UNAVAILABLE || code === GPS_ERROR_CODES.TIMEOUT) {
       try {
         const fallbackPos = await getPositionPromise({
@@ -105,11 +114,11 @@ async function detectWebLocation() {
         err.code = fbCode;
         if (fbCode === GPS_ERROR_CODES.TIMEOUT) {
           err.message =
-            'GPS location request timed out. Your device took too long to acquire coordinates. Please click "Retry GPS" or switch to manual address entry.';
+            'GPS request timed out. Device took too long to acquire coordinates. Please click "Retry GPS" or switch to manual address entry.';
           err.errorType = GPS_ERROR_TYPES.TIMEOUT;
         } else if (fbCode === GPS_ERROR_CODES.POSITION_UNAVAILABLE) {
           err.message =
-            'Unable to determine your GPS location. Satellites or network positioning could not be reached. Please click "Retry GPS" or switch to manual address entry.';
+            'Unable to determine your GPS location. Satellite or network positioning could not be reached. Please click "Retry GPS" or switch to manual entry.';
           err.errorType = GPS_ERROR_TYPES.POSITION_UNAVAILABLE;
         } else {
           err.message = fallbackErr.message || 'Failed to detect location.';
@@ -119,15 +128,13 @@ async function detectWebLocation() {
       }
     }
 
-    // If code === 1 (PERMISSION_DENIED)
     if (code === GPS_ERROR_CODES.PERMISSION_DENIED) {
       const err = new Error();
       err.code = 1;
-      // If browser site permission was already granted, the OS (Windows Location Service or desktop app permission) blocked Chrome
       if (browserPermState === 'granted') {
         err.errorType = GPS_ERROR_TYPES.SYSTEM_DENIED;
         err.message =
-          'Location is Allowed in your browser, but access was denied by your operating system. In Windows Settings > Privacy & security > Location, ensure "Location services" and "Let desktop apps access your location" are ON. Alternatively, click "Switch to Manual Entry".';
+          'Location is Allowed in your browser, but access was denied by your operating system. In Windows Settings > Privacy & security > Location, ensure "Location services" and "Let desktop apps access your location" are ON.';
       } else {
         err.errorType = GPS_ERROR_TYPES.PERMISSION_DENIED;
         err.message =
@@ -145,15 +152,15 @@ async function detectWebLocation() {
 
 /**
  * Native Android / iOS location detection with expo-location:
- * - Checks if device location services (GPS hardware) are turned on.
- * - Checks and requests foreground permissions.
- * - Distinguishes between permissions, disabled service, timeout, and position unavailable.
+ * - Checks hardware location services (GPS toggle).
+ * - Distinguishes foreground permission status and canAskAgain.
+ * - Dispatches proper errors and allows seamless retry after settings.
  */
 async function detectNativeLocation() {
   const servicesEnabled = await Location.hasServicesEnabledAsync();
   if (!servicesEnabled) {
     const error = new Error(
-      'Device location services (GPS) are turned off. Please turn on Location/GPS in your device quick settings, then tap "Retry GPS".'
+      'Device location services (GPS) are turned off. Please turn on Location in your device quick settings, then tap "Retry GPS".'
     );
     error.errorType = GPS_ERROR_TYPES.SERVICES_DISABLED;
     throw error;
@@ -172,13 +179,15 @@ async function detectNativeLocation() {
   }
 
   if (status !== 'granted') {
+    const isPermanentlyDenied = canAskAgain === false;
     const error = new Error(
-      !canAskAgain
+      isPermanentlyDenied
         ? 'Location permission is permanently denied for Provider App. Please tap "Open Settings" to enable Location in App Permissions, or enter your address manually.'
-        : 'Location permission was denied. Please allow location access to automatically detect your service location, or enter your address manually.'
+        : 'Location permission was denied. Please grant location access to detect your service area automatically, or enter your address manually.'
     );
     error.errorType = GPS_ERROR_TYPES.PERMISSION_DENIED;
     error.canAskAgain = canAskAgain;
+    error.isPermanentlyDenied = isPermanentlyDenied;
     throw error;
   }
 
@@ -219,13 +228,14 @@ export default function ServiceAreaRadiusModal({
 }) {
   const [locationMode, setLocationMode] = useState('gps'); // 'gps' | 'manual'
 
-  // GPS State
+  // Permission & GPS Detection State
+  const [permissionState, setPermissionState] = useState(PERMISSION_STATES.NOT_REQUESTED);
   const [isDetectingGps, setIsDetectingGps] = useState(false);
   const [gpsError, setGpsError] = useState(null);
-  const [gpsErrorDetail, setGpsErrorDetail] = useState(null); // { type, code, canAskAgain }
-  const [detectedLocation, setDetectedLocation] = useState(null); // { latitude, longitude, address }
+  const [gpsErrorDetail, setGpsErrorDetail] = useState(null); // { type, canAskAgain }
+  const [detectedLocation, setDetectedLocation] = useState(null); // { latitude, longitude, address, formattedAddress }
 
-  // Manual State
+  // Manual Address State
   const [manualQuery, setManualQuery] = useState('');
   const [isSearchingManual, setIsSearchingManual] = useState(false);
   const [addressSuggestions, setAddressSuggestions] = useState([]);
@@ -237,14 +247,43 @@ export default function ServiceAreaRadiusModal({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // Initialize from existing serviceArea if present
+  // AppState & Settings Navigation Tracker
+  const appStateRef = useRef(AppState.currentState);
+  const waitingForSettingsReturnRef = useRef(false);
+
+  // Check initial foreground location permission quietly on modal open
+  const checkPermissionQuietly = useCallback(async () => {
+    if (Platform.OS === 'web') return;
+    try {
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        setPermissionState(PERMISSION_STATES.SERVICES_DISABLED);
+        return;
+      }
+      const perm = await Location.getForegroundPermissionsAsync();
+      if (perm.status === 'granted') {
+        setPermissionState(PERMISSION_STATES.GRANTED);
+      } else if (perm.canAskAgain === false) {
+        setPermissionState(PERMISSION_STATES.PERMANENTLY_DENIED);
+      } else {
+        setPermissionState(PERMISSION_STATES.DENIED);
+      }
+    } catch (e) {
+      // Quiet check failure
+    }
+  }, []);
+
+  // Initialize modal state from serviceItem
   useEffect(() => {
     if (visible && serviceItem) {
       setErrorMessage(null);
       setGpsError(null);
       setGpsErrorDetail(null);
-      const existing = serviceItem.serviceArea;
+      setAddressSuggestions([]);
 
+      checkPermissionQuietly();
+
+      const existing = serviceItem.serviceArea;
       if (existing) {
         setSelectedRadiusKm(existing.radiusKm);
         const source = existing.locationSource === 'manual' ? 'manual' : 'gps';
@@ -275,13 +314,15 @@ export default function ServiceAreaRadiusModal({
         setLocationMode('gps');
       }
     }
-  }, [visible, serviceItem]);
+  }, [visible, serviceItem, checkPermissionQuietly]);
 
   // Handle GPS Auto Detection
   const handleDetectLocation = async () => {
     setIsDetectingGps(true);
+    setPermissionState(PERMISSION_STATES.REQUESTED);
     setGpsError(null);
     setGpsErrorDetail(null);
+
     try {
       let coords = null;
       if (Platform.OS === 'web') {
@@ -295,6 +336,8 @@ export default function ServiceAreaRadiusModal({
         throw new Error('Unable to obtain valid coordinates from location sensor.');
       }
 
+      setPermissionState(PERMISSION_STATES.GRANTED);
+
       // Reverse geocode via backend proxy
       let addressData = {
         street: '',
@@ -302,7 +345,7 @@ export default function ServiceAreaRadiusModal({
         city: '',
         state: '',
         zipCode: '',
-        formattedAddress: `Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)}`
+        formattedAddress: `Lat: ${lat.toFixed(5)}, Lon: ${lon.toFixed(5)}`
       };
 
       try {
@@ -318,7 +361,7 @@ export default function ServiceAreaRadiusModal({
           };
         }
       } catch (revErr) {
-        // Fallback to coordinates
+        // Fallback to coordinates string
       }
 
       setDetectedLocation({
@@ -327,22 +370,90 @@ export default function ServiceAreaRadiusModal({
         address: addressData,
         formattedAddress: addressData.formattedAddress
       });
+      setGpsError(null);
+      setGpsErrorDetail(null);
     } catch (err) {
+      const errType = err.errorType || GPS_ERROR_TYPES.UNKNOWN;
+      const canAskAgain = err.canAskAgain !== false;
+      const isPermDenied = errType === GPS_ERROR_TYPES.PERMISSION_DENIED && !canAskAgain;
+
+      if (errType === GPS_ERROR_TYPES.SERVICES_DISABLED) {
+        setPermissionState(PERMISSION_STATES.SERVICES_DISABLED);
+      } else if (isPermDenied) {
+        setPermissionState(PERMISSION_STATES.PERMANENTLY_DENIED);
+      } else if (errType === GPS_ERROR_TYPES.PERMISSION_DENIED) {
+        setPermissionState(PERMISSION_STATES.DENIED);
+      } else if (errType === GPS_ERROR_TYPES.TIMEOUT) {
+        setPermissionState(PERMISSION_STATES.TIMEOUT);
+      } else {
+        setPermissionState(PERMISSION_STATES.UNAVAILABLE);
+      }
+
       setGpsError(err.message || 'Failed to detect device location.');
       setGpsErrorDetail({
-        type: err.errorType || GPS_ERROR_TYPES.UNKNOWN,
-        code: err.code || null,
-        canAskAgain: err.canAskAgain !== false
+        type: errType,
+        canAskAgain: canAskAgain
       });
+      // NOTE: We deliberately do NOT wipe detectedLocation if the provider already had a saved area!
     } finally {
       setIsDetectingGps(false);
     }
   };
 
+  // Open App Settings when permission is permanently denied
+  const handleOpenSettings = async () => {
+    waitingForSettingsReturnRef.current = true;
+    try {
+      await Linking.openSettings();
+    } catch (e) {
+      Alert.alert(
+        'Open Settings',
+        'Please open device Settings > Apps > Provider App > Permissions and enable Location access.'
+      );
+    }
+  };
+
+  // Listen to AppState to automatically re-check permission after user returns from Settings
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (
+        appStateRef.current.match(/inactive|background/) &&
+        nextAppState === 'active' &&
+        visible
+      ) {
+        if (waitingForSettingsReturnRef.current) {
+          waitingForSettingsReturnRef.current = false;
+          try {
+            const perm = await Location.getForegroundPermissionsAsync();
+            if (perm.status === 'granted') {
+              setPermissionState(PERMISSION_STATES.GRANTED);
+              setGpsError(null);
+              setGpsErrorDetail(null);
+              // Permission granted! Automatically retry GPS detection
+              handleDetectLocation();
+            } else {
+              setPermissionState(
+                perm.canAskAgain === false
+                  ? PERMISSION_STATES.PERMANENTLY_DENIED
+                  : PERMISSION_STATES.DENIED
+              );
+            }
+          } catch (e) {
+            // Permission re-check error
+          }
+        }
+      }
+      appStateRef.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [visible]);
+
   // Search Address suggestions for Manual Entry
   const handleManualSearchChange = (text) => {
     setManualQuery(text);
-    setSelectedManualAddress(null);
 
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -368,9 +479,9 @@ export default function ServiceAreaRadiusModal({
     }, 350);
   };
 
-  // Select suggestion
+  // Select suggestion in Manual Mode
   const handleSelectSuggestion = (item) => {
-    setSelectedManualAddress({
+    const locObj = {
       latitude: item.latitude,
       longitude: item.longitude,
       address: {
@@ -382,7 +493,8 @@ export default function ServiceAreaRadiusModal({
         formattedAddress: item.formattedAddress || ''
       },
       formattedAddress: item.formattedAddress
-    });
+    };
+    setSelectedManualAddress(locObj);
     setManualQuery(item.formattedAddress);
     setAddressSuggestions([]);
   };
@@ -392,7 +504,7 @@ export default function ServiceAreaRadiusModal({
     setErrorMessage(null);
 
     if (!selectedRadiusKm) {
-      setErrorMessage('Please select a service radius option.');
+      setErrorMessage('Please select an Admin-approved service radius option.');
       return;
     }
 
@@ -400,14 +512,14 @@ export default function ServiceAreaRadiusModal({
     let targetAddress = null;
 
     if (locationMode === 'gps') {
-      if (!detectedLocation) {
-        setErrorMessage('Please click "Detect My Location" to acquire your GPS position first.');
+      if (!detectedLocation || !detectedLocation.latitude || !detectedLocation.longitude) {
+        setErrorMessage('Please detect your GPS location first, or switch to manual entry.');
         return;
       }
       targetCoords = [detectedLocation.longitude, detectedLocation.latitude];
       targetAddress = detectedLocation.address;
     } else {
-      if (!selectedManualAddress) {
+      if (!selectedManualAddress || !selectedManualAddress.latitude || !selectedManualAddress.longitude) {
         setErrorMessage('Please search and select a verified address from suggestions.');
         return;
       }
@@ -431,7 +543,7 @@ export default function ServiceAreaRadiusModal({
       if (res?.success) {
         Alert.alert(
           'Service Area Saved',
-          `Your service location and ${selectedRadiusKm} KM radius for ${serviceItem.serviceName} have been updated successfully.`
+          `Operational area and ${selectedRadiusKm} KM radius for ${serviceItem.serviceName} have been saved successfully.`
         );
         if (onSaved) onSaved(res.data);
         onClose();
@@ -445,45 +557,64 @@ export default function ServiceAreaRadiusModal({
 
   if (!serviceItem) return null;
 
-  const allowedRadii = (serviceItem.radiusRule?.allowedRadii || []).filter(
-    (r) => r.isActive !== false
-  );
   const maxRadiusKm = serviceItem.radiusRule?.maxRadiusKm || 15;
+  const allowedRadii = (serviceItem.radiusRule?.allowedRadii || []).filter(
+    (r) => r.isActive !== false && Number(r.km) <= maxRadiusKm
+  );
 
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="fade"
       transparent={true}
       onRequestClose={onClose}
+      statusBarTranslucent={true}
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalCard}>
           {/* Header */}
           <View style={styles.modalHeader}>
-            <View>
+            <View style={{ flex: 1, paddingRight: spacing.sm }}>
               <Text style={styles.modalTitle}>Set Service Area & Radius</Text>
-              <Text style={styles.modalSubtitle}>{serviceItem.serviceName}</Text>
+              <Text style={styles.modalSubtitle} numberOfLines={1}>
+                {serviceItem.serviceName}
+              </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={22} color={colors.slate400} />
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeButton}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="close" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           <ScrollView
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollBody}
           >
+            {/* Top Error Alert */}
             {errorMessage && (
-              <View style={styles.errorBox}>
-                <Ionicons name="alert-circle" size={18} color={colors.danger} />
-                <Text style={styles.errorBoxText}>{errorMessage}</Text>
+              <View style={styles.errorBanner}>
+                <Ionicons name="alert-circle" size={18} color="#EF4444" />
+                <Text style={styles.errorBannerText}>{errorMessage}</Text>
               </View>
             )}
 
-            {/* STEP 1: SELECT LOCATION MODE */}
-            <Text style={styles.sectionHeader}>1. Select Your Service Location</Text>
+            {/* STEP 1: OPERATIONAL LOCATION */}
+            <View style={styles.stepHeaderRow}>
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepBadgeText}>Step 1</Text>
+              </View>
+              <Text style={styles.sectionHeader}>Service Operational Location</Text>
+            </View>
+            <Text style={styles.hintText}>
+              Set the center point from which your service delivery radius is calculated.
+            </Text>
 
+            {/* Mode Tabs */}
             <View style={styles.modeTabs}>
               <TouchableOpacity
                 style={[styles.modeTab, locationMode === 'gps' && styles.modeTabActive]}
@@ -492,8 +623,8 @@ export default function ServiceAreaRadiusModal({
               >
                 <Ionicons
                   name="navigate"
-                  size={16}
-                  color={locationMode === 'gps' ? colors.primaryLight : colors.slate400}
+                  size={15}
+                  color={locationMode === 'gps' ? colors.primaryLight : colors.textSecondary}
                 />
                 <Text
                   style={[styles.modeTabText, locationMode === 'gps' && styles.modeTabTextActive]}
@@ -509,8 +640,8 @@ export default function ServiceAreaRadiusModal({
               >
                 <Ionicons
                   name="search"
-                  size={16}
-                  color={locationMode === 'manual' ? colors.primaryLight : colors.slate400}
+                  size={15}
+                  color={locationMode === 'manual' ? colors.primaryLight : colors.textSecondary}
                 />
                 <Text
                   style={[styles.modeTabText, locationMode === 'manual' && styles.modeTabTextActive]}
@@ -523,8 +654,8 @@ export default function ServiceAreaRadiusModal({
             {/* OPTION A: GPS AUTO DETECT */}
             {locationMode === 'gps' ? (
               <View style={styles.locationSection}>
-                <Text style={styles.hintText}>
-                  Use device GPS to determine your primary operational location for this service.
+                <Text style={styles.sectionSubHint}>
+                  Use device GPS to determine your primary operational base.
                 </Text>
 
                 <TouchableOpacity
@@ -534,99 +665,102 @@ export default function ServiceAreaRadiusModal({
                   activeOpacity={0.8}
                 >
                   {isDetectingGps ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                    <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <Ionicons name="locate" size={18} color="#fff" />
+                    <Ionicons name="locate" size={18} color="#FFFFFF" />
                   )}
                   <Text style={styles.gpsActionText}>
                     {isDetectingGps ? 'Detecting Location...' : 'Automatically Detect My Location'}
                   </Text>
                 </TouchableOpacity>
 
+                {/* GPS Permission / Error Status Card */}
                 {gpsError && (
-                  <View style={styles.gpsErrorContainer}>
-                    <View style={styles.gpsErrorHeader}>
+                  <View style={styles.gpsStatusContainer}>
+                    <View style={styles.gpsStatusHeader}>
                       <Ionicons
                         name={
-                          gpsErrorDetail?.type === GPS_ERROR_TYPES.TIMEOUT
+                          permissionState === PERMISSION_STATES.TIMEOUT
                             ? 'timer-outline'
-                            : gpsErrorDetail?.type === GPS_ERROR_TYPES.POSITION_UNAVAILABLE
-                            ? 'location-outline'
-                            : gpsErrorDetail?.type === GPS_ERROR_TYPES.SERVICES_DISABLED
+                            : permissionState === PERMISSION_STATES.SERVICES_DISABLED
                             ? 'power-outline'
+                            : permissionState === PERMISSION_STATES.PERMANENTLY_DENIED
+                            ? 'shield-outline'
                             : 'alert-circle-outline'
                         }
                         size={18}
-                        color={colors.danger}
+                        color="#EF4444"
                       />
-                      <Text style={styles.gpsErrorTitle}>
-                        {gpsErrorDetail?.type === GPS_ERROR_TYPES.TIMEOUT
-                          ? 'GPS Request Timed Out'
-                          : gpsErrorDetail?.type === GPS_ERROR_TYPES.POSITION_UNAVAILABLE
-                          ? 'Location Position Unavailable'
-                          : gpsErrorDetail?.type === GPS_ERROR_TYPES.SYSTEM_DENIED
-                          ? 'Operating System Location Blocked'
-                          : gpsErrorDetail?.type === GPS_ERROR_TYPES.SERVICES_DISABLED
+                      <Text style={styles.gpsStatusTitle}>
+                        {permissionState === PERMISSION_STATES.PERMANENTLY_DENIED
+                          ? 'Location Permission Permanently Denied'
+                          : permissionState === PERMISSION_STATES.SERVICES_DISABLED
                           ? 'Device Location Services Off'
-                          : 'Location Permission Required'}
+                          : permissionState === PERMISSION_STATES.TIMEOUT
+                          ? 'GPS Request Timed Out'
+                          : permissionState === PERMISSION_STATES.UNAVAILABLE
+                          ? 'GPS Position Unavailable'
+                          : 'Location Access Denied'}
                       </Text>
                     </View>
 
-                    <Text style={styles.gpsErrorText}>{gpsError}</Text>
+                    <Text style={styles.gpsStatusMessage}>{gpsError}</Text>
 
-                    <View style={styles.gpsErrorActions}>
-                      <TouchableOpacity
-                        style={styles.retryButton}
-                        onPress={handleDetectLocation}
-                        activeOpacity={0.8}
-                        disabled={isDetectingGps}
-                      >
-                        {isDetectingGps ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                          <Ionicons name="refresh" size={14} color="#fff" />
-                        )}
-                        <Text style={styles.retryButtonText}>
-                          {isDetectingGps ? 'Retrying...' : 'Retry GPS'}
-                        </Text>
-                      </TouchableOpacity>
+                    {/* Action buttons */}
+                    <View style={styles.gpsStatusActions}>
+                      {permissionState === PERMISSION_STATES.PERMANENTLY_DENIED ? (
+                        <TouchableOpacity
+                          style={styles.settingsActionButton}
+                          onPress={handleOpenSettings}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons name="settings-outline" size={15} color="#FFFFFF" />
+                          <Text style={styles.settingsActionText}>Open App Settings</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.retryActionButton}
+                          onPress={handleDetectLocation}
+                          activeOpacity={0.8}
+                          disabled={isDetectingGps}
+                        >
+                          {isDetectingGps ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <Ionicons name="refresh" size={14} color="#FFFFFF" />
+                          )}
+                          <Text style={styles.retryActionText}>
+                            {isDetectingGps ? 'Retrying...' : 'Retry GPS'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
 
                       <TouchableOpacity
-                        style={styles.switchManualButton}
+                        style={styles.switchManualActionButton}
                         onPress={() => setLocationMode('manual')}
                         activeOpacity={0.8}
                       >
                         <Ionicons name="search" size={14} color={colors.primaryLight} />
-                        <Text style={styles.switchManualButtonText}>Switch to Manual Entry</Text>
+                        <Text style={styles.switchManualActionText}>Switch to Manual Entry</Text>
                       </TouchableOpacity>
-
-                      {Platform.OS !== 'web' && gpsErrorDetail?.canAskAgain === false && (
-                        <TouchableOpacity
-                          style={styles.settingsButton}
-                          onPress={() => Linking.openSettings()}
-                          activeOpacity={0.8}
-                        >
-                          <Ionicons name="settings-outline" size={14} color={colors.textMuted} />
-                          <Text style={styles.settingsButtonText}>Open Settings</Text>
-                        </TouchableOpacity>
-                      )}
                     </View>
                   </View>
                 )}
 
+                {/* Confirmed GPS Location Card */}
                 {detectedLocation && (
-                  <View style={styles.detectedCard}>
-                    <View style={styles.detectedRow}>
-                      <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-                      <Text style={styles.detectedTitle}>Detected Location Confirmed</Text>
+                  <View style={styles.confirmedLocationCard}>
+                    <View style={styles.confirmedHeaderRow}>
+                      <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+                      <Text style={styles.confirmedTitle}>GPS Location Confirmed</Text>
                     </View>
-                    <Text style={styles.detectedAddress}>
+                    <Text style={styles.confirmedAddressText}>
                       {detectedLocation.formattedAddress}
                     </Text>
-                    <View style={styles.coordsRow}>
-                      <Text style={styles.coordsText}>
-                        Lat: {detectedLocation.latitude.toFixed(6)} | Lon:{' '}
-                        {detectedLocation.longitude.toFixed(6)}
+                    <View style={styles.confirmedCoordsRow}>
+                      <Text style={styles.confirmedCoordsText}>
+                        Lat: {detectedLocation.latitude?.toFixed(6)} | Lon:{' '}
+                        {detectedLocation.longitude?.toFixed(6)}
                       </Text>
                     </View>
                   </View>
@@ -635,20 +769,33 @@ export default function ServiceAreaRadiusModal({
             ) : (
               /* OPTION B: MANUAL ADDRESS SEARCH */
               <View style={styles.locationSection}>
-                <Text style={styles.hintText}>
-                  Type your house, street, locality, city and PIN code.
+                <Text style={styles.sectionSubHint}>
+                  Search your shop, house, locality, landmark, city, or postal code.
                 </Text>
 
                 <View style={styles.searchInputContainer}>
-                  <Ionicons name="search" size={18} color={colors.slate400} />
+                  <Ionicons name="search" size={18} color={colors.textSecondary} />
                   <TextInput
                     style={styles.searchInput}
-                    placeholder="Search address, locality, city, PIN..."
-                    placeholderTextColor={colors.slate400}
+                    placeholder="Search area, locality, city, PIN code..."
+                    placeholderTextColor={colors.placeholder}
                     value={manualQuery}
                     onChangeText={handleManualSearchChange}
                   />
-                  {isSearchingManual && <ActivityIndicator size="small" color={colors.primary} />}
+                  {isSearchingManual && (
+                    <ActivityIndicator size="small" color={colors.primaryLight} />
+                  )}
+                  {manualQuery.length > 0 && !isSearchingManual && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setManualQuery('');
+                        setAddressSuggestions([]);
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {/* Suggestions List */}
@@ -659,11 +806,12 @@ export default function ServiceAreaRadiusModal({
                         key={idx}
                         style={styles.suggestionItem}
                         onPress={() => handleSelectSuggestion(item)}
+                        activeOpacity={0.7}
                       >
                         <Ionicons
                           name="location-outline"
                           size={16}
-                          color={colors.primary}
+                          color={colors.primaryLight}
                           style={{ marginTop: 2 }}
                         />
                         <View style={{ flex: 1 }}>
@@ -680,19 +828,20 @@ export default function ServiceAreaRadiusModal({
                   </View>
                 )}
 
+                {/* Confirmed Manual Address Card */}
                 {selectedManualAddress && (
-                  <View style={styles.detectedCard}>
-                    <View style={styles.detectedRow}>
-                      <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-                      <Text style={styles.detectedTitle}>Resolved Address</Text>
+                  <View style={styles.confirmedLocationCard}>
+                    <View style={styles.confirmedHeaderRow}>
+                      <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+                      <Text style={styles.confirmedTitle}>Resolved Manual Address</Text>
                     </View>
-                    <Text style={styles.detectedAddress}>
+                    <Text style={styles.confirmedAddressText}>
                       {selectedManualAddress.formattedAddress}
                     </Text>
-                    <View style={styles.coordsRow}>
-                      <Text style={styles.coordsText}>
-                        Lat: {selectedManualAddress.latitude.toFixed(6)} | Lon:{' '}
-                        {selectedManualAddress.longitude.toFixed(6)}
+                    <View style={styles.confirmedCoordsRow}>
+                      <Text style={styles.confirmedCoordsText}>
+                        Lat: {selectedManualAddress.latitude?.toFixed(6)} | Lon:{' '}
+                        {selectedManualAddress.longitude?.toFixed(6)}
                       </Text>
                     </View>
                   </View>
@@ -702,15 +851,22 @@ export default function ServiceAreaRadiusModal({
 
             {/* STEP 2: SELECT SERVICE RADIUS */}
             <View style={{ marginTop: spacing.lg }}>
-              <Text style={styles.sectionHeader}>2. Select Service Radius</Text>
+              <View style={styles.stepHeaderRow}>
+                <View style={styles.stepBadge}>
+                  <Text style={styles.stepBadgeText}>Step 2</Text>
+                </View>
+                <Text style={styles.sectionHeader}>Service Operational Radius</Text>
+              </View>
               <Text style={styles.hintText}>
-                Displaying only Admin-approved radius options for {serviceItem.serviceName} (Max permitted: {maxRadiusKm} KM).
+                Select an Admin-approved coverage radius for {serviceItem.serviceName} (Max permitted:{' '}
+                {maxRadiusKm} KM).
               </Text>
 
               {allowedRadii.length === 0 ? (
                 <View style={styles.emptyRadiiBox}>
+                  <Ionicons name="information-circle-outline" size={24} color={colors.textSecondary} />
                   <Text style={styles.emptyRadiiText}>
-                    No radius options have been enabled by Admin for this service yet.
+                    No radius options have been enabled by Admin for this service category yet.
                   </Text>
                 </View>
               ) : (
@@ -720,25 +876,19 @@ export default function ServiceAreaRadiusModal({
                     return (
                       <TouchableOpacity
                         key={rad._id || rad.km}
-                        style={[
-                          styles.radiusCard,
-                          isSelected && styles.radiusCardSelected
-                        ]}
+                        style={[styles.radiusCard, isSelected && styles.radiusCardSelected]}
                         onPress={() => setSelectedRadiusKm(rad.km)}
                         activeOpacity={0.8}
                       >
-                        <View style={styles.radioIndicator}>
+                        <View style={[styles.radioCircle, isSelected && styles.radioCircleSelected]}>
                           {isSelected && <View style={styles.radioInnerCircle} />}
                         </View>
                         <Text
-                          style={[
-                            styles.radiusNumber,
-                            isSelected && styles.radiusNumberSelected
-                          ]}
+                          style={[styles.radiusNumber, isSelected && styles.radiusNumberSelected]}
                         >
                           {rad.km} KM
                         </Text>
-                        <Text style={styles.radiusCoverage}>
+                        <Text style={[styles.radiusCoverage, isSelected && styles.radiusCoverageSelected]}>
                           Within {rad.km} KM
                         </Text>
                       </TouchableOpacity>
@@ -755,6 +905,7 @@ export default function ServiceAreaRadiusModal({
               style={styles.cancelButton}
               onPress={onClose}
               disabled={isSaving}
+              activeOpacity={0.7}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
@@ -766,9 +917,10 @@ export default function ServiceAreaRadiusModal({
               ]}
               onPress={handleSave}
               disabled={!selectedRadiusKm || isSaving}
+              activeOpacity={0.8}
             >
               {isSaving ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <Text style={styles.saveButtonText}>Confirm & Save Area</Text>
               )}
@@ -780,80 +932,91 @@ export default function ServiceAreaRadiusModal({
   );
 }
 
-const defaultFontSize = {
-  xs: 12,
-  sm: 14,
-  md: 16,
-  lg: 18,
-  xl: 20
-};
-
-const defaultFontWeight = {
-  regular: '400',
-  medium: '500',
-  semibold: '600',
-  bold: '700'
-};
-
-const fontSizes = typography?.fontSize || defaultFontSize;
-const fontWeights = typography?.fontWeight || defaultFontWeight;
-
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.md
   },
   modalCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card, // #16141F solid dark card surface
     borderRadius: borderRadius.xl,
     width: '100%',
     maxWidth: 520,
     maxHeight: '90%',
     borderWidth: 1,
-    borderColor: colors.border
+    borderColor: colors.borderLight, // #36314D visible subtle contrast
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border
+    borderBottomColor: colors.border,
+    backgroundColor: colors.card
   },
   modalTitle: {
-    fontSize: fontSizes.lg,
-    fontWeight: fontWeights.bold,
-    color: colors.text
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary // #FFFFFF
   },
   modalSubtitle: {
-    fontSize: fontSizes.xs,
-    color: colors.primaryLight,
-    fontWeight: fontWeights.semibold,
+    fontSize: 13,
+    color: colors.secondary, // #A78BFA
+    fontWeight: '600',
     marginTop: 2
   },
   closeButton: {
-    padding: spacing.xs
+    padding: spacing.xs,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.cardSecondary
   },
   scrollBody: {
-    padding: spacing.md
+    padding: spacing.lg
+  },
+  stepHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: 4
+  },
+  stepBadge: {
+    backgroundColor: colors.primarySubtle,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.primaryDark
+  },
+  stepBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primaryLight
   },
   sectionHeader: {
-    fontSize: fontSizes.sm,
-    fontWeight: fontWeights.bold,
-    color: colors.text,
-    marginBottom: spacing.xs
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary // #FFFFFF
   },
   hintText: {
-    fontSize: fontSizes.xs,
-    color: colors.textMuted,
+    fontSize: 12,
+    color: colors.textSecondary, // #9CA3AF
+    lineHeight: 17,
     marginBottom: spacing.sm
   },
   modeTabs: {
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: spacing.sm,
     marginBottom: spacing.sm
   },
   modeTab: {
@@ -862,32 +1025,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: spacing.sm,
+    paddingVertical: 10,
     paddingHorizontal: spacing.xs,
     borderRadius: borderRadius.md,
-    backgroundColor: colors.background,
+    backgroundColor: colors.cardSecondary,
     borderWidth: 1,
     borderColor: colors.border
   },
   modeTabActive: {
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    backgroundColor: colors.primarySubtle,
     borderColor: colors.primaryLight
   },
   modeTabText: {
-    fontSize: fontSizes.xs,
-    fontWeight: fontWeights.medium,
-    color: colors.textMuted
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textSecondary
   },
   modeTabTextActive: {
     color: colors.primaryLight,
-    fontWeight: fontWeights.bold
+    fontWeight: '700'
   },
   locationSection: {
-    padding: spacing.sm,
-    backgroundColor: colors.background,
+    padding: spacing.md,
+    backgroundColor: colors.cardSecondary,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border
+  },
+  sectionSubHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginBottom: spacing.xs
   },
   gpsActionButton: {
     flexDirection: 'row',
@@ -895,73 +1063,149 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
     backgroundColor: colors.primary,
-    paddingVertical: spacing.sm,
+    paddingVertical: 11,
     borderRadius: borderRadius.md,
     marginVertical: spacing.xs
   },
   gpsActionText: {
-    color: '#fff',
-    fontSize: fontSizes.xs,
-    fontWeight: fontWeights.semibold
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700'
   },
-  detectedCard: {
-    backgroundColor: colors.surface,
+  gpsStatusContainer: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
     padding: spacing.sm,
     borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-    marginTop: spacing.sm
+    marginVertical: spacing.xs
   },
-  detectedRow: {
+  gpsStatusHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginBottom: 4
   },
-  detectedTitle: {
-    fontSize: fontSizes.xs,
-    fontWeight: fontWeights.bold,
-    color: colors.success
+  gpsStatusTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#EF4444'
   },
-  detectedAddress: {
-    fontSize: fontSizes.xs,
-    color: colors.text,
+  gpsStatusMessage: {
+    fontSize: 12,
+    color: '#FCA5A5',
+    lineHeight: 17,
+    marginVertical: 4
+  },
+  gpsStatusActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: 6
+  },
+  settingsActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.sm
+  },
+  settingsActionText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  retryActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.sm
+  },
+  retryActionText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  switchManualActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primarySubtle,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+    paddingVertical: 7,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.sm
+  },
+  switchManualActionText: {
+    color: colors.primaryLight,
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  confirmedLocationCard: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+    marginTop: spacing.sm
+  },
+  confirmedHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4
+  },
+  confirmedTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#10B981'
+  },
+  confirmedAddressText: {
+    fontSize: 12,
+    color: colors.textPrimary,
     lineHeight: 18
   },
-  coordsRow: {
+  confirmedCoordsRow: {
     marginTop: 4,
     paddingTop: 4,
     borderTopWidth: 1,
-    borderTopColor: colors.border
+    borderTopColor: 'rgba(16, 185, 129, 0.2)'
   },
-  coordsText: {
+  confirmedCoordsText: {
     fontSize: 10,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    color: colors.textMuted
+    color: '#6EE7B7'
   },
   searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.inputBackground,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderLight,
     borderRadius: borderRadius.md,
     paddingHorizontal: spacing.sm,
     gap: spacing.xs
   },
   searchInput: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    color: colors.text,
-    fontSize: fontSizes.xs
+    paddingVertical: 10,
+    color: colors.textPrimary,
+    fontSize: 13
   },
   suggestionsContainer: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderLight,
     marginTop: spacing.xs,
-    maxHeight: 180
+    maxHeight: 180,
+    overflow: 'hidden'
   },
   suggestionItem: {
     flexDirection: 'row',
@@ -971,14 +1215,14 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border
   },
   suggestionTitle: {
-    fontSize: fontSizes.xs,
-    fontWeight: fontWeights.semibold,
-    color: colors.text
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textPrimary
   },
   suggestionFull: {
-    fontSize: 10,
-    color: colors.textMuted,
-    marginTop: 1
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2
   },
   radiusOptionsGrid: {
     flexDirection: 'row',
@@ -988,7 +1232,7 @@ const styles = StyleSheet.create({
   radiusCard: {
     width: '30%',
     minWidth: 90,
-    backgroundColor: colors.background,
+    backgroundColor: colors.cardSecondary,
     borderWidth: 1.5,
     borderColor: colors.border,
     borderRadius: borderRadius.lg,
@@ -996,18 +1240,21 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   radiusCardSelected: {
-    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+    backgroundColor: colors.primarySubtle,
     borderColor: colors.primaryLight
   },
-  radioIndicator: {
+  radioCircle: {
     width: 16,
     height: 16,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: colors.slate400,
+    borderColor: colors.textSecondary,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 4
+  },
+  radioCircleSelected: {
+    borderColor: colors.primaryLight
   },
   radioInnerCircle: {
     width: 8,
@@ -1016,146 +1263,75 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight
   },
   radiusNumber: {
-    fontSize: fontSizes.sm,
-    fontWeight: fontWeights.bold,
-    color: colors.text
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary
   },
   radiusNumberSelected: {
     color: colors.primaryLight
   },
   radiusCoverage: {
     fontSize: 10,
-    color: colors.textMuted,
+    color: colors.textSecondary,
     marginTop: 2
   },
+  radiusCoverageSelected: {
+    color: colors.secondary
+  },
   emptyRadiiBox: {
-    padding: spacing.md,
-    backgroundColor: colors.background,
+    padding: spacing.lg,
+    backgroundColor: colors.cardSecondary,
     borderRadius: borderRadius.md,
-    alignItems: 'center'
+    alignItems: 'center',
+    gap: spacing.xs
   },
   emptyRadiiText: {
-    fontSize: fontSizes.xs,
-    color: colors.textMuted,
+    fontSize: 12,
+    color: colors.textSecondary,
     textAlign: 'center'
   },
-  errorBox: {
+  errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     borderWidth: 1,
-    borderColor: colors.danger,
+    borderColor: '#EF4444',
     padding: spacing.sm,
     borderRadius: borderRadius.md,
     marginBottom: spacing.sm
   },
-  errorBoxText: {
+  errorBannerText: {
     flex: 1,
-    fontSize: fontSizes.xs,
-    color: colors.danger
-  },
-  gpsErrorContainer: {
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.35)',
-    padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    marginVertical: spacing.xs
-  },
-  gpsErrorHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4
-  },
-  gpsErrorTitle: {
-    fontSize: fontSizes.xs,
-    fontWeight: fontWeights.bold,
-    color: colors.danger
-  },
-  gpsErrorText: {
-    fontSize: fontSizes.xs,
-    color: colors.text,
-    lineHeight: 18,
-    marginTop: 2,
-    marginBottom: spacing.xs
-  },
-  gpsErrorActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginTop: 6
-  },
-  retryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.primary,
-    paddingVertical: 6,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.sm
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: fontSizes.xs,
-    fontWeight: fontWeights.semibold
-  },
-  switchManualButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(99, 102, 241, 0.12)',
-    borderWidth: 1,
-    borderColor: colors.primaryLight,
-    paddingVertical: 5,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.sm
-  },
-  switchManualButtonText: {
-    color: colors.primaryLight,
-    fontSize: fontSizes.xs,
-    fontWeight: fontWeights.semibold
-  },
-  settingsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 5,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.sm
-  },
-  settingsButtonText: {
-    color: colors.textMuted,
-    fontSize: fontSizes.xs,
-    fontWeight: fontWeights.medium
+    fontSize: 12,
+    color: '#EF4444'
   },
   modalFooter: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: spacing.sm,
-    padding: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: colors.border
+    borderTopColor: colors.border,
+    backgroundColor: colors.card
   },
   cancelButton: {
-    paddingVertical: spacing.sm,
+    paddingVertical: 10,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: colors.border
+    borderColor: colors.border,
+    backgroundColor: colors.cardSecondary
   },
   cancelButtonText: {
-    fontSize: fontSizes.xs,
-    fontWeight: fontWeights.medium,
-    color: colors.textMuted
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary
   },
   saveButton: {
     backgroundColor: colors.primary,
-    paddingVertical: spacing.sm,
+    paddingVertical: 10,
     paddingHorizontal: spacing.lg,
     borderRadius: borderRadius.md
   },
@@ -1163,9 +1339,8 @@ const styles = StyleSheet.create({
     opacity: 0.5
   },
   saveButtonText: {
-    color: '#fff',
-    fontSize: fontSizes.xs,
-    fontWeight: fontWeights.bold
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700'
   }
 });
-

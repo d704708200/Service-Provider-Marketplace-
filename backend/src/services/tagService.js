@@ -570,6 +570,37 @@ const getProviderServicesAndTags = async (userId) => {
   // 3. Legacy services created by provider (for backward compatibility)
   const legacyServices = await Service.find({ provider: provider._id }).lean();
 
+  // 4. Provider's active, configured services grouped by category for certificate linking & KYC
+  const configuredCategoryMap = {};
+  validTags.forEach((t) => {
+    const tagIdStr = String(t._id);
+    const sel = selectedTagMap[tagIdStr];
+    if (sel && sel.isActive !== false && sel.approvalStatus !== 'rejected') {
+      const catId = String(t.category._id);
+      if (!configuredCategoryMap[catId]) {
+        configuredCategoryMap[catId] = {
+          category: t.category,
+          tags: []
+        };
+      }
+      configuredCategoryMap[catId].tags.push({
+        tag: {
+          _id: t._id,
+          name: t.name,
+          slug: t.slug,
+          subcategory: t.subcategory,
+          description: t.description
+        },
+        isActive: sel.isActive !== false,
+        approvalStatus: sel.approvalStatus,
+        basePrice: sel.basePrice,
+        pricingType: sel.pricingType,
+        experienceYears: sel.experienceYears
+      });
+    }
+  });
+  const configuredServices = Object.values(configuredCategoryMap);
+
   return {
     provider: {
       _id: provider._id,
@@ -578,6 +609,7 @@ const getProviderServicesAndTags = async (userId) => {
       verificationStatus: provider.verificationStatus
     },
     selectedTags: Object.values(selectedTagMap),
+    configuredServices,
     catalog: Object.values(catalogByCategory).map((item) => ({
       category: item.category,
       subcategories: Object.entries(item.subcategories).map(([name, tags]) => ({

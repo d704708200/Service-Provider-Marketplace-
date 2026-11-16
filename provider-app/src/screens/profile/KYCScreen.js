@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -45,13 +45,15 @@ export default function KYCScreen({ navigation, route }) {
   // Optional Service Certification states
   const [certification, setCertification] = useState(profile?.serviceCertification || null);
   const [availableServices, setAvailableServices] = useState([]);
+  const [servicesLoading, setServicesLoading] = useState(true);
+  const [servicesError, setServicesError] = useState(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [selectedTagId, setSelectedTagId] = useState('');
   const [isCertUploading, setIsCertUploading] = useState(false);
   const [certActionLoading, setCertActionLoading] = useState(false);
   const [serviceSelectModalVisible, setServiceSelectModalVisible] = useState(false);
 
-  useEffect(() => {
+  const fetchProfile = useCallback(() => {
     providerApi.getProfile()
       .then((res) => {
         if (res?.data) {
@@ -72,16 +74,83 @@ export default function KYCScreen({ navigation, route }) {
         }
       })
       .catch(() => {});
-
-    // Fetch provider's configured services and approved tags to populate Related Service dropdown
-    providerTagApi.getMyServicesAndTags()
-      .then((res) => {
-        if (res?.success && Array.isArray(res.data)) {
-          setAvailableServices(res.data);
-        }
-      })
-      .catch(() => {});
   }, []);
+
+  const normalizeConfiguredServices = (responseData) => {
+    if (!responseData) return [];
+
+    // 1. Direct configuredServices array from backend
+    if (Array.isArray(responseData.configuredServices) && responseData.configuredServices.length > 0) {
+      return responseData.configuredServices;
+    }
+
+    // 2. Direct array format
+    if (Array.isArray(responseData)) {
+      return responseData;
+    }
+
+    // 3. Extract active configured tags from catalog with selection indicators
+    if (Array.isArray(responseData.catalog)) {
+      const groups = [];
+      responseData.catalog.forEach((catItem) => {
+        const cat = catItem.category;
+        if (!cat) return;
+        const catTags = [];
+        (catItem.subcategories || []).forEach((sub) => {
+          (sub.tags || []).forEach((t) => {
+            const isSel = Boolean(t.isSelected || t.selectedConfig);
+            const isActive = t.selectedConfig ? t.selectedConfig.isActive !== false : true;
+            const notRejected = t.selectedConfig?.approvalStatus !== 'rejected';
+            if (isSel && isActive && notRejected) {
+              catTags.push({
+                tag: {
+                  _id: t._id,
+                  name: t.name,
+                  slug: t.slug,
+                  subcategory: t.subcategory || (sub.name ? { name: sub.name } : null)
+                },
+                isActive: true,
+                approvalStatus: t.selectedConfig?.approvalStatus || 'approved',
+                basePrice: t.selectedConfig?.basePrice || 0
+              });
+            }
+          });
+        });
+        if (catTags.length > 0) {
+          groups.push({
+            category: cat,
+            tags: catTags
+          });
+        }
+      });
+      if (groups.length > 0) return groups;
+    }
+
+    return [];
+  };
+
+  const fetchServices = useCallback(async () => {
+    setServicesLoading(true);
+    setServicesError(null);
+    try {
+      const res = await providerTagApi.getMyServicesAndTags();
+      if (res?.success && res.data) {
+        const parsed = normalizeConfiguredServices(res.data);
+        setAvailableServices(parsed);
+      } else {
+        setServicesError('Failed to retrieve services.');
+      }
+    } catch (err) {
+      setServicesError(err.userMessage || err.message || 'Failed to connect to services catalogue.');
+    } finally {
+      setServicesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProfile();
+    fetchServices();
+  }, [fetchProfile, fetchServices]);
 
   const resolveImageUrl = (pathOrUrl) => {
     if (!pathOrUrl) return null;
@@ -556,9 +625,13 @@ export default function KYCScreen({ navigation, route }) {
               {(() => {
                 if (selectedCategoryId && selectedTagId) {
                   for (const cat of availableServices) {
-                    if (cat.category?._id === selectedCategoryId) {
-                      const tag = (cat.tags || []).find((t) => t.tag?._id === selectedTagId);
-                      if (tag) return `${cat.category?.name || 'Category'} → ${tag.tag?.name || 'Tag'}`;
+                    if (String(cat.category?._id) === String(selectedCategoryId)) {
+                      const tagItem = (cat.tags || []).find(
+                        (t) => String(t.tag?._id || t.tag) === String(selectedTagId)
+                      );
+                      if (tagItem) {
+                        return `${cat.category?.name || 'Category'} → ${tagItem.tag?.name || 'Tag'}`;
+                      }
                     }
                   }
                   if (certification?.category?.name && certification?.tag?.name) {
@@ -783,34 +856,74 @@ export default function KYCScreen({ navigation, route }) {
             </View>
 
             <ScrollView showsHorizontalScrollIndicator={false} showsVerticalScrollIndicator={false} style={{ marginVertical: spacing.md }}>
-              {availableServices.length === 0 ? (
-                <View style={{ padding: spacing.lg, alignItems: 'center' }}>
-                  <Ionicons name="alert-circle-outline" size={36} color="#9CA3AF" />
-                  <Text style={{ color: '#D1D5DB', fontSize: 13, marginTop: spacing.sm, textAlign: 'center' }}>
-                    No services found. Add your services in "My Services" first to link certifications.
+              {servicesLoading ? (
+                <View style={styles.pickerStateBox}>
+                  <ActivityIndicator size="small" color="#A78BFA" />
+                  <Text style={styles.pickerStateText}>Loading active services & tags...</Text>
+                </View>
+              ) : servicesError ? (
+                <View style={styles.pickerStateBox}>
+                  <Ionicons name="alert-circle-outline" size={36} color="#EF4444" />
+                  <Text style={styles.pickerErrorTitle}>Failed to Load Services</Text>
+                  <Text style={styles.pickerStateSub}>{servicesError}</Text>
+                  <TouchableOpacity
+                    style={styles.pickerRetryBtn}
+                    onPress={fetchServices}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="refresh" size={14} color="#FFFFFF" />
+                    <Text style={styles.pickerRetryBtnText}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : availableServices.length === 0 ? (
+                <View style={styles.pickerStateBox}>
+                  <Ionicons name="construct-outline" size={40} color="#9CA3AF" />
+                  <Text style={styles.pickerEmptyTitle}>No Active Services Configured</Text>
+                  <Text style={styles.pickerStateSub}>
+                    You have not configured any active service tags yet. Add your services in "My Services" first to link professional certifications.
                   </Text>
+                  <TouchableOpacity
+                    style={styles.pickerNavigateBtn}
+                    onPress={() => {
+                      setServiceSelectModalVisible(false);
+                      navigation.navigate('MainTabs', { screen: 'ServicesTab' });
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
+                    <Text style={styles.pickerNavigateBtnText}>Configure My Services</Text>
+                  </TouchableOpacity>
                 </View>
               ) : (
                 availableServices.map((catGroup) => (
                   <View key={catGroup.category?._id} style={{ marginBottom: spacing.md }}>
-                    <Text style={styles.pickerCategoryTitle}>
-                      {catGroup.category?.name || 'Category'}
-                    </Text>
+                    <View style={styles.pickerCategoryHeader}>
+                      <Ionicons name="folder-open-outline" size={15} color="#A78BFA" />
+                      <Text style={styles.pickerCategoryTitle}>
+                        {catGroup.category?.name || 'Category'}
+                      </Text>
+                      <View style={styles.pickerCatCountBadge}>
+                        <Text style={styles.pickerCatCountText}>
+                          {(catGroup.tags || []).length}
+                        </Text>
+                      </View>
+                    </View>
                     <View style={{ gap: spacing.xs, marginTop: 4 }}>
                       {(catGroup.tags || []).map((tItem) => {
+                        const tagObj = tItem.tag || {};
                         const isSelected =
                           selectedCategoryId === catGroup.category?._id &&
-                          selectedTagId === tItem.tag?._id;
+                          selectedTagId === tagObj._id;
                         return (
                           <TouchableOpacity
-                            key={tItem.tag?._id}
+                            key={tagObj._id}
                             style={[
                               styles.pickerTagItem,
                               isSelected && styles.pickerTagItemSelected
                             ]}
                             onPress={() => {
                               setSelectedCategoryId(catGroup.category._id);
-                              setSelectedTagId(tItem.tag._id);
+                              setSelectedTagId(tagObj._id);
                               setServiceSelectModalVisible(false);
                             }}
                             activeOpacity={0.7}
@@ -821,12 +934,22 @@ export default function KYCScreen({ navigation, route }) {
                               color={isSelected ? '#A78BFA' : '#6B7280'}
                             />
                             <View style={{ flex: 1, marginLeft: spacing.sm }}>
-                              <Text style={[styles.pickerTagName, isSelected && { color: '#FFFFFF' }]}>
-                                {tItem.tag?.name}
-                              </Text>
-                              {tItem.tag?.subcategory?.name ? (
-                                <Text style={styles.pickerTagSub}>{tItem.tag.subcategory.name}</Text>
-                              ) : null}
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={[styles.pickerTagName, isSelected && { color: '#FFFFFF' }]}>
+                                  {tagObj.name}
+                                </Text>
+                                <View style={styles.activeTagBadge}>
+                                  <Text style={styles.activeTagBadgeText}>ACTIVE</Text>
+                                </View>
+                              </View>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                                {tagObj.subcategory?.name ? (
+                                  <Text style={styles.pickerTagSub}>{tagObj.subcategory.name}</Text>
+                                ) : null}
+                                {tagObj._id ? (
+                                  <Text style={styles.pickerTagIdText}>ID: #{String(tagObj._id).slice(-4)}</Text>
+                                ) : null}
+                              </View>
                             </View>
                             {isSelected && (
                               <Ionicons name="checkmark-circle" size={18} color="#A78BFA" />
@@ -1396,13 +1519,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF'
   },
+  pickerCategoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6
+  },
   pickerCategoryTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: '#A78BFA',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4
+    letterSpacing: 0.5
+  },
+  pickerCatCountBadge: {
+    backgroundColor: '#2E2845',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 10
+  },
+  pickerCatCountText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#D1D5DB'
   },
   pickerTagItem: {
     flexDirection: 'row',
@@ -1424,7 +1563,85 @@ const styles = StyleSheet.create({
   },
   pickerTagSub: {
     fontSize: 11,
+    color: '#9CA3AF'
+  },
+  pickerTagIdText: {
+    fontSize: 10,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    color: '#71717A'
+  },
+  activeTagBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4
+  },
+  activeTagBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#34D399'
+  },
+  pickerStateBox: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs
+  },
+  pickerStateText: {
+    fontSize: 13,
     color: '#9CA3AF',
-    marginTop: 2
+    marginTop: spacing.sm
+  },
+  pickerErrorTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#EF4444',
+    marginTop: spacing.xs
+  },
+  pickerEmptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#E5E7EB',
+    marginTop: spacing.xs
+  },
+  pickerStateSub: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginVertical: spacing.xs,
+    maxWidth: 280
+  },
+  pickerRetryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#7C3AED',
+    paddingVertical: 8,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 8,
+    marginTop: spacing.sm
+  },
+  pickerRetryBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  pickerNavigateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#7C3AED',
+    paddingVertical: 9,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 8,
+    marginTop: spacing.sm
+  },
+  pickerNavigateBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF'
   }
 });

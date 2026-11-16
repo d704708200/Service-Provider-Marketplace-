@@ -1867,6 +1867,16 @@ const uploadServiceCertification = async (userId, file, { categoryId, tagId }) =
     throw err;
   }
 
+  // Ensure matching provider service tag is active and not rejected
+  const providerTag = (provider.serviceTags || []).find(
+    (st) => st.tag && st.tag.toString() === serviceTag._id.toString()
+  );
+  if (provider.serviceTags?.length > 0 && providerTag && (providerTag.isActive === false || providerTag.approvalStatus === 'rejected')) {
+    const err = new Error('Cannot upload certification for an inactive or rejected service tag');
+    err.statusCode = 400;
+    throw err;
+  }
+
   // If replacing an existing certificate, clean up the previous asset
   if (provider.serviceCertification?.publicId) {
     const { deleteAsset } = require('../config/cloudinary');
