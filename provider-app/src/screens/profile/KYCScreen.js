@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Modal
+  Modal,
+  Linking
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -685,7 +686,17 @@ export default function KYCScreen({ navigation, route }) {
 
           {/* Document Preview & Details */}
           {certification?.documentUrl ? (
-            <View style={styles.certPreviewBox}>
+            <TouchableOpacity
+              style={styles.certPreviewBox}
+              activeOpacity={0.8}
+              onPress={() => {
+                if (certification.documentUrl) {
+                  Linking.openURL(certification.documentUrl).catch(() => {
+                    Alert.alert('Cannot Open Document', 'Failed to open document preview.');
+                  });
+                }
+              }}
+            >
               <View style={styles.certFileIconBox}>
                 <Ionicons
                   name={
@@ -706,7 +717,10 @@ export default function KYCScreen({ navigation, route }) {
                   {certification.uploadedAt ? `Uploaded ${new Date(certification.uploadedAt).toLocaleDateString()}` : 'Uploaded'}
                 </Text>
               </View>
-            </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 }}>
+                <Ionicons name="open-outline" size={16} color="#A78BFA" />
+              </View>
+            </TouchableOpacity>
           ) : (
             <View style={styles.certPlaceholderBox}>
               <Ionicons name="ribbon-outline" size={32} color="#6B7280" />

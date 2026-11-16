@@ -23,7 +23,8 @@ import {
   ToggleLeft,
   ToggleRight,
   X,
-  Trash2
+  Trash2,
+  Award
 } from 'lucide-react';
 import { providerApi, categoryApi } from '../../services/api';
 import Card from '../../components/common/Card';
@@ -123,10 +124,20 @@ const ProvidersPage = () => {
   }, [successMessage]);
 
   // Open Provider Detail Modal
-  const handleOpenDetailModal = (provider) => {
+  const handleOpenDetailModal = async (provider) => {
     setSelectedProvider(provider);
     setModalTopRatedOrder(provider.topRatedOrder ?? 0);
     setIsDetailModalOpen(true);
+
+    // Refresh full detailed provider dossier to ensure latest documents and certification
+    try {
+      const response = await providerApi.getAdminProviderById(provider._id);
+      if (response?.success && response.data) {
+        setSelectedProvider(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to reload fresh provider dossier:', err);
+    }
   };
 
   // Toggle Top Rated Professionals feature
@@ -972,6 +983,106 @@ const ProvidersPage = () => {
                   </div>
                 ) : (
                   <p className="text-xs text-slate-400 italic">No documents uploaded yet.</p>
+                )}
+              </div>
+
+              {/* Service Certification (Optional) Section */}
+              <div className="p-4 rounded-xl bg-purple-50/50 border border-purple-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Award className="w-4 h-4 text-purple-600" />
+                    <span className="text-xs font-bold text-purple-950 uppercase tracking-wider">
+                      Service Certification (Optional)
+                    </span>
+                  </div>
+                  <Badge
+                    variant={
+                      !selectedProvider.serviceCertification?.documentUrl
+                        ? 'default'
+                        : selectedProvider.serviceCertification.verificationStatus === 'VERIFIED'
+                        ? 'success'
+                        : selectedProvider.serviceCertification.verificationStatus === 'REJECTED'
+                        ? 'danger'
+                        : 'warning'
+                    }
+                  >
+                    {!selectedProvider.serviceCertification?.documentUrl
+                      ? 'Not Uploaded'
+                      : selectedProvider.serviceCertification.verificationStatus === 'VERIFIED'
+                      ? 'Verified'
+                      : selectedProvider.serviceCertification.verificationStatus === 'REJECTED'
+                      ? 'Rejected'
+                      : 'Pending Review'}
+                  </Badge>
+                </div>
+
+                {selectedProvider.serviceCertification?.documentUrl ? (
+                  <div className="p-3.5 rounded-lg bg-white border border-slate-200 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <span className="text-slate-500 font-medium block">Related Category:</span>
+                        <span className="font-semibold text-slate-900 block mt-0.5">
+                          {selectedProvider.serviceCertification.category?.name || 'General Service'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 font-medium block">Selected Service Tag:</span>
+                        <span className="font-semibold text-slate-900 block mt-0.5">
+                          {selectedProvider.serviceCertification.tag?.name || 'Service Tag'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 font-medium block">Certificate Filename:</span>
+                        <span className="font-mono text-slate-800 text-[11px] block mt-0.5 truncate">
+                          {selectedProvider.serviceCertification.originalFileName || 'certificate'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 font-medium block">Upload Date:</span>
+                        <span className="text-slate-700 block mt-0.5">
+                          {selectedProvider.serviceCertification.uploadedAt
+                            ? new Date(selectedProvider.serviceCertification.uploadedAt).toLocaleString()
+                            : 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Reviewer info if reviewed */}
+                    {selectedProvider.serviceCertification.reviewedAt && (
+                      <div className="text-[11px] text-slate-500 border-t border-slate-100 pt-2">
+                        <span>
+                          Reviewed on {new Date(selectedProvider.serviceCertification.reviewedAt).toLocaleString()}
+                          {selectedProvider.serviceCertification.reviewedBy?.name && (
+                            <> by <span className="font-medium text-slate-700">{selectedProvider.serviceCertification.reviewedBy.name}</span> ({selectedProvider.serviceCertification.reviewedBy.email})</>
+                          )}
+                        </span>
+                      </div>
+                    )}
+
+                    {selectedProvider.serviceCertification.rejectionReason && (
+                      <div className="text-xs text-rose-700 bg-rose-50 p-2 rounded-md border border-rose-200">
+                        <strong>Certification Rejection Reason:</strong> {selectedProvider.serviceCertification.rejectionReason}
+                      </div>
+                    )}
+
+                    {/* Preview / Open Document Action */}
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                      <a
+                        href={selectedProvider.serviceCertification.documentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Inspect / Open Certificate</span>
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-lg bg-white border border-dashed border-slate-200 text-xs text-slate-500 flex items-center gap-2">
+                    <Award className="w-4 h-4 text-slate-400" />
+                    <span>No service certification uploaded. This optional credential does not block provider verification.</span>
+                  </div>
                 )}
               </div>
             </div>

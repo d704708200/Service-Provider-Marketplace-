@@ -1511,7 +1511,23 @@ const getProviderSlotAvailability = async ({ providerId, date, startTime, endTim
 const getAdminProviders = async (query = {}) => {
   const filter = {};
 
-  if (query.verificationStatus && query.verificationStatus !== 'all') {
+  if (query.pendingQueue) {
+    filter.isDeleted = { $ne: true };
+    const pendingConditions = [
+      { verificationStatus: 'pending' },
+      { kycStatus: 'under_review' },
+      {
+        'serviceCertification.documentUrl': { $ne: null },
+        'serviceCertification.verificationStatus': 'PENDING'
+      }
+    ];
+    if (filter.$or) {
+      filter.$and = [{ $or: pendingConditions }, { $or: filter.$or }];
+      delete filter.$or;
+    } else {
+      filter.$or = pendingConditions;
+    }
+  } else if (query.verificationStatus && query.verificationStatus !== 'all') {
     if (query.verificationStatus === 'deleted') {
       filter.isDeleted = true;
     } else {
@@ -1533,7 +1549,13 @@ const getAdminProviders = async (query = {}) => {
 
   if (query.search && query.search.trim()) {
     const searchRegex = new RegExp(escapeRegex(query.search.trim()), 'i');
-    filter.$or = [{ businessName: searchRegex }, { bio: searchRegex }];
+    const searchConditions = [{ businessName: searchRegex }, { bio: searchRegex }];
+    if (filter.$or) {
+      filter.$and = [{ $or: filter.$or }, { $or: searchConditions }];
+      delete filter.$or;
+    } else {
+      filter.$or = searchConditions;
+    }
   }
 
   const page = Math.max(1, parseInt(query.page, 10) || 1);
@@ -1546,6 +1568,7 @@ const getAdminProviders = async (query = {}) => {
       .populate('categories', 'name slug icon isActive')
       .populate('serviceCertification.category', 'name slug icon')
       .populate('serviceCertification.tag', 'name slug subcategory')
+      .populate('serviceCertification.reviewedBy', 'name email')
       .sort({ showInTopRated: -1, topRatedOrder: 1, createdAt: -1 })
       .skip(skip)
       .limit(limit)

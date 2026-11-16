@@ -498,13 +498,21 @@ const ProviderVerificationPage = () => {
 
                       {/* Documents Count */}
                       <td className="px-6 py-4 text-center">
-                        <Badge
-                          variant={provider.documents?.length > 0 ? 'primary' : 'warning'}
-                          className="gap-1"
-                        >
-                          <FileText className="w-3 h-3" />
-                          <span>{provider.documents?.length || 0} Documents</span>
-                        </Badge>
+                        <div className="inline-flex flex-col items-center gap-1">
+                          <Badge
+                            variant={provider.documents?.length > 0 ? 'primary' : 'warning'}
+                            className="gap-1"
+                          >
+                            <FileText className="w-3 h-3" />
+                            <span>{provider.documents?.length || 0} KYC Docs</span>
+                          </Badge>
+                          {provider.serviceCertification?.documentUrl && (
+                            <Badge className="gap-1 text-[10px] bg-purple-50 text-purple-700 border-purple-200">
+                              <Award className="w-2.5 h-2.5" />
+                              <span>+1 Certificate</span>
+                            </Badge>
+                          )}
+                        </div>
                       </td>
 
                       {/* Submission Date */}
@@ -874,6 +882,18 @@ const ProviderVerificationPage = () => {
                         </span>
                       </div>
                     </div>
+
+                    {/* Reviewer info if reviewed */}
+                    {reviewingProvider.serviceCertification.reviewedAt && (
+                      <div className="text-[11px] text-slate-500 border-t border-slate-100 pt-2">
+                        <span>
+                          Reviewed on {new Date(reviewingProvider.serviceCertification.reviewedAt).toLocaleString()}
+                          {reviewingProvider.serviceCertification.reviewedBy?.name && (
+                            <> by <span className="font-medium text-slate-700">{reviewingProvider.serviceCertification.reviewedBy.name}</span> ({reviewingProvider.serviceCertification.reviewedBy.email})</>
+                          )}
+                        </span>
+                      </div>
+                    )}
 
                     {reviewingProvider.serviceCertification.rejectionReason && (
                       <div className="text-xs text-rose-700 bg-rose-50 p-2 rounded-md border border-rose-200">

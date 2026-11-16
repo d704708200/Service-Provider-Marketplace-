@@ -487,7 +487,7 @@ const getAdminPendingVerifications = async (req, res, next) => {
   try {
     const result = await providerService.getAdminProviders({
       ...req.query,
-      verificationStatus: 'pending'
+      pendingQueue: true
     });
     res.status(200).json({
       success: true,
