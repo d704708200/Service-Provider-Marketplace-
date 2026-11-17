@@ -24,6 +24,34 @@ const generateBookingReference = () => {
   return `BK-${dateStr}-${randomChars}`;
 };
 
+const getTrustedBookingPricing = (service, provider, resolvedTag) => {
+  let amount = Number(service.price);
+  let pricingType = service.priceType || 'fixed';
+
+  if (provider && resolvedTag) {
+    const tagConfig = provider.serviceTags?.find(
+      (entry) =>
+        String(entry.tag?._id || entry.tag) === String(resolvedTag._id) &&
+        entry.isActive !== false &&
+        entry.approvalStatus === 'approved'
+    );
+    amount = Number(tagConfig?.basePrice);
+    pricingType = tagConfig?.pricingType || 'fixed';
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    const err = new Error(
+      resolvedTag && provider
+        ? 'The selected provider has no valid configured rate for this service tag'
+        : 'The selected service has no valid configured price'
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  return { amount, pricingType };
+};
+
 // Concurrency mutex lock per provider slot to prevent race conditions on simultaneous booking requests
 const bookingLocks = new Map();
 
@@ -370,8 +398,8 @@ const createBooking = async (userId, bookingData) => {
         .map((p) => p._id);
     }
 
-    // 5. Pricing calculation from trusted database values
-    const basePrice = Number(service.price);
+    // 5. Pricing is derived from the same provider tag or service configuration shown to the customer.
+    const { amount: basePrice } = getTrustedBookingPricing(service, provider, resolvedTag);
     const tax = 0;
     const discount = 0;
     const totalAmount = basePrice + tax - discount;
@@ -841,7 +869,7 @@ const getProviderRequests = async (userId, query = {}) => {
     .populate('service', 'name price priceType estimatedDurationMinutes')
     .populate({
       path: 'customer',
-      populate: { path: 'user', select: 'name phone' }
+      populate: { path: 'user', select: 'name' }
     })
     .sort({ createdAt: -1 });
 
@@ -873,7 +901,7 @@ const getProviderHistory = async (userId, query = {}) => {
       .populate('service', 'name price priceType estimatedDurationMinutes')
       .populate({
         path: 'customer',
-        populate: { path: 'user', select: 'name phone' }
+        populate: { path: 'user', select: 'name' }
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -903,30 +931,60 @@ const getProviderBookingById = async (userId, bookingId) => {
     throw err;
   }
 
-  const booking = await Booking.findById(bookingId)
+  const bookingDoc = await Booking.findById(bookingId)
     .populate('service')
     .populate({
       path: 'customer',
-      populate: { path: 'user', select: 'name phone email' }
+      populate: { path: 'user', select: 'name email' }
     });
 
-  if (!booking) {
+  if (!bookingDoc) {
     const err = new Error(`Booking with ID '${bookingId}' not found`);
     err.statusCode = 404;
     throw err;
   }
 
   // Authorization check: assigned or candidate
-  const isAssigned = booking.provider && booking.provider.toString() === provider._id.toString();
+  const isAssigned = bookingDoc.provider && bookingDoc.provider.toString() === provider._id.toString();
   const isCandidate =
-    !booking.provider &&
-    (booking.candidateProviders.some((c) => c.toString() === provider._id.toString()) ||
-      booking.candidateProviders.length === 0);
+    !bookingDoc.provider &&
+    (bookingDoc.candidateProviders?.some((c) => c.toString() === provider._id.toString()) ||
+      !bookingDoc.candidateProviders || bookingDoc.candidateProviders.length === 0);
 
   if (!isAssigned && !isCandidate) {
     const err = new Error('Access denied: You are not authorized to view this booking');
     err.statusCode = 403;
     throw err;
+  }
+
+  const booking = bookingDoc.toObject();
+
+  // CRITICAL PRIVACY & SECURITY ENFORCEMENT:
+  // Customer phone number is STRICTLY accessible ONLY AFTER the authenticated provider
+  // has successfully accepted/claimed this specific booking (status: 'accepted', 'in_progress', 'completed').
+  // When status is 'pending' (before acceptance) or if viewed by any candidate/unassigned provider:
+  // - Customer name, email, and service address are visible.
+  // - Customer mobile number is COMPLETELY STRIPPED from the API response.
+  // - Never trust frontend flags: authorization is strictly verified server-side.
+  const isAcceptedByThisProvider =
+    isAssigned && ['accepted', 'in_progress', 'completed'].includes(booking.status);
+
+  if (isAcceptedByThisProvider && booking.customer?.user?._id) {
+    const customerUser = await User.findById(booking.customer.user._id).select('phone').lean();
+    if (customerUser?.phone) {
+      if (!booking.customer.user) {
+        booking.customer.user = {};
+      }
+      booking.customer.user.phone = customerUser.phone;
+    }
+  } else {
+    // Strip phone completely from customer user or emergency contact objects
+    if (booking.customer?.user) {
+      delete booking.customer.user.phone;
+    }
+    if (booking.customer?.emergencyContact) {
+      delete booking.customer.emergencyContact.phone;
+    }
   }
 
   return booking;
@@ -2887,6 +2945,7 @@ const selectPostServicePaymentChoice = async (userId, bookingId, choice) => {
 
 module.exports = {
   createBooking,
+  getTrustedBookingPricing,
   getCustomerBookings,
   getCustomerBookingById,
   cancelBookingByCustomer,

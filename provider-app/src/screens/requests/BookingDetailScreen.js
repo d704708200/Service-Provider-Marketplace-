@@ -7,7 +7,8 @@ import {
   Alert,
   TouchableOpacity,
   TextInput,
-  Platform
+  Platform,
+  Linking
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -327,11 +328,14 @@ export default function BookingDetailScreen({ route, navigation }) {
     setActionLoading(true);
     try {
       const res = await bookingApi.acceptBooking(booking._id);
-      if (res?.success) {
-        decrementPendingRequestsCount(1);
-        Alert.alert('Accepted', 'You have claimed this booking.');
-        setBooking(res.data);
+      if (!res?.success || res.data?.status !== 'accepted') {
+        throw new Error('Booking acceptance could not be verified.');
       }
+
+      decrementPendingRequestsCount(1);
+      Alert.alert('Accepted', 'You have claimed this booking.');
+      setBooking(res.data);
+      await fetchDetail();
     } catch (err) {
       const isConflict = err.response?.status === 409 || /no longer pending|already claimed|conflict/i.test(err.message || '');
       if (isConflict) {
@@ -348,6 +352,32 @@ export default function BookingDetailScreen({ route, navigation }) {
       fetchDetail();
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const isJobAccepted = Boolean(
+    booking &&
+    booking.status !== 'pending' &&
+    ['accepted', 'in_progress', 'completed'].includes(booking.status)
+  );
+
+  const canCallCustomer = isJobAccepted && Boolean(booking?.customer?.user?.phone);
+
+  const handleCallCustomer = async () => {
+    if (!isJobAccepted) {
+      Alert.alert('Action Restricted', 'Customer phone number is only available after accepting this job.');
+      return;
+    }
+    const phone = booking?.customer?.user?.phone;
+    if (!phone) {
+      Alert.alert('Unavailable', 'Customer phone number is not available.');
+      return;
+    }
+
+    try {
+      await Linking.openURL(`tel:${phone}`);
+    } catch (err) {
+      Alert.alert('Unable to call customer', err.message || 'Please try again.');
     }
   };
 
@@ -864,7 +894,33 @@ export default function BookingDetailScreen({ route, navigation }) {
             </View>
             <View style={styles.infoCol}>
               <Text style={styles.infoTitle}>{booking.customer?.user?.name || 'Customer'}</Text>
-              <Text style={styles.infoSub}>{booking.customer?.user?.phone || 'No phone provided'}</Text>
+              {booking.customer?.user?.email ? (
+                <Text style={[styles.infoSub, { color: '#9CA3AF', marginTop: 1 }]}>
+                  {booking.customer.user.email}
+                </Text>
+              ) : null}
+
+              {canCallCustomer ? (
+                <View style={{ marginTop: 6 }}>
+                  <Text style={[styles.infoSub, { fontWeight: '700', color: '#DDD6FE' }]}>
+                    {booking.customer.user.phone}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.callCustomerButton}
+                    onPress={handleCallCustomer}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="call" size={15} color="#FFFFFF" />
+                    <Text style={styles.callCustomerText}>Call Customer</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text style={[styles.infoSub, { color: '#9CA3AF', marginTop: 4 }]}>
+                  {booking.status === 'pending'
+                    ? 'Customer mobile number & direct call option will be unlocked after accepting & claiming this job.'
+                    : 'Customer contact phone is unavailable for this booking.'}
+                </Text>
+              )}
             </View>
           </View>
 
@@ -1561,6 +1617,22 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: '#9CA3AF',
     marginTop: 2
+  },
+  callCustomerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: borderRadius.md,
+    marginTop: spacing.sm
+  },
+  callCustomerText: {
+    ...typography.bodySmall,
+    color: '#FFFFFF',
+    fontWeight: '700'
   },
   notesBox: {
     backgroundColor: '#1C1929',
