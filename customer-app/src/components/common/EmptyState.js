@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import colors from '../../theme/colors';
+import { useTheme } from '../../context/ThemeContext';
 import { spacing, typography } from '../../theme';
 import Button from './Button';
 
@@ -13,13 +13,19 @@ export default function EmptyState({
   onAction,
   containerStyle
 }) {
+  const { colors } = useTheme();
+
   return (
     <View style={[styles.container, containerStyle]}>
-      <View style={styles.iconCircle}>
-        <Ionicons name={icon} size={40} color={colors.slate400} />
+      <View style={[styles.iconCircle, { backgroundColor: colors.cardSecondary }]}>
+        <Ionicons name={icon} size={40} color={colors.placeholder} />
       </View>
-      <Text style={styles.title}>{title}</Text>
-      {description ? <Text style={styles.description}>{description}</Text> : null}
+      <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
+      {description ? (
+        <Text style={[styles.description, { color: colors.textSecondary }]}>
+          {description}
+        </Text>
+      ) : null}
       {actionTitle && onAction && (
         <Button
           title={actionTitle}
@@ -43,20 +49,17 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: colors.slate100,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.lg
   },
   title: {
     ...typography.titleSmall,
-    color: colors.slate800,
     textAlign: 'center',
     marginBottom: spacing.xs
   },
   description: {
     ...typography.bodyMedium,
-    color: colors.slate500,
     textAlign: 'center',
     maxWidth: 280,
     marginBottom: spacing.lg

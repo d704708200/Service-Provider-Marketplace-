@@ -1,24 +1,33 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import colors from '../../theme/colors';
+import { useTheme } from '../../context/ThemeContext';
 import { spacing, typography } from '../../theme';
 import Button from './Button';
 
 export default function ErrorView({
   title = 'Something Went Wrong',
-  message = 'We could not connect to the server. Please try again.',
-  onRetry
+  message = 'We could not connect to the server. Please check your connection and try again.',
+  onRetry,
+  containerStyle
 }) {
+  const { colors } = useTheme();
+
   return (
-    <View style={styles.container}>
-      <View style={styles.iconCircle}>
-        <Ionicons name="alert-circle-outline" size={38} color="#F87171" />
+    <View style={[styles.container, containerStyle]}>
+      <View style={[styles.iconCircle, { backgroundColor: colors.dangerSubtle }]}>
+        <Ionicons name="cloud-offline-outline" size={40} color={colors.danger} />
       </View>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.message}>{message}</Text>
+      <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
+      <Text style={[styles.message, { color: colors.textSecondary }]}>{message}</Text>
       {onRetry && (
-        <Button title="Try Again" onPress={onRetry} variant="primary" size="sm" style={styles.btn} />
+        <Button
+          title="Try Again"
+          onPress={onRetry}
+          variant="primary"
+          size="sm"
+          style={styles.retryButton}
+        />
       )}
     </View>
   );
@@ -31,30 +40,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   iconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: '#35111B',
-    borderWidth: 1,
-    borderColor: '#541525',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.lg
   },
   title: {
     ...typography.titleSmall,
-    color: '#FFFFFF',
     textAlign: 'center',
     marginBottom: spacing.xs
   },
   message: {
     ...typography.bodyMedium,
-    color: '#9CA3AF',
     textAlign: 'center',
-    maxWidth: 290,
+    maxWidth: 300,
     marginBottom: spacing.lg
   },
-  btn: {
+  retryButton: {
     minWidth: 140
   }
 });

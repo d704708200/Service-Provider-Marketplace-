@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTheme } from '../../context/ThemeContext';
 import { walletApi } from '../../services/api';
 
 const QUICK_AMOUNTS = [500, 1000, 2000];
 
 export default function WithdrawScreen({ route, navigation }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const { availableBalance = 0, savedPaymentMethods = {} } = route.params || {};
 
   const [currentBalance, setCurrentBalance] = useState(availableBalance);
@@ -155,7 +159,7 @@ export default function WithdrawScreen({ route, navigation }) {
             style={styles.backButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Withdraw Money</Text>
           <View style={{ width: 38 }} />
@@ -382,10 +386,10 @@ export default function WithdrawScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   header: {
     flexDirection: 'row',
@@ -394,21 +398,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1F1C2B',
-    backgroundColor: '#0F0E16'
+    borderBottomColor: colors.border,
+    backgroundColor: colors.card
   },
   backButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#1E1B2E',
+    backgroundColor: isDark ? '#1E1B2E' : colors.cardSecondary,
     justifyContent: 'center',
     alignItems: 'center'
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   scrollContent: {
     padding: 16,
@@ -418,21 +422,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1C1635',
+    backgroundColor: isDark ? '#1C1635' : '#EDE9FE',
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#382D67',
+    borderColor: isDark ? '#382D67' : '#DDD6FE',
     marginBottom: 20
   },
   availableLabel: {
-    color: '#A78BFA',
+    color: colors.primary,
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 4
   },
   availableValue: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 24,
     fontWeight: '800'
   },
@@ -440,7 +444,7 @@ const styles = StyleSheet.create({
     marginBottom: 16
   },
   label: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8
@@ -448,27 +452,27 @@ const styles = StyleSheet.create({
   amountInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     paddingHorizontal: 16,
     height: 56
   },
   currencyPrefix: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#8B5CF6',
+    color: colors.primary,
     marginRight: 8
   },
   amountInput: {
     flex: 1,
     fontSize: 24,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   helperText: {
-    color: '#71717A',
+    color: colors.textMuted,
     fontSize: 12,
     marginTop: 6
   },
@@ -479,34 +483,34 @@ const styles = StyleSheet.create({
   },
   quickChip: {
     flex: 1,
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#252136'
+    borderColor: colors.border
   },
   quickChipText: {
-    color: '#A78BFA',
+    color: colors.primary,
     fontSize: 13,
     fontWeight: '600'
   },
   allChip: {
-    borderColor: '#8B5CF6',
-    backgroundColor: 'rgba(139, 92, 246, 0.15)'
+    borderColor: colors.primary,
+    backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : 'rgba(124, 58, 237, 0.1)'
   },
   allChipText: {
-    color: '#FFFFFF',
+    color: colors.primary,
     fontSize: 13,
     fontWeight: '700'
   },
   methodToggleRow: {
     flexDirection: 'row',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 4,
     borderWidth: 1,
-    borderColor: '#252136'
+    borderColor: colors.border
   },
   methodTab: {
     flex: 1,
@@ -518,10 +522,10 @@ const styles = StyleSheet.create({
     gap: 6
   },
   methodTabActive: {
-    backgroundColor: '#7C3AED'
+    backgroundColor: colors.primary
   },
   methodTabText: {
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontSize: 13,
     fontWeight: '600'
   },
@@ -530,15 +534,15 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   methodFormCard: {
-    backgroundColor: '#16141F',
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     marginBottom: 20
   },
   subCardTitle: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 15,
     fontWeight: '700',
     marginBottom: 12
@@ -547,19 +551,19 @@ const styles = StyleSheet.create({
     marginBottom: 12
   },
   inputLabel: {
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontSize: 12,
     fontWeight: '500',
     marginBottom: 6
   },
   textInput: {
-    backgroundColor: '#0F0E16',
+    backgroundColor: isDark ? '#0F0E16' : colors.cardSecondary,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 14
   },
   errorBox: {
@@ -581,23 +585,23 @@ const styles = StyleSheet.create({
   infoBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    backgroundColor: isDark ? 'rgba(139, 92, 246, 0.1)' : 'rgba(124, 58, 237, 0.08)',
     borderRadius: 12,
     padding: 12,
     marginBottom: 24,
     gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.2)'
+    borderColor: isDark ? 'rgba(139, 92, 246, 0.2)' : 'rgba(124, 58, 237, 0.15)'
   },
   infoText: {
-    color: '#CBD5E1',
+    color: colors.textSecondary,
     fontSize: 12,
     flex: 1,
     lineHeight: 18
   },
   submitButton: {
     flexDirection: 'row',
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     borderRadius: 14,
     paddingVertical: 14,
     justifyContent: 'center',

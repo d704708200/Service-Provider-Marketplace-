@@ -1,7 +1,9 @@
 import React, { useEffect } from 'react';
+import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { AuthProvider } from './src/context/AuthContext';
 import { NotificationProvider } from './src/context/NotificationContext';
 import { RequestProvider } from './src/context/RequestContext';
@@ -17,6 +19,25 @@ if (typeof window !== 'undefined') {
 // Initialize global scrollbar hiding and smooth scrolling
 setupGlobalScrollbars();
 
+function AppContent() {
+  const { statusBarStyle, navigationTheme, colors } = useTheme();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <StatusBar style={statusBarStyle} />
+      <AuthProvider>
+        <NotificationProvider navigationRef={navigationRef}>
+          <RequestProvider>
+            <NavigationContainer ref={navigationRef} theme={navigationTheme}>
+              <RootNavigator />
+            </NavigationContainer>
+          </RequestProvider>
+        </NotificationProvider>
+      </AuthProvider>
+    </View>
+  );
+}
+
 export default function App() {
   useEffect(() => {
     configureNotificationChannel();
@@ -24,16 +45,9 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" />
-      <AuthProvider>
-        <NotificationProvider navigationRef={navigationRef}>
-          <RequestProvider>
-            <NavigationContainer ref={navigationRef}>
-              <RootNavigator />
-            </NavigationContainer>
-          </RequestProvider>
-        </NotificationProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

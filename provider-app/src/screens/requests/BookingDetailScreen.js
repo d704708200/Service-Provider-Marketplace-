@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,14 +12,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { bookingApi } from '../../services/api';
 import { useRequests } from '../../context/RequestContext';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView } from '../../components/common';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius, shadows } from '../../theme';
 
 export default function BookingDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { decrementPendingRequestsCount, refreshPendingRequestsCount } = useRequests();
   const bookingId = route.params?.bookingId || route.params?.id;
 
@@ -1530,17 +1532,17 @@ export default function BookingDetailScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   scrollContent: {
     padding: spacing.lg
   },
   card: {
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     borderRadius: 16,
     marginBottom: spacing.md
   },
@@ -1551,17 +1553,17 @@ const styles = StyleSheet.create({
   },
   serviceName: {
     ...typography.titleSmall,
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   reference: {
     fontSize: 11,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '700',
     marginTop: 2
   },
   divider: {
     height: 1,
-    backgroundColor: '#252136',
+    backgroundColor: colors.border,
     marginVertical: spacing.md
   },
   metaRow: {
@@ -1572,21 +1574,21 @@ const styles = StyleSheet.create({
   },
   metaLabel: {
     ...typography.bodySmall,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   metaVal: {
     ...typography.bodySmall,
     fontWeight: '600',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   price: {
     ...typography.titleSmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '700'
   },
   sectionTitle: {
     ...typography.titleSmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: spacing.md
   },
   infoRow: {

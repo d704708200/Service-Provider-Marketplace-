@@ -12,15 +12,37 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { providerApi, tagApi } from '../../services/api';
 import { Header, Input, Card, Badge, EmptyState, SelectLocationModal } from '../../components/common';
 import { useLocation } from '../../context/LocationContext';
 import { formatRating, formatReviewCount, formatExperience } from '../../utils/formatters';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
+
+const getRateTypeLabel = (pricingType) => {
+  switch (pricingType) {
+    case 'hourly':
+    case 'hour':
+    case 'per_hour':
+      return 'Hour';
+    case 'per_visit':
+    case 'visit':
+      return 'Visit';
+    case 'quote':
+    case 'quote_on_request':
+      return 'Quote on Request';
+    case 'fixed':
+    case 'per_service':
+    case 'service':
+    default:
+      return 'Service';
+  }
+};
 
 export default function ProvidersScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { location, setManualLocation } = useLocation();
   const [showLocationModal, setShowLocationModal] = useState(false);
   const {
@@ -133,6 +155,7 @@ export default function ProvidersScreen({ route, navigation }) {
       if (activeCategory) {
         const params = { ...coordsParams };
         if (debouncedSearch) params.search = debouncedSearch;
+        if (activeService) params.serviceId = activeService;
         if (selectedTagId && selectedTagId !== 'ALL') {
           params.tagId = selectedTagId;
         }
@@ -222,23 +245,42 @@ export default function ProvidersScreen({ route, navigation }) {
           : 'Verified Professional';
     }
 
-    // Determine displayed price: if selected tag has custom rate for this provider, show that
-    let displayPrice = item.servicePrice || null;
-    let priceLabel = item.pricingType === 'hourly' ? 'Rate: ' : 'Fixed: ';
-
-    if (!displayPrice && selectedTagObj && Array.isArray(item.serviceTags)) {
-      const matchedTag = item.serviceTags.find(
-        (st) => String(st.tag?._id || st.tag) === String(selectedTagObj._id)
-      );
-      if (matchedTag && matchedTag.basePrice) {
-        displayPrice = matchedTag.basePrice;
-        priceLabel = matchedTag.pricingType === 'hourly' ? 'Rate: ' : 'Fixed: ';
-      }
-    }
-    if (!displayPrice) {
-      displayPrice = item.pricing?.basePrice ?? item.basePrice ?? item.startingPrice;
-      priceLabel = 'Starts at ';
-    }
+    const standardRate = item.standardRate || item.pricing?.standardRate;
+    const minimumRate = Number(
+      standardRate?.amount ?? standardRate?.min ?? item.amount ?? item.servicePrice
+    );
+    const maximumRate = Number(
+      standardRate?.amount ?? standardRate?.max ?? item.amount ?? item.servicePrice
+    );
+    const hasStandardRate =
+      Number.isFinite(minimumRate) &&
+      minimumRate > 0 &&
+      Number.isFinite(maximumRate) &&
+      maximumRate >= minimumRate;
+    const rateTypeLabel = getRateTypeLabel(
+      standardRate?.pricingType || item.pricingType
+    );
+    const formattedRate = hasStandardRate
+      ? `₹${minimumRate.toLocaleString('en-IN')}`
+      : '';
+    const standardRateText = hasStandardRate
+      ? standardRate?.isStartingFrom
+        ? `Starting from ${formattedRate} / ${rateTypeLabel}`
+        : minimumRate === maximumRate
+        ? `${formattedRate} / ${rateTypeLabel}`
+        : `${formattedRate}–₹${maximumRate.toLocaleString('en-IN')} / ${rateTypeLabel}`
+      : item.rateStatus === 'not_configured'
+      ? 'Rate not configured'
+      : item.rateStatus === 'quote'
+      ? 'Rate on request'
+      : 'Rate not available';
+    const bookingTagId =
+      selectedTagObj?._id ||
+      (standardRate?.sourceType === 'tag' ? standardRate.tagId : undefined);
+    const bookingServiceId =
+      standardRate?.sourceType === 'service'
+        ? standardRate.serviceId
+        : activeService;
 
     // Provider verified active tags
     const activeTagsList = Array.isArray(item.activeTags) && item.activeTags.length > 0
@@ -259,11 +301,15 @@ export default function ProvidersScreen({ route, navigation }) {
         onPress={() =>
           navigation.navigate('ProviderDetail', {
             providerId: item._id,
-            selectedServiceId: activeService || undefined,
-            tagId: selectedTagObj?._id,
-            tagName: selectedTagObj?.name,
+            selectedServiceId: bookingServiceId || undefined,
+            tagId: bookingTagId,
+            tagName:
+              selectedTagObj?.name ||
+              item.activeTags?.find((tagItem) => String(tagItem._id) === String(bookingTagId))?.name,
             categoryId: activeCategory,
-            categoryName
+            categoryName,
+            standardRate,
+            rateStatus: item.rateStatus
           })
         }
       >
@@ -354,17 +400,13 @@ export default function ProvidersScreen({ route, navigation }) {
               )}
             </View>
 
-            {/* Price & Action Row */}
+            {/* Standard Rate & Action Row */}
             <View style={styles.bottomActionRow}>
               <View style={styles.priceContainer}>
-                {displayPrice != null && displayPrice > 0 ? (
-                  <>
-                    <Text style={styles.startingAtLabel}>{priceLabel}</Text>
-                    <Text style={styles.priceVal}>₹{displayPrice}</Text>
-                  </>
-                ) : (
-                  <Text style={styles.ratesOnRequestText}>Standard Rates</Text>
-                )}
+                <Text style={styles.standardRateLabel}>Standard Rate</Text>
+                <Text style={hasStandardRate ? styles.priceVal : styles.ratesOnRequestText} numberOfLines={1}>
+                  {standardRateText}
+                </Text>
               </View>
 
               <TouchableOpacity
@@ -372,11 +414,15 @@ export default function ProvidersScreen({ route, navigation }) {
                 onPress={() =>
                   navigation.navigate('ProviderDetail', {
                     providerId: item._id,
-                    selectedServiceId: activeService || undefined,
-                    tagId: selectedTagObj?._id,
-                    tagName: selectedTagObj?.name,
+                    selectedServiceId: bookingServiceId || undefined,
+                    tagId: bookingTagId,
+                    tagName:
+                      selectedTagObj?.name ||
+                      item.activeTags?.find((tagItem) => String(tagItem._id) === String(bookingTagId))?.name,
                     categoryId: activeCategory,
-                    categoryName
+                    categoryName,
+                    standardRate,
+                    rateStatus: item.rateStatus
                   })
                 }
                 activeOpacity={0.8}
@@ -595,25 +641,25 @@ export default function ProvidersScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F0E16'
+    backgroundColor: colors.background
   },
   searchSection: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderBottomWidth: 1,
-    borderBottomColor: '#221E33'
+    borderBottomColor: colors.border
   },
   searchContainer: {
     marginBottom: 0
   },
   tagChipsSection: {
-    backgroundColor: '#13111C',
+    backgroundColor: colors.cardSecondary,
     borderBottomWidth: 1,
-    borderBottomColor: '#221E33',
+    borderBottomColor: colors.border,
     paddingVertical: 10
   },
   tagChipsScroll: {
@@ -626,18 +672,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: '#1C1929',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#2E2845'
+    borderColor: colors.border
   },
   tagChipSelected: {
-    backgroundColor: '#7C3AED',
-    borderColor: '#8B5CF6'
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   tagChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   tagChipTextSelected: {
     color: '#FFFFFF',
@@ -653,21 +699,21 @@ const styles = StyleSheet.create({
   sectionHeading: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#E2E8F0',
+    color: colors.textPrimary,
     letterSpacing: 0.2
   },
   countBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 12,
-    backgroundColor: 'rgba(124, 58, 237, 0.18)',
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.18)' : 'rgba(124, 58, 237, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(124, 58, 237, 0.3)'
+    borderColor: isDark ? 'rgba(124, 58, 237, 0.3)' : 'rgba(124, 58, 237, 0.25)'
   },
   countBadgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#A78BFA'
+    color: colors.primary
   },
   loadingContainer: {
     flex: 1,
@@ -678,7 +724,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: spacing.sm,
     fontSize: 13,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   errorContainer: {
     flex: 1,
@@ -689,18 +735,18 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#E2E8F0',
+    color: colors.textPrimary,
     marginTop: 12
   },
   errorSub: {
     fontSize: 12,
-    color: '#71717A',
+    color: colors.textMuted,
     textAlign: 'center',
     marginTop: 4,
     marginBottom: 16
   },
   retryBtn: {
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 8
@@ -715,8 +761,8 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: spacing.md,
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: borderRadius.md,
     padding: spacing.md
@@ -729,7 +775,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.15)' : 'rgba(124, 58, 237, 0.10)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md
@@ -751,19 +797,19 @@ const styles = StyleSheet.create({
   },
   businessName: {
     ...typography.titleSmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '700',
     flexShrink: 1
   },
   categoriesText: {
     fontSize: 12,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '600',
     marginBottom: 4
   },
   bioText: {
     ...typography.bodySmall,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginBottom: spacing.xs,
     lineHeight: 18
   },
@@ -779,26 +825,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
-    backgroundColor: '#201C30',
+    backgroundColor: isDark ? '#201C30' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#2D2845'
+    borderColor: colors.border
   },
   tagPillActive: {
-    borderColor: '#7C3AED',
-    backgroundColor: 'rgba(124, 58, 237, 0.25)'
+    borderColor: colors.primary,
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : 'rgba(124, 58, 237, 0.12)'
   },
   tagPillText: {
     fontSize: 11,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '500'
   },
   tagPillTextActive: {
-    color: '#FFFFFF',
+    color: colors.primary,
     fontWeight: '700'
   },
   tagPillMore: {
     fontSize: 11,
-    color: '#71717A',
+    color: colors.textMuted,
     fontWeight: '600'
   },
   metaRow: {
@@ -811,12 +857,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: '#272010',
+    backgroundColor: isDark ? '#272010' : '#FEF3C7',
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.3)'
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.3)' : '#FCD34D'
   },
   ratingText: {
     fontSize: 11,
@@ -825,11 +871,11 @@ const styles = StyleSheet.create({
   },
   reviewCount: {
     fontSize: 11,
-    color: '#FCD34D'
+    color: isDark ? '#FCD34D' : '#D97706'
   },
   experienceText: {
     fontSize: 11,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   bottomActionRow: {
     flexDirection: 'row',
@@ -837,35 +883,40 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingTop: spacing.xs,
     borderTopWidth: 1,
-    borderTopColor: '#252136',
+    borderTopColor: colors.border,
     marginTop: 2
   },
   priceContainer: {
-    flexDirection: 'row',
-    alignItems: 'baseline'
+    flex: 1,
+    minWidth: 0,
+    marginRight: spacing.sm
   },
-  startingAtLabel: {
+  standardRateLabel: {
     fontSize: 11,
-    color: '#9CA3AF'
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 2
   },
   priceVal: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary,
+    flexShrink: 1
   },
   ratesOnRequestText: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    fontStyle: 'italic'
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '600'
   },
   viewProfileBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: borderRadius.sm
+    borderRadius: borderRadius.sm,
+    flexShrink: 0
   },
   viewProfileText: {
     color: '#FFFFFF',
@@ -873,7 +924,7 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   locationBarSection: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     paddingHorizontal: spacing.md,
     paddingTop: 8,
     paddingBottom: 4
@@ -882,9 +933,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1E1B2E',
+    backgroundColor: colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#2F2948',
+    borderColor: colors.border,
     borderRadius: borderRadius.md,
     paddingHorizontal: 12,
     paddingVertical: 8
@@ -902,20 +953,20 @@ const styles = StyleSheet.create({
   locationBarLabel: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#9CA3AF',
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5
   },
   locationBarAddress: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   changeLocationPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.15)' : 'rgba(124, 58, 237, 0.10)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12

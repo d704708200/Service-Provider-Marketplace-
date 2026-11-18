@@ -16,6 +16,7 @@ const {
   isValidLongitude,
   isValidGeoJsonCoordinates
 } = require('../utils/geoUtils');
+const { buildProviderStandardRateResponse } = require('../utils/pricingUtils');
 const serviceRadiusService = require('./serviceRadiusService');
 const {
   parseTimeToMinutes,
@@ -28,6 +29,136 @@ const {
 
 const escapeRegex = (string) => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+const KYC_DOCUMENT_FIELDS = {
+  aadhaar_front: { label: 'Aadhaar Front', image: 'aadhaarFrontImage', publicId: 'aadhaarFrontImagePublicId' },
+  aadhaar_back: { label: 'Aadhaar Back', image: 'aadhaarBackImage', publicId: 'aadhaarBackImagePublicId' },
+  pan_front: { label: 'PAN Front', image: 'panFrontImage', publicId: 'panFrontImagePublicId' },
+  pan_back: { label: 'PAN Back', image: 'panBackImage', publicId: 'panBackImagePublicId' }
+};
+
+const getKycReviewEntries = (provider) =>
+  Object.entries(KYC_DOCUMENT_FIELDS).map(([type, fields]) => {
+    const sameTypeDocuments = (provider.documents || []).filter(
+      (document) => document.type.toLowerCase() === type
+    );
+    return {
+      type,
+      ...fields,
+      document: sameTypeDocuments.find(
+        (document) => document.documentUrl === provider[fields.image]
+      ),
+      hasDocumentOfType: sameTypeDocuments.length > 0
+    };
+  });
+
+const getKycReviewIssues = (provider, rejectedTypes = [], normalizedReviewStatus = 'approved') => {
+  const rejectedTypeSet = new Set(rejectedTypes);
+  const issues = [];
+
+  for (const entry of getKycReviewEntries(provider)) {
+    if (!provider[entry.image]) {
+      issues.push(`${entry.label} is missing.`);
+      continue;
+    }
+    if (!entry.document) {
+      issues.push(
+        entry.hasDocumentOfType
+          ? `${entry.label} review does not match the current upload.`
+          : `${entry.label} has no individual review record.`
+      );
+      continue;
+    }
+    if (rejectedTypeSet.has(entry.type)) continue;
+    if (entry.document.verificationStatus === 'rejected') {
+      issues.push(`${entry.label} was rejected.`);
+    } else if (normalizedReviewStatus === 'approved' && entry.document.verificationStatus === 'pending') {
+      issues.push(`${entry.label} must be approved before final KYC approval.`);
+    }
+  }
+
+  return issues;
+};
+
+const normalizeKycStatus = (provider) => {
+  if (!provider) return 'NOT_SUBMITTED';
+  const status = String(provider.kycStatus || 'NOT_SUBMITTED').toUpperCase();
+  if (status === 'DRAFT') return 'NOT_SUBMITTED';
+  if (status === 'VERIFIED' || status === 'APPROVED') return 'APPROVED';
+  if (status === 'REJECTED') return 'REJECTED';
+  if (status === 'UNDER_REVIEW' || status === 'PENDING') {
+    const hasCompletePackage = Object.values(KYC_DOCUMENT_FIELDS).every(
+      ({ image }) => Boolean(provider[image])
+    );
+    return provider.kycSubmittedAt || hasCompletePackage ? 'PENDING' : 'NOT_SUBMITTED';
+  }
+  return status;
+};
+
+const assertKycEditable = (provider) => {
+  const status = normalizeKycStatus(provider);
+  if (status !== 'NOT_SUBMITTED') {
+    const err = new Error('Submitted KYC documents are locked and cannot be changed');
+    err.statusCode = 409;
+    throw err;
+  }
+};
+
+const assertKycDocumentEditable = (provider, docType) => {
+  if (normalizeKycStatus(provider) === 'NOT_SUBMITTED') return;
+
+  const reviewedDocument = (provider.documents || []).find(
+    (document) => document.type.toLowerCase() === docType
+  );
+  if (
+    normalizeKycStatus(provider) === 'REJECTED' &&
+    reviewedDocument?.verificationStatus === 'rejected'
+  ) {
+    return;
+  }
+
+  const err = new Error('Only unsubmitted or rejected KYC documents can be changed');
+  err.statusCode = 409;
+  throw err;
+};
+
+const assertKycSubmittable = (provider) => {
+  if (['NOT_SUBMITTED', 'REJECTED'].includes(normalizeKycStatus(provider))) return;
+  const err = new Error('KYC can only be submitted once or resubmitted after rejection');
+  err.statusCode = 409;
+  throw err;
+};
+
+const buildEditableKycFilter = (provider, docType) => {
+  const status = normalizeKycStatus(provider);
+  if (status === 'REJECTED') {
+    return {
+      _id: provider._id,
+      kycStatus: { $in: ['REJECTED', 'rejected'] },
+      documents: {
+        $elemMatch: {
+          type: docType,
+          verificationStatus: 'rejected'
+        }
+      }
+    };
+  }
+
+  return {
+    _id: provider._id,
+    $or: [
+      { kycStatus: { $in: ['NOT_SUBMITTED', 'DRAFT'] } },
+      { kycStatus: { $exists: false } },
+      { kycStatus: null },
+      {
+        $and: [
+          { kycStatus: { $in: ['pending', 'PENDING'] } },
+          { kycSubmittedAt: null }
+        ]
+      }
+    ]
+  };
 };
 
 /**
@@ -54,7 +185,10 @@ const getProviderProfileByUserId = async (userId) => {
     throw err;
   }
 
-  return provider;
+  return {
+    ...provider,
+    kycStatus: normalizeKycStatus(provider)
+  };
 };
 
 /**
@@ -616,6 +750,10 @@ const submitDocument = async (userId, { type, documentUrl, title }) => {
   }
 
   const normalizedType = type.trim().toLowerCase();
+  const isKycDocument = Boolean(KYC_DOCUMENT_FIELDS[normalizedType]);
+  if (isKycDocument) {
+    assertKycEditable(provider);
+  }
   const existingDocIndex = provider.documents.findIndex(
     (doc) => doc.type.toLowerCase() === normalizedType
   );
@@ -627,6 +765,7 @@ const submitDocument = async (userId, { type, documentUrl, title }) => {
     provider.documents[existingDocIndex].uploadedAt = new Date();
     provider.documents[existingDocIndex].reviewNote = '';
     provider.documents[existingDocIndex].reviewedAt = null;
+    provider.documents[existingDocIndex].reviewedBy = null;
   } else {
     // New document submission
     provider.documents.push({
@@ -635,14 +774,36 @@ const submitDocument = async (userId, { type, documentUrl, title }) => {
       verificationStatus: 'pending',
       uploadedAt: new Date(),
       reviewNote: '',
-      reviewedAt: null
+      reviewedAt: null,
+      reviewedBy: null
     });
   }
 
-  // If provider was previously rejected, resubmission moves overall status back to pending
-  if (provider.verificationStatus === 'rejected') {
+  // General provider verification is independent of mandatory KYC document uploads.
+  const updates = { documents: provider.documents };
+  if (!isKycDocument && provider.verificationStatus === 'rejected') {
     provider.verificationStatus = 'pending';
     provider.rejectionReason = null;
+    updates.verificationStatus = 'pending';
+    updates.rejectionReason = null;
+  }
+
+  if (isKycDocument) {
+    const updatedProvider = await Provider.findOneAndUpdate(
+      buildEditableKycFilter(provider),
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+    if (!updatedProvider) {
+      const err = new Error('KYC status changed while updating the document. Reload and try again.');
+      err.statusCode = 409;
+      throw err;
+    }
+
+    return {
+      verificationStatus: updatedProvider.verificationStatus,
+      documents: updatedProvider.documents
+    };
   }
 
   await provider.save();
@@ -654,9 +815,9 @@ const submitDocument = async (userId, { type, documentUrl, title }) => {
 };
 
 /**
- * Submit complete KYC package (Aadhaar Front & Back, PAN Front & Back)
+ * Upload a KYC document to the provider's editable draft.
  */
-const submitKYCDocuments = async (userId, { aadhaarFrontImage, aadhaarBackImage, panFrontImage, panBackImage }) => {
+const uploadKYCDocument = async (userId, docType, file) => {
   const provider = await Provider.findOne({ user: userId });
   if (!provider) {
     const err = new Error('Provider profile not found');
@@ -664,65 +825,254 @@ const submitKYCDocuments = async (userId, { aadhaarFrontImage, aadhaarBackImage,
     throw err;
   }
 
-  // Set explicit KYC fields
-  provider.aadhaarFrontImage = aadhaarFrontImage.trim();
-  provider.aadhaarBackImage = aadhaarBackImage.trim();
-  provider.panFrontImage = panFrontImage.trim();
-  if (panBackImage && typeof panBackImage === 'string' && panBackImage.trim()) {
-    provider.panBackImage = panBackImage.trim();
+  const normalizedDocType = String(docType || '').toLowerCase();
+  const fields = KYC_DOCUMENT_FIELDS[normalizedDocType];
+  if (!fields) {
+    const err = new Error('Document type must be aadhaar_front, aadhaar_back, pan_front, or pan_back');
+    err.statusCode = 400;
+    throw err;
+  }
+  assertKycDocumentEditable(provider, normalizedDocType);
+
+  if (!file?.buffer) {
+    const err = new Error('No KYC document file provided');
+    err.statusCode = 400;
+    throw err;
   }
 
-  provider.kycStatus = 'under_review';
-  provider.kycSubmittedAt = new Date();
-  provider.kycRejectionReason = null;
-
-  // If overall provider verification was rejected, move it back to pending for review
-  if (provider.verificationStatus === 'rejected') {
-    provider.verificationStatus = 'pending';
-    provider.rejectionReason = null;
+  const { uploadImage, deleteAsset } = require('../config/cloudinary');
+  const statusBeforeUpload = normalizeKycStatus(provider);
+  const uploadedAt = new Date(Math.max(
+    Date.now(),
+    (provider.kycReviewedAt?.getTime() || 0) + 1
+  ));
+  const uploadResult = await uploadImage(file, {
+    folder: 'marketplace/kyc_documents',
+    public_id: `kyc_${provider._id}_${normalizedDocType}_${Date.now()}`
+  });
+  const previousPublicId = provider[fields.publicId];
+  const matchingDocumentIndex = provider.documents.findIndex(
+    (document) => document.type.toLowerCase() === normalizedDocType
+  );
+  if (matchingDocumentIndex >= 0) {
+    provider.documents[matchingDocumentIndex].documentUrl = uploadResult.url;
+    provider.documents[matchingDocumentIndex].uploadedAt = uploadedAt;
+    if (statusBeforeUpload !== 'REJECTED') {
+      provider.documents[matchingDocumentIndex].verificationStatus = 'pending';
+      provider.documents[matchingDocumentIndex].reviewNote = '';
+      provider.documents[matchingDocumentIndex].reviewedAt = null;
+      provider.documents[matchingDocumentIndex].reviewedBy = null;
+    }
+  } else {
+    provider.documents.push({
+      type: normalizedDocType,
+      documentUrl: uploadResult.url,
+      verificationStatus: 'pending',
+      uploadedAt,
+      reviewNote: '',
+      reviewedAt: null,
+      reviewedBy: null
+    });
   }
 
-  // Synchronize documents array for unified admin audit
-  const kycDocsToUpsert = [
-    { type: 'aadhaar_front', url: provider.aadhaarFrontImage },
-    { type: 'aadhaar_back', url: provider.aadhaarBackImage },
-    { type: 'pan_front', url: provider.panFrontImage },
-    ...(provider.panBackImage ? [{ type: 'pan_back', url: provider.panBackImage }] : [])
-  ];
+  const updates = {
+    [fields.image]: uploadResult.url,
+    [fields.publicId]: uploadResult.public_id,
+    documents: provider.documents
+  };
+  if (statusBeforeUpload === 'NOT_SUBMITTED') updates.kycStatus = 'NOT_SUBMITTED';
 
-  for (const item of kycDocsToUpsert) {
-    const existingIdx = provider.documents.findIndex(
-      (d) => d.type.toLowerCase() === item.type
+  const updatedProvider = await Provider.findOneAndUpdate(
+    buildEditableKycFilter(provider, normalizedDocType),
+    { $set: updates },
+    { new: true, runValidators: true }
+  );
+  if (!updatedProvider) {
+    await deleteAsset(uploadResult.public_id);
+    const err = new Error('KYC status changed while uploading. Reload the documents and try again.');
+    err.statusCode = 409;
+    throw err;
+  }
+
+  if (previousPublicId) {
+    await deleteAsset(previousPublicId);
+  }
+
+  return {
+    documentUrl: uploadResult.url,
+    docType: normalizedDocType,
+    kycStatus: normalizeKycStatus(updatedProvider),
+    documents: updatedProvider.documents,
+    uploadedAt
+  };
+};
+
+const deleteKYCDocument = async (userId, docType) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const normalizedDocType = String(docType || '').toLowerCase();
+  const fields = KYC_DOCUMENT_FIELDS[normalizedDocType];
+  if (!fields) {
+    const err = new Error('Invalid KYC document type');
+    err.statusCode = 400;
+    throw err;
+  }
+  assertKycEditable(provider);
+
+  const previousPublicId = provider[fields.publicId];
+  const matchingDocumentIndex = provider.documents.findIndex(
+    (doc) => doc.type.toLowerCase() === normalizedDocType
+  );
+  if (matchingDocumentIndex >= 0) provider.documents.splice(matchingDocumentIndex, 1);
+
+  const updatedProvider = await Provider.findOneAndUpdate(
+    buildEditableKycFilter(provider),
+    {
+      $set: {
+        [fields.image]: null,
+        [fields.publicId]: null,
+        documents: provider.documents
+      }
+    },
+    { new: true, runValidators: true }
+  );
+  if (!updatedProvider) {
+    const err = new Error('KYC status changed while deleting. Reload the documents and try again.');
+    err.statusCode = 409;
+    throw err;
+  }
+
+  if (previousPublicId) {
+    const { deleteAsset } = require('../config/cloudinary');
+    await deleteAsset(previousPublicId);
+  }
+
+  return { docType: normalizedDocType, kycStatus: normalizeKycStatus(updatedProvider) };
+};
+
+/**
+ * Submit complete KYC package (Aadhaar Front & Back, PAN Front & Back)
+ */
+const submitKYCDocuments = async (userId, submittedDocuments = {}) => {
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  assertKycSubmittable(provider);
+  const requiredImages = Object.values(KYC_DOCUMENT_FIELDS).map(({ image }) => image);
+  const missingImages = requiredImages.filter((field) => !provider[field]);
+  if (missingImages.length > 0) {
+    const err = new Error('Aadhaar front and back and PAN front and back documents are required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const statusBeforeSubmission = normalizeKycStatus(provider);
+  const rejectedDocuments = statusBeforeSubmission === 'REJECTED'
+    ? provider.documents.filter(
+      (document) =>
+        Object.prototype.hasOwnProperty.call(KYC_DOCUMENT_FIELDS, document.type.toLowerCase()) &&
+        document.verificationStatus === 'rejected'
+    )
+    : [];
+  if (statusBeforeSubmission === 'REJECTED') {
+    if (!rejectedDocuments.length) {
+      const err = new Error('No rejected KYC documents are available for correction');
+      err.statusCode = 409;
+      throw err;
+    }
+    const uncorrectedDocuments = rejectedDocuments.filter(
+      (document) =>
+        !document.uploadedAt ||
+        !provider.kycReviewedAt ||
+        document.uploadedAt.getTime() <= provider.kycReviewedAt.getTime()
     );
-    if (existingIdx >= 0) {
-      provider.documents[existingIdx].documentUrl = item.url;
-      provider.documents[existingIdx].verificationStatus = 'pending';
-      provider.documents[existingIdx].uploadedAt = new Date();
-      provider.documents[existingIdx].reviewNote = '';
-      provider.documents[existingIdx].reviewedAt = null;
+    if (uncorrectedDocuments.length) {
+      const err = new Error('Replace every rejected KYC document before resubmitting');
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  for (const imageField of requiredImages) {
+    const suppliedUrl = submittedDocuments[imageField];
+    if (suppliedUrl !== undefined && suppliedUrl !== provider[imageField]) {
+      const err = new Error('KYC documents must be uploaded through the secure document upload endpoint');
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  const submittedAt = new Date();
+  const submissionFilter = buildEditableKycFilter(
+    provider,
+    rejectedDocuments[0]?.type
+  );
+  for (const [type, { image }] of Object.entries(KYC_DOCUMENT_FIELDS)) {
+    submissionFilter[image] = provider[image];
+    const existingDoc = provider.documents.find((doc) => doc.type.toLowerCase() === type);
+    if (existingDoc) {
+      existingDoc.documentUrl = provider[image];
+      if (statusBeforeSubmission !== 'REJECTED' || existingDoc.verificationStatus !== 'approved') {
+        existingDoc.verificationStatus = 'pending';
+        existingDoc.reviewNote = '';
+        existingDoc.reviewedAt = null;
+        existingDoc.reviewedBy = null;
+        if (statusBeforeSubmission !== 'REJECTED') existingDoc.uploadedAt = submittedAt;
+      }
     } else {
       provider.documents.push({
-        type: item.type,
-        documentUrl: item.url,
+        type,
+        documentUrl: provider[image],
         verificationStatus: 'pending',
-        uploadedAt: new Date(),
+        uploadedAt: submittedAt,
         reviewNote: '',
-        reviewedAt: null
+        reviewedAt: null,
+        reviewedBy: null
       });
     }
   }
 
-  await provider.save();
-
-  return await Provider.findById(provider._id)
+  const submissionUpdates = {
+    kycStatus: 'PENDING',
+    kycSubmittedAt: submittedAt,
+    kycReviewedAt: null,
+    kycReviewedBy: null,
+    kycRejectionReason: null,
+    documents: provider.documents
+  };
+  const submittedProvider = await Provider.findOneAndUpdate(
+    submissionFilter,
+    { $set: submissionUpdates },
+    { new: true, runValidators: true }
+  )
     .populate('user', 'name email phone avatar role isActive isVerified createdAt')
     .lean();
+  if (!submittedProvider) {
+    const err = new Error('KYC status or documents changed during submission. Reload and submit again.');
+    err.statusCode = 409;
+    throw err;
+  }
+
+  return submittedProvider;
 };
 
 /**
  * Admin: Review KYC Package (Approve or Reject with reason)
  */
-const reviewKYC = async (providerId, adminUserId, { status, rejectionReason }) => {
+const reviewKYC = async (
+  providerId,
+  adminUserId,
+  { status, rejectionReason, rejectedDocuments }
+) => {
   const provider = await Provider.findById(providerId);
   if (!provider) {
     const err = new Error(`Provider not found with ID '${providerId}'`);
@@ -730,49 +1080,119 @@ const reviewKYC = async (providerId, adminUserId, { status, rejectionReason }) =
     throw err;
   }
 
-  provider.kycStatus = status; // 'verified' or 'rejected'
-  provider.kycReviewedAt = new Date();
-  provider.kycReviewedBy = adminUserId;
-
-  if (status === 'verified') {
-    provider.kycRejectionReason = null;
-    provider.verificationStatus = 'verified';
-    provider.verifiedAt = new Date();
-    provider.rejectionReason = null;
-
-    // Mark documents approved
-    provider.documents.forEach((doc) => {
-      if (['aadhaar_front', 'aadhaar_back', 'pan_front', 'pan_back'].includes(doc.type.toLowerCase())) {
-        doc.verificationStatus = 'approved';
-        doc.reviewedAt = new Date();
-      }
-    });
-
-    await User.findByIdAndUpdate(provider.user, { isVerified: true });
-  } else if (status === 'rejected') {
-    provider.kycRejectionReason = rejectionReason.trim();
-    provider.verificationStatus = 'rejected';
-    provider.rejectionReason = rejectionReason.trim();
-    provider.verifiedAt = null;
-
-    // Mark documents rejected
-    provider.documents.forEach((doc) => {
-      if (['aadhaar_front', 'aadhaar_back', 'pan_front', 'pan_back'].includes(doc.type.toLowerCase())) {
-        doc.verificationStatus = 'rejected';
-        doc.reviewNote = rejectionReason.trim();
-        doc.reviewedAt = new Date();
-      }
-    });
-
-    await User.findByIdAndUpdate(provider.user, { isVerified: false });
+  if (normalizeKycStatus(provider) !== 'PENDING') {
+    const err = new Error('Only submitted KYC applications awaiting review can be approved or rejected');
+    err.statusCode = 409;
+    throw err;
   }
 
-  await provider.save();
+  const normalizedReviewStatus = String(status || '').toLowerCase();
+  if (!['verified', 'approved', 'rejected'].includes(normalizedReviewStatus)) {
+    const err = new Error('KYC review status must be approved or rejected');
+    err.statusCode = 400;
+    throw err;
+  }
 
-  return await Provider.findById(providerId)
-    .populate('user', 'name email phone avatar role isActive isVerified createdAt')
-    .populate('kycReviewedBy', 'name email role')
-    .lean();
+  const requiredDocumentTypes = Object.keys(KYC_DOCUMENT_FIELDS);
+  const rejectedDocumentTypes = normalizedReviewStatus === 'rejected'
+    ? (rejectedDocuments === undefined ? requiredDocumentTypes : rejectedDocuments)
+    : [];
+  if (
+    normalizedReviewStatus === 'rejected' &&
+    (
+      !Array.isArray(rejectedDocumentTypes) ||
+      rejectedDocumentTypes.length === 0 ||
+      rejectedDocumentTypes.some((type) => !requiredDocumentTypes.includes(type)) ||
+      new Set(rejectedDocumentTypes).size !== rejectedDocumentTypes.length
+    )
+  ) {
+    const err = new Error('Select one or more valid KYC documents to reject');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (normalizedReviewStatus === 'rejected' && !String(rejectionReason || '').trim()) {
+    const err = new Error('A rejection reason is mandatory when rejecting KYC verification');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const rejectedTypes = normalizedReviewStatus === 'rejected' ? rejectedDocumentTypes : [];
+  const reviewIssues = getKycReviewIssues(provider, rejectedTypes, normalizedReviewStatus);
+  if (reviewIssues.length) {
+    const err = new Error(
+      normalizedReviewStatus === 'rejected'
+        ? `KYC cannot be rejected: ${reviewIssues.join(' ')}`
+        : `KYC cannot be approved: ${reviewIssues.join(' ')}`
+    );
+    err.statusCode = 409;
+    throw err;
+  }
+
+  const reviewEntries = getKycReviewEntries(provider);
+  const reviewFilter = {
+    _id: provider._id,
+    kycStatus: provider.kycStatus
+  };
+  for (const { image } of Object.values(KYC_DOCUMENT_FIELDS)) {
+    reviewFilter[image] = provider[image];
+  }
+
+  const reviewedAt = new Date();
+  const isApproved = normalizedReviewStatus !== 'rejected';
+  provider.kycStatus = isApproved ? 'APPROVED' : 'REJECTED';
+  provider.kycReviewedAt = reviewedAt;
+  provider.kycReviewedBy = adminUserId;
+
+  if (isApproved) {
+    provider.kycRejectionReason = null;
+    // Approve all mandatory KYC documents in provider.documents, preserving individual review history
+    for (const entry of reviewEntries) {
+      if (entry.document) {
+        if (entry.document.verificationStatus !== 'approved') {
+          entry.document.verificationStatus = 'approved';
+          entry.document.reviewedAt = reviewedAt;
+          entry.document.reviewedBy = adminUserId;
+          entry.document.reviewNote = '';
+        } else {
+          if (!entry.document.reviewedAt) entry.document.reviewedAt = reviewedAt;
+          if (!entry.document.reviewedBy) entry.document.reviewedBy = adminUserId;
+        }
+      }
+    }
+  } else {
+    provider.kycRejectionReason = rejectionReason.trim();
+    for (const type of rejectedDocumentTypes) {
+      const match = reviewEntries.find((entry) => entry.type === type);
+      if (match && match.document) {
+        match.document.verificationStatus = 'rejected';
+        match.document.reviewNote = rejectionReason.trim();
+        match.document.reviewedAt = reviewedAt;
+        match.document.reviewedBy = adminUserId;
+      }
+    }
+  }
+
+  const updates = {
+    kycStatus: provider.kycStatus,
+    kycReviewedAt: provider.kycReviewedAt,
+    kycReviewedBy: provider.kycReviewedBy,
+    kycRejectionReason: provider.kycRejectionReason,
+    documents: provider.documents
+  };
+
+  const reviewedProvider = await Provider.findOneAndUpdate(
+    reviewFilter,
+    { $set: updates },
+    { new: true, runValidators: true }
+  );
+  if (!reviewedProvider) {
+    const err = new Error('KYC status or documents changed during review. Reload the application and try again.');
+    err.statusCode = 409;
+    throw err;
+  }
+
+  return await getAdminProviderById(reviewedProvider._id);
 };
 
 /**
@@ -793,6 +1213,11 @@ const deleteDocument = async (userId, documentId) => {
     throw err;
   }
 
+  const isKycDocument = Boolean(KYC_DOCUMENT_FIELDS[doc.type.toLowerCase()]);
+  if (isKycDocument) {
+    assertKycEditable(provider);
+  }
+
   if (doc.verificationStatus === 'approved') {
     const err = new Error(
       'Cannot delete an already approved verification document. Contact administration for updates.'
@@ -802,6 +1227,25 @@ const deleteDocument = async (userId, documentId) => {
   }
 
   provider.documents.pull(documentId);
+
+  if (isKycDocument) {
+    const updatedProvider = await Provider.findOneAndUpdate(
+      buildEditableKycFilter(provider),
+      { $set: { documents: provider.documents } },
+      { new: true, runValidators: true }
+    );
+    if (!updatedProvider) {
+      const err = new Error('KYC status changed while deleting the document. Reload and try again.');
+      err.statusCode = 409;
+      throw err;
+    }
+
+    return {
+      verificationStatus: updatedProvider.verificationStatus,
+      documents: updatedProvider.documents
+    };
+  }
+
   await provider.save();
 
   return {
@@ -827,6 +1271,7 @@ const getPublicProviders = async (query = {}) => {
     isAvailable: true,
     isDeleted: { $ne: true }
   };
+  let requestedService = null;
 
   const isTopRatedOnly = query.topRated === 'true' || query.topRated === true;
   if (isTopRatedOnly) {
@@ -873,23 +1318,22 @@ const getPublicProviders = async (query = {}) => {
   // - If it's an admin catalog service (service.provider == null), match verified providers whose categories include service.category.
   if (query.service && String(query.service).trim()) {
     const rawService = String(query.service).trim();
-    let serviceDoc = null;
     if (mongoose.Types.ObjectId.isValid(rawService)) {
-      serviceDoc = await Service.findById(rawService).lean();
+      requestedService = await Service.findOne({ _id: rawService, isActive: true }).lean();
     } else {
-      serviceDoc = await Service.findOne({
+      requestedService = await Service.findOne({
         name: new RegExp(`^${escapeRegex(rawService)}$`, 'i'),
         isActive: true
       }).lean();
     }
 
-    if (serviceDoc) {
-      if (serviceDoc.provider) {
+    if (requestedService) {
+      if (requestedService.provider) {
         // Provider-owned custom service: match exact provider owner
-        filter._id = serviceDoc.provider;
-      } else if (serviceDoc.category) {
+        filter._id = requestedService.provider;
+      } else if (requestedService.category) {
         // Platform catalog service: match providers who offer this category
-        filter.categories = { $in: [serviceDoc.category] };
+        filter.categories = { $in: [requestedService.category] };
       }
     } else {
       // Specified service was not found; return empty match
@@ -898,6 +1342,7 @@ const getPublicProviders = async (query = {}) => {
   }
 
   // 1c. Resolve Dynamic Service Tag Filter (by tagId or tag name)
+  let requestedTagDoc = null;
   const requestedTag = query.tagId || query.tag;
   if (requestedTag && String(requestedTag).trim() && String(requestedTag).trim() !== 'all') {
     const rawTag = String(requestedTag).trim();
@@ -917,6 +1362,7 @@ const getPublicProviders = async (query = {}) => {
         isArchived: false
       }).lean();
     }
+    requestedTagDoc = tagDoc;
 
     if (tagDoc) {
       filter.serviceTags = {
@@ -1045,6 +1491,7 @@ const getPublicProviders = async (query = {}) => {
       select: 'name avatar createdAt'
     })
     .populate('categories', 'name slug icon')
+    .populate('serviceTags.tag', 'name slug category subcategory icon image')
     .sort(sortOrder);
 
   if (page && limit) {
@@ -1061,6 +1508,17 @@ const getPublicProviders = async (query = {}) => {
   // Filter out any where user account is inactive (user was matched null)
   const activeProviders = providers.filter((p) => p.user);
 
+  const categoryFilterId = query.category || query.categoryId;
+  let eligibleCategoryTagIds = null;
+  if (categoryFilterId) {
+    eligibleCategoryTagIds = await ServiceTag.find({
+      category: categoryFilterId,
+      isActive: true,
+      isCustomerVisible: true,
+      isArchived: false
+    }).distinct('_id');
+  }
+
   // Augment with base price from services & persisted reviews calculation
   const enrichedProviders = await Promise.all(
     activeProviders.map(async (p) => {
@@ -1075,21 +1533,19 @@ const getPublicProviders = async (query = {}) => {
         };
       }
 
-      // Get starting price: first check provider custom services, otherwise check catalog services for provider's categories
+      // Use configured rates from provider's serviceTags and custom services
       const categoryIds = Array.isArray(p.categories) ? p.categories.map((c) => c._id || c) : [];
-      let minService = await Service.findOne({ provider: p._id, isActive: true })
-        .sort({ price: 1 })
-        .select('price')
+      const providerOwnedServices = await Service.find({ provider: p._id, isActive: true })
+        .select('price priceType category')
         .lean();
 
-      if (!minService && categoryIds.length > 0) {
-        minService = await Service.findOne({ category: { $in: categoryIds }, provider: null, isActive: true })
-          .sort({ price: 1 })
-          .select('price')
-          .lean();
-      }
-
-      const startingPrice = minService ? minService.price : null;
+      const rateInfo = buildProviderStandardRateResponse(p, {
+        categoryId: categoryFilterId,
+        tagId: requestedTagDoc?._id || query.tagId,
+        serviceId: requestedService?._id,
+        eligibleTagIds: eligibleCategoryTagIds,
+        providerServices: providerOwnedServices
+      });
 
       const specialization =
         p.categories && p.categories.length > 0 ? p.categories[0].name : (p.specialization || '');
@@ -1133,9 +1589,15 @@ const getPublicProviders = async (query = {}) => {
         categories: p.categories,
         specialization,
         rating: ratingObj,
-        pricing: {
-          basePrice: startingPrice
-        },
+        pricing: rateInfo.pricing,
+        standardRate: rateInfo.standardRate,
+        rateStatus: rateInfo.rateStatus,
+        amount: rateInfo.amount,
+        pricingType: rateInfo.pricingType,
+        sourceType: rateInfo.sourceType,
+        tagId: rateInfo.tagId,
+        serviceId: rateInfo.serviceId,
+        servicePrice: rateInfo.servicePrice,
         completedBookingsCount: p.completedBookingsCount,
         showInTopRated: Boolean(p.showInTopRated),
         topRatedOrder: p.topRatedOrder || 0,
@@ -1147,7 +1609,14 @@ const getPublicProviders = async (query = {}) => {
         serviceRadiusKm: matchedServiceArea?.radiusKm || null,
         distance: distanceKm, // Real distance in km, or null if coordinates unavailable
         distanceKm,
-        isWithinRadius
+        isWithinRadius,
+        activeTags: (p.serviceTags || [])
+          .filter((st) => st.isActive !== false && st.approvalStatus === 'approved' && st.tag)
+          .map((st) => ({
+            _id: st.tag?._id || st.tag,
+            name: st.tag?.name,
+            subcategory: st.tag?.subcategory?.name
+          }))
       };
     })
   );
@@ -1196,6 +1665,7 @@ const getPublicProviderById = async (providerId) => {
     })
     .populate('categories', 'name slug icon description')
     .populate('serviceAreas', 'name city zipCodes')
+    .populate('serviceTags.tag', 'name slug category subcategory icon image')
     .lean();
 
   if (!provider || provider.verificationStatus !== 'verified' || !provider.user || !provider.user.isActive) {
@@ -1222,6 +1692,13 @@ const getPublicProviderById = async (providerId) => {
     pricingType: s.priceType || 'fixed'
   }));
 
+  const providerOwnedServices = rawServices.filter(
+    (s) => s.provider && String(s.provider) === String(provider._id)
+  );
+  const rateInfo = buildProviderStandardRateResponse(provider, {
+    providerServices: providerOwnedServices
+  });
+
   return {
     _id: provider._id,
     businessName: provider.businessName,
@@ -1230,6 +1707,15 @@ const getPublicProviderById = async (providerId) => {
     categories: provider.categories,
     serviceAreas: provider.serviceAreas,
     rating: provider.rating,
+    pricing: rateInfo.pricing,
+    standardRate: rateInfo.standardRate,
+    rateStatus: rateInfo.rateStatus,
+    amount: rateInfo.amount,
+    pricingType: rateInfo.pricingType,
+    sourceType: rateInfo.sourceType,
+    tagId: rateInfo.tagId,
+    serviceId: rateInfo.serviceId,
+    servicePrice: rateInfo.servicePrice,
     completedBookingsCount: provider.completedBookingsCount,
     showInTopRated: Boolean(provider.showInTopRated),
     topRatedOrder: provider.topRatedOrder || 0,
@@ -1240,7 +1726,14 @@ const getPublicProviderById = async (providerId) => {
     },
     isAvailable: provider.isAvailable,
     services,
-    reviewCount: provider.rating?.count || 0
+    reviewCount: provider.rating?.count || 0,
+    activeTags: (provider.serviceTags || [])
+      .filter((st) => st.isActive !== false && st.approvalStatus === 'approved' && st.tag)
+      .map((st) => ({
+        _id: st.tag?._id || st.tag,
+        name: st.tag?.name,
+        subcategory: st.tag?.subcategory?.name
+      }))
   };
 };
 
@@ -1515,7 +2008,18 @@ const getAdminProviders = async (query = {}) => {
     filter.isDeleted = { $ne: true };
     const pendingConditions = [
       { verificationStatus: 'pending' },
-      { kycStatus: 'under_review' },
+      {
+        kycStatus: { $in: ['PENDING', 'under_review'] },
+        kycSubmittedAt: { $ne: null }
+      },
+      {
+        kycStatus: 'pending',
+        kycSubmittedAt: { $ne: null },
+        aadhaarFrontImage: { $ne: null },
+        aadhaarBackImage: { $ne: null },
+        panFrontImage: { $ne: null },
+        panBackImage: { $ne: null }
+      },
       {
         'serviceCertification.documentUrl': { $ne: null },
         'serviceCertification.verificationStatus': 'PENDING'
@@ -1569,6 +2073,8 @@ const getAdminProviders = async (query = {}) => {
       .populate('serviceCertification.category', 'name slug icon')
       .populate('serviceCertification.tag', 'name slug subcategory')
       .populate('serviceCertification.reviewedBy', 'name email')
+      .populate('verificationReviewedBy', 'name email')
+      .populate('documents.reviewedBy', 'name email')
       .sort({ showInTopRated: -1, topRatedOrder: 1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -1577,7 +2083,10 @@ const getAdminProviders = async (query = {}) => {
   ]);
 
   return {
-    providers,
+    providers: providers.map((provider) => ({
+      ...provider,
+      kycStatus: normalizeKycStatus(provider)
+    })),
     pagination: {
       page,
       limit,
@@ -1598,6 +2107,9 @@ const getAdminProviderById = async (providerId) => {
     .populate('serviceCertification.category', 'name slug icon')
     .populate('serviceCertification.tag', 'name slug subcategory')
     .populate('serviceCertification.reviewedBy', 'name email')
+    .populate('kycReviewedBy', 'name email')
+    .populate('verificationReviewedBy', 'name email')
+    .populate('documents.reviewedBy', 'name email')
     .lean();
 
   if (!provider) {
@@ -1606,13 +2118,16 @@ const getAdminProviderById = async (providerId) => {
     throw err;
   }
 
-  return provider;
+  return {
+    ...provider,
+    kycStatus: normalizeKycStatus(provider)
+  };
 };
 
 /**
  * Admin: Review an individual document
  */
-const reviewDocument = async (providerId, documentId, { status, reviewNote }) => {
+const reviewDocument = async (providerId, documentId, adminUserId, { status, reviewNote }) => {
   const provider = await Provider.findById(providerId);
   if (!provider) {
     const err = new Error(`Provider not found with ID '${providerId}'`);
@@ -1627,11 +2142,64 @@ const reviewDocument = async (providerId, documentId, { status, reviewNote }) =>
     throw err;
   }
 
-  doc.verificationStatus = status;
-  doc.reviewNote = reviewNote ? reviewNote.trim() : '';
-  doc.reviewedAt = new Date();
+  if (KYC_DOCUMENT_FIELDS[doc.type.toLowerCase()]) {
+    const fields = KYC_DOCUMENT_FIELDS[doc.type.toLowerCase()];
+    if (normalizeKycStatus(provider) !== 'PENDING') {
+      const err = new Error('KYC documents can only be individually reviewed while the KYC application is pending');
+      err.statusCode = 409;
+      throw err;
+    }
+    if (status !== 'approved') {
+      const err = new Error('Reject KYC documents through the dedicated KYC review action');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!provider[fields.image] || doc.documentUrl !== provider[fields.image]) {
+      const err = new Error("KYC document does not match the provider's current uploaded document");
+      err.statusCode = 409;
+      throw err;
+    }
+    if (doc.verificationStatus !== 'pending') {
+      const err = new Error('Only pending KYC documents can be individually approved');
+      err.statusCode = 409;
+      throw err;
+    }
+  }
 
-  await provider.save();
+  const reviewedAt = new Date();
+  const reviewFilter = {
+    _id: provider._id,
+    documents: {
+      $elemMatch: {
+        _id: doc._id,
+        type: doc.type,
+        documentUrl: doc.documentUrl,
+        verificationStatus: doc.verificationStatus
+      }
+    }
+  };
+  const kycFields = KYC_DOCUMENT_FIELDS[doc.type.toLowerCase()];
+  if (kycFields) {
+    reviewFilter.kycStatus = provider.kycStatus;
+    reviewFilter[kycFields.image] = doc.documentUrl;
+  }
+  const reviewedProvider = await Provider.findOneAndUpdate(
+    reviewFilter,
+    {
+      $set: {
+        'documents.$.verificationStatus': status,
+        'documents.$.reviewNote': reviewNote ? reviewNote.trim() : '',
+        'documents.$.reviewedAt': reviewedAt,
+        'documents.$.reviewedBy': adminUserId
+      }
+    },
+    { new: true, runValidators: true }
+  );
+  if (!reviewedProvider) {
+    const err = new Error('Document status changed during review. Reload the provider and try again.');
+    err.statusCode = 409;
+    throw err;
+  }
 
   return await getAdminProviderById(providerId);
 };
@@ -1639,7 +2207,7 @@ const reviewDocument = async (providerId, documentId, { status, reviewNote }) =>
 /**
  * Admin: Approve, Reject or Suspend overall provider verification
  */
-const updateProviderVerification = async (providerId, { status, rejectionReason }) => {
+const updateProviderVerification = async (providerId, adminUserId, { status, rejectionReason }) => {
   const provider = await Provider.findById(providerId);
   if (!provider) {
     const err = new Error(`Provider not found with ID '${providerId}'`);
@@ -1647,18 +2215,14 @@ const updateProviderVerification = async (providerId, { status, rejectionReason 
     throw err;
   }
 
+  const reviewedAt = new Date();
+  provider.verificationReviewedAt = reviewedAt;
+  provider.verificationReviewedBy = adminUserId;
+
   if (status === 'verified') {
     provider.verificationStatus = 'verified';
     provider.rejectionReason = null;
-    provider.verifiedAt = new Date();
-
-    // Mark pending documents as approved
-    provider.documents.forEach((doc) => {
-      if (doc.verificationStatus === 'pending') {
-        doc.verificationStatus = 'approved';
-        doc.reviewedAt = new Date();
-      }
-    });
+    provider.verifiedAt = reviewedAt;
 
     // Update user isVerified
     await User.findByIdAndUpdate(provider.user, { isVerified: true });
@@ -1900,20 +2464,23 @@ const uploadServiceCertification = async (userId, file, { categoryId, tagId }) =
     throw err;
   }
 
-  // If replacing an existing certificate, clean up the previous asset
-  if (provider.serviceCertification?.publicId) {
-    const { deleteAsset } = require('../config/cloudinary');
-    const isOldPdf = (provider.serviceCertification.originalFileName || '').toLowerCase().endsWith('.pdf');
-    await deleteAsset(provider.serviceCertification.publicId, isOldPdf ? 'raw' : 'auto');
+  const { uploadDocument, deleteAsset } = require('../config/cloudinary');
+  let uploadResult;
+  try {
+    uploadResult = await uploadDocument(file, {
+      folder: 'marketplace/certifications',
+      public_id: `cert_${provider._id}_${Date.now()}`
+    });
+  } catch (uploadErr) {
+    const err = new Error(`Certificate upload to Cloudinary failed: ${uploadErr.message}`);
+    err.statusCode = 502;
+    throw err;
   }
 
-  const { uploadDocument } = require('../config/cloudinary');
-  const uploadResult = await uploadDocument(file, {
-    folder: 'marketplace/certifications',
-    public_id: `cert_${provider._id}_${Date.now()}`
-  });
-
-  provider.serviceCertification = {
+  const previousCertification = provider.serviceCertification;
+  const isNewPdf = (file.mimetype || '').toLowerCase().includes('pdf') ||
+                   (file.originalname || '').toLowerCase().endsWith('.pdf');
+  const certification = {
     documentUrl: uploadResult.url,
     publicId: uploadResult.public_id,
     originalFileName: file.originalname || 'certificate',
@@ -1926,9 +2493,27 @@ const uploadServiceCertification = async (userId, file, { categoryId, tagId }) =
     reviewedBy: null
   };
 
-  await provider.save();
+  const updatedProvider = await Provider.findByIdAndUpdate(
+    provider._id,
+    { $set: { serviceCertification: certification } },
+    { new: true, runValidators: true }
+  );
+  if (!updatedProvider) {
+    await deleteAsset(uploadResult.public_id, isNewPdf ? 'raw' : 'auto').catch(() => {});
+    const err = new Error('Failed to update provider record with certificate metadata.');
+    err.statusCode = 500;
+    throw err;
+  }
 
-  return await Provider.findById(provider._id)
+  // If replacing an existing certificate, clean up the old asset from storage
+  if (previousCertification?.publicId && previousCertification.publicId !== uploadResult.public_id) {
+    const wasOldPdf = (previousCertification.originalFileName || '').toLowerCase().endsWith('.pdf');
+    await deleteAsset(previousCertification.publicId, wasOldPdf ? 'raw' : 'auto').catch((delErr) => {
+      console.warn('[Cloudinary deleteAsset warning]:', delErr.message);
+    });
+  }
+
+  return await Provider.findById(updatedProvider._id)
     .populate('serviceCertification.category', 'name slug icon')
     .populate('serviceCertification.tag', 'name slug subcategory')
     .select('serviceCertification')
@@ -1969,28 +2554,42 @@ const removeServiceCertification = async (userId) => {
     return { message: 'No certification document to remove' };
   }
 
-  if (provider.serviceCertification?.publicId) {
-    const { deleteAsset } = require('../config/cloudinary');
-    const isPdf = (provider.serviceCertification.originalFileName || '').toLowerCase().endsWith('.pdf');
-    await deleteAsset(provider.serviceCertification.publicId, isPdf ? 'raw' : 'auto');
+  const previousCertification = provider.serviceCertification;
+  const updatedProvider = await Provider.findByIdAndUpdate(
+    provider._id,
+    {
+      $set: {
+        serviceCertification: {
+          documentUrl: null,
+          publicId: null,
+          originalFileName: null,
+          category: null,
+          tag: null,
+          uploadedAt: null,
+          verificationStatus: 'PENDING',
+          rejectionReason: null,
+          reviewedAt: null,
+          reviewedBy: null
+        }
+      }
+    },
+    { new: true, runValidators: true }
+  );
+  if (!updatedProvider) {
+    const err = new Error('Failed to update provider profile to remove certificate.');
+    err.statusCode = 500;
+    throw err;
   }
 
-  provider.serviceCertification = {
-    documentUrl: null,
-    publicId: null,
-    originalFileName: null,
-    category: null,
-    tag: null,
-    uploadedAt: null,
-    verificationStatus: 'PENDING',
-    rejectionReason: null,
-    reviewedAt: null,
-    reviewedBy: null
-  };
+  if (previousCertification?.publicId) {
+    const { deleteAsset } = require('../config/cloudinary');
+    const isPdf = (previousCertification.originalFileName || '').toLowerCase().endsWith('.pdf');
+    await deleteAsset(previousCertification.publicId, isPdf ? 'raw' : 'auto').catch((delErr) => {
+      console.warn('[Cloudinary deleteAsset warning]:', delErr.message);
+    });
+  }
 
-  await provider.save();
-
-  return { message: 'Certification document removed successfully' };
+  return { message: 'Service certification removed successfully' };
 };
 
 /**
@@ -2325,7 +2924,107 @@ const deleteProviderServiceAreaConfig = async (userId, categoryId) => {
   return await getProviderServiceAreaConfigs(userId);
 };
 
+/**
+ * Retrieve current Terms metadata and optional authenticated provider acceptance status
+ */
+const getTerms = async (userId = null) => {
+  const {
+    CURRENT_TERMS_VERSION,
+    TERMS_EFFECTIVE_DATE,
+    PLATFORM_NAME,
+    COUNTRY,
+    TERMS_SECTIONS,
+    TERMS_HASH,
+    RAW_TERMS_TEXT
+  } = require('../constants/providerTerms');
+
+  let acceptedInfo = null;
+  if (userId) {
+    const provider = await Provider.findOne({ user: userId })
+      .select('acceptedTermsVersion acceptedTermsAt acceptedTermsHash acceptedTermsSource')
+      .lean();
+    if (provider) {
+      const isAccepted =
+        provider.acceptedTermsVersion === CURRENT_TERMS_VERSION &&
+        Boolean(provider.acceptedTermsAt);
+      acceptedInfo = {
+        hasAccepted: isAccepted,
+        acceptedVersion: provider.acceptedTermsVersion || null,
+        acceptedAt: provider.acceptedTermsAt || null,
+        acceptedSource: provider.acceptedTermsSource || null
+      };
+    }
+  }
+
+  return {
+    version: CURRENT_TERMS_VERSION,
+    effectiveDate: TERMS_EFFECTIVE_DATE,
+    platformName: PLATFORM_NAME,
+    country: COUNTRY,
+    hash: TERMS_HASH,
+    sections: TERMS_SECTIONS,
+    rawText: RAW_TERMS_TEXT,
+    acceptedInfo
+  };
+};
+
+/**
+ * Record explicit terms acceptance for authenticated existing provider
+ */
+const acceptTerms = async (userId, { termsVersion, termsHash, ipAddress = null } = {}) => {
+  const { CURRENT_TERMS_VERSION, TERMS_HASH } = require('../constants/providerTerms');
+
+  if (!termsVersion || termsVersion !== CURRENT_TERMS_VERSION) {
+    const err = new Error(`Invalid terms version. Expected current version ${CURRENT_TERMS_VERSION}`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (termsHash && termsHash !== TERMS_HASH) {
+    const err = new Error('Terms content verification failed. Supplied document hash does not match canonical version.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const provider = await Provider.findOne({ user: userId });
+  if (!provider) {
+    const err = new Error('Provider profile not found for this authenticated user');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const now = new Date();
+  provider.acceptedTermsVersion = CURRENT_TERMS_VERSION;
+  provider.acceptedTermsAt = now;
+  provider.acceptedTermsSource = 'existing_provider_login';
+  provider.acceptedTermsHash = TERMS_HASH;
+
+  if (!Array.isArray(provider.termsAcceptanceHistory)) {
+    provider.termsAcceptanceHistory = [];
+  }
+  provider.termsAcceptanceHistory.push({
+    version: CURRENT_TERMS_VERSION,
+    acceptedAt: now,
+    source: 'existing_provider_login',
+    termsHash: TERMS_HASH,
+    ipAddress: ipAddress || null
+  });
+
+  await provider.save();
+
+  return {
+    providerId: provider._id,
+    acceptedTermsVersion: provider.acceptedTermsVersion,
+    acceptedTermsAt: provider.acceptedTermsAt,
+    acceptedTermsSource: provider.acceptedTermsSource,
+    acceptedTermsHash: provider.acceptedTermsHash,
+    requiresTermsAcceptance: false
+  };
+};
+
 module.exports = {
+  getTerms,
+  acceptTerms,
   getProviderProfileByUserId,
   updateProviderProfileByUserId,
   getProviderServicesByUserId,
@@ -2344,6 +3043,8 @@ module.exports = {
   updateProviderServiceStatusByUserId,
   deleteProviderServiceByUserId,
   submitDocument,
+  uploadKYCDocument,
+  deleteKYCDocument,
   submitKYCDocuments,
   reviewKYC,
   deleteDocument,

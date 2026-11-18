@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const bookingController = require('../controllers/bookingController');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { enforceTermsAcceptance } = require('../middleware/termsCheck');
 const {
   validateObjectId,
   validateCreateBooking,
@@ -144,6 +145,7 @@ router.post(
 // ==========================================
 // 2. Provider Booking Routes (Role: provider)
 // ==========================================
+router.use('/provider', authenticate, requireRole('provider'), enforceTermsAcceptance);
 
 // List pending requests (assigned + instant pool)
 router.get(

@@ -1,13 +1,24 @@
 import React from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import colors from '../../theme/colors';
+import { useTheme } from '../../context/ThemeContext';
 import { spacing, typography } from '../../theme';
 
 export default function LoadingScreen({ message = 'Loading...', fullScreen = true }) {
+  const { colors } = useTheme();
+
   return (
-    <View style={[styles.container, fullScreen && styles.fullScreen]}>
+    <View
+      style={[
+        styles.container,
+        fullScreen && [styles.fullScreen, { backgroundColor: colors.background }]
+      ]}
+    >
       <ActivityIndicator size="large" color={colors.primary} />
-      {message ? <Text style={styles.message}>{message}</Text> : null}
+      {message ? (
+        <Text style={[styles.message, { color: colors.textSecondary }]}>
+          {message}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -19,12 +30,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   fullScreen: {
-    flex: 1,
-    backgroundColor: colors.background
+    flex: 1
   },
   message: {
     ...typography.bodyMedium,
-    color: colors.slate500,
     marginTop: spacing.md
   }
 });

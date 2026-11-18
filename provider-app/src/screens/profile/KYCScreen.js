@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,23 +10,36 @@ import {
   Alert,
   Platform,
   Modal,
-  Linking
+  Linking,
+  RefreshControl
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { providerApi, providerTagApi } from '../../services/api';
 import { Card, Button, Header } from '../../components/common';
 import API_CONFIG from '../../config/env';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
+
+const KYC_IMAGE_FIELDS = {
+  aadhaar_front: 'aadhaarFrontImage',
+  aadhaar_back: 'aadhaarBackImage',
+  pan_front: 'panFrontImage',
+  pan_back: 'panBackImage'
+};
 
 export default function KYCScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
-  const { user, profile: authProfile, checkAuthSession } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { user, profile: authProfile, checkAuthSession, refreshProviderProfile } = useAuth();
   const [profile, setProfile] = useState(authProfile);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileReady, setProfileReady] = useState(false);
 
   // KYC Document states
   const [aadhaarFront, setAadhaarFront] = useState(profile?.aadhaarFrontImage || null);
@@ -45,6 +58,7 @@ export default function KYCScreen({ navigation, route }) {
 
   // Optional Service Certification states
   const [certification, setCertification] = useState(profile?.serviceCertification || null);
+  const [serviceSelectModalVisible, setServiceSelectModalVisible] = useState(false);
   const [availableServices, setAvailableServices] = useState([]);
   const [servicesLoading, setServicesLoading] = useState(true);
   const [servicesError, setServicesError] = useState(null);
@@ -52,30 +66,38 @@ export default function KYCScreen({ navigation, route }) {
   const [selectedTagId, setSelectedTagId] = useState('');
   const [isCertUploading, setIsCertUploading] = useState(false);
   const [certActionLoading, setCertActionLoading] = useState(false);
-  const [serviceSelectModalVisible, setServiceSelectModalVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchProfile = useCallback(() => {
-    providerApi.getProfile()
-      .then((res) => {
-        if (res?.data) {
-          setProfile(res.data);
-          if (res.data.aadhaarFrontImage) setAadhaarFront(res.data.aadhaarFrontImage);
-          if (res.data.aadhaarBackImage) setAadhaarBack(res.data.aadhaarBackImage);
-          if (res.data.panFrontImage) setPanFront(res.data.panFrontImage);
-          if (res.data.panBackImage) setPanBack(res.data.panBackImage);
-          if (res.data.serviceCertification) {
-            setCertification(res.data.serviceCertification);
-            if (res.data.serviceCertification.category?._id) {
-              setSelectedCategoryId(res.data.serviceCertification.category._id);
-            }
-            if (res.data.serviceCertification.tag?._id) {
-              setSelectedTagId(res.data.serviceCertification.tag._id);
-            }
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const fetchProfile = useCallback(async () => {
+    setProfileLoading(true);
+    setProfileReady(false);
+    setErrorMsg(null);
+    try {
+      const currentProfile = await refreshProviderProfile();
+      setProfile(currentProfile);
+      setAadhaarFront(currentProfile.aadhaarFrontImage || null);
+      setAadhaarBack(currentProfile.aadhaarBackImage || null);
+      setPanFront(currentProfile.panFrontImage || null);
+      setPanBack(currentProfile.panBackImage || null);
+      setCertification(currentProfile.serviceCertification || null);
+      setSelectedCategoryId(currentProfile.serviceCertification?.category?._id || '');
+      setSelectedTagId(currentProfile.serviceCertification?.tag?._id || '');
+      setProfileReady(true);
+    } catch (err) {
+      setErrorMsg(err.userMessage || err.message || 'Unable to load your latest KYC status.');
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [refreshProviderProfile]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchProfile();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchProfile]);
 
   const normalizeConfiguredServices = (responseData) => {
     if (!responseData) return [];
@@ -148,10 +170,15 @@ export default function KYCScreen({ navigation, route }) {
     }
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      fetchProfile();
+    }, [fetchProfile])
+  );
+
   useEffect(() => {
-    fetchProfile();
     fetchServices();
-  }, [fetchProfile, fetchServices]);
+  }, [fetchServices]);
 
   const resolveImageUrl = (pathOrUrl) => {
     if (!pathOrUrl) return null;
@@ -163,6 +190,7 @@ export default function KYCScreen({ navigation, route }) {
   };
 
   const handlePickDocument = async (field, source = 'library') => {
+    if (!canEditKycDocument(field)) return;
     setErrorMsg(null);
 
     try {
@@ -231,10 +259,38 @@ export default function KYCScreen({ navigation, route }) {
       const res = await providerApi.uploadKYCDocument(formData);
       if (res?.success && res.data?.documentUrl) {
         const uploadedUrl = res.data.documentUrl;
+        const uploadedAt = res.data.uploadedAt || new Date().toISOString();
+        const imageField = KYC_IMAGE_FIELDS[field];
         if (field === 'aadhaar_front') setAadhaarFront(uploadedUrl);
         else if (field === 'aadhaar_back') setAadhaarBack(uploadedUrl);
         else if (field === 'pan_front') setPanFront(uploadedUrl);
         else if (field === 'pan_back') setPanBack(uploadedUrl);
+        setProfile((currentProfile) => {
+          if (!currentProfile) return currentProfile;
+          let foundDocument = false;
+          const documents = (currentProfile.documents || []).map((document) => {
+            if (document.type.toLowerCase() !== field) return document;
+            foundDocument = true;
+            return { ...document, documentUrl: uploadedUrl, uploadedAt };
+          });
+          if (!foundDocument && kycStatus !== 'REJECTED') {
+            documents.push({
+              type: field,
+              documentUrl: uploadedUrl,
+              uploadedAt,
+              verificationStatus: 'pending'
+            });
+          }
+          return {
+            ...currentProfile,
+            [imageField]: uploadedUrl,
+            documents
+          };
+        });
+
+        if (typeof refreshProviderProfile === 'function') {
+          refreshProviderProfile().catch(() => {});
+        }
 
         setSuccessMsg(`${formatFieldLabel(field)} uploaded successfully!`);
       } else {
@@ -242,6 +298,7 @@ export default function KYCScreen({ navigation, route }) {
       }
     } catch (err) {
       console.error('KYC file upload error:', err);
+      if (err.response?.status === 409) await fetchProfile();
       Alert.alert(
         'Upload Error',
         err.userMessage || err.message || 'Failed to upload document. Please ensure file size is under 5MB.'
@@ -278,104 +335,337 @@ export default function KYCScreen({ navigation, route }) {
     }
   };
 
-  const handlePickCertification = async () => {
-    if (!selectedCategoryId || !selectedTagId) {
-      Alert.alert('Select Related Service', 'Please select a Related Service & Tag from the dropdown before uploading your certificate.');
-      return;
-    }
-
+  const handleRemoveDocument = (field) => {
+    if (!canDeleteKycDocument(field)) return;
     Alert.alert(
-      'Upload Service Certificate',
-      'Choose certificate file type:',
+      'Delete Document',
+      `Remove ${formatFieldLabel(field)} from your KYC draft?`,
       [
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'PDF Document',
+          text: 'Delete',
+          style: 'destructive',
           onPress: async () => {
+            setUploadingField(field);
             try {
-              const docRes = await DocumentPicker.getDocumentAsync({
-                type: ['application/pdf'],
-                copyToCacheDirectory: true
-              });
-
-              if (docRes.canceled || !docRes.assets || docRes.assets.length === 0) return;
-              const asset = docRes.assets[0];
-              await uploadCertificationAsset(asset, 'application/pdf');
+              await providerApi.deleteKYCDocument(field);
+              if (field === 'aadhaar_front') setAadhaarFront(null);
+              else if (field === 'aadhaar_back') setAadhaarBack(null);
+              else if (field === 'pan_front') setPanFront(null);
+              else if (field === 'pan_back') setPanBack(null);
             } catch (err) {
-              Alert.alert('Upload Error', err.message || 'Failed to select document');
+              if (err.response?.status === 409) await fetchProfile();
+              Alert.alert('Delete Failed', err.userMessage || err.message || 'Could not remove document.');
+            } finally {
+              setUploadingField(null);
             }
           }
-        },
-        {
-          text: 'Photo (JPG/PNG)',
-          onPress: async () => {
-            try {
-              const libPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-              if (!libPerm.granted) {
-                Alert.alert('Permission Denied', 'Media library permission is required.');
-                return;
-              }
-              const imgRes = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsEditing: true,
-                quality: 0.8
-              });
-              if (imgRes.canceled || !imgRes.assets || imgRes.assets.length === 0) return;
-              const asset = imgRes.assets[0];
-              const mime = asset.mimeType || (asset.uri?.endsWith('.png') ? 'image/png' : 'image/jpeg');
-              await uploadCertificationAsset(asset, mime);
-            } catch (err) {
-              Alert.alert('Upload Error', err.message || 'Failed to select photo');
-            }
-          }
-        },
-        { text: 'Cancel', style: 'cancel' }
+        }
       ]
     );
   };
 
-  const uploadCertificationAsset = async (asset, mimeType) => {
-    setIsCertUploading(true);
+  const pickCertificateDocument = async () => {
+    try {
+      if (__DEV__) console.log('[Cert Picker] Opening DocumentPicker (PDF, JPG, PNG)...');
+      const docRes = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'],
+        copyToCacheDirectory: true
+      });
+
+      if (docRes.canceled || !docRes.assets || docRes.assets.length === 0) {
+        if (__DEV__) console.log('[Cert Picker] Document selection cancelled by user.');
+        return;
+      }
+
+      const asset = docRes.assets[0];
+      if (__DEV__) {
+        console.log('[Cert Picker] Asset received:', {
+          name: asset.name,
+          size: asset.size,
+          mimeType: asset.mimeType,
+          hasFile: Boolean(asset.file)
+        });
+      }
+      await validateAndUploadCertificate(asset, asset.mimeType);
+    } catch (err) {
+      console.error('[Cert Picker Error]:', err);
+      const errMsg = err.message || 'Failed to select certificate document';
+      setErrorMsg(errMsg);
+      if (Platform.OS !== 'web') {
+        Alert.alert('Picker Error', errMsg);
+      }
+    }
+  };
+
+  const pickCertificateImage = async (source = 'library') => {
+    try {
+      let imgRes;
+      if (source === 'camera') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('Permission Required', 'Camera permission is required to photograph your certificate.');
+          return;
+        }
+        imgRes = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          quality: 0.8
+        });
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('Permission Required', 'Media library permission is required to select your certificate.');
+          return;
+        }
+        imgRes = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          quality: 0.8
+        });
+      }
+
+      if (imgRes.canceled || !imgRes.assets || imgRes.assets.length === 0) {
+        if (__DEV__) console.log('[Cert Image Picker] Image selection cancelled by user.');
+        return;
+      }
+
+      const asset = imgRes.assets[0];
+      const mime = asset.mimeType || (asset.uri?.endsWith('.png') ? 'image/png' : 'image/jpeg');
+      await validateAndUploadCertificate(asset, mime);
+    } catch (err) {
+      console.error('[Cert Image Picker Error]:', err);
+      Alert.alert('Picker Error', err.message || 'Failed to select certificate image');
+    }
+  };
+
+  const handlePickCertification = async () => {
+    if (!profileReady) return;
+    if (!selectedCategoryId || !selectedTagId) {
+      const msg = 'Please select a Related Service & Tag from the dropdown before uploading your certificate.';
+      setErrorMsg(msg);
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Select Related Service', msg);
+      }
+      return;
+    }
+
+    if (Platform.OS === 'web') {
+      // On Web: Launch native file selection dialog directly (supports PDF, JPG, PNG seamlessly)
+      await pickCertificateDocument();
+    } else {
+      // On Android / Native: Present choices for document or photo gallery
+      Alert.alert(
+        'Upload Service Certificate',
+        'Choose certificate file source:',
+        [
+          {
+            text: 'PDF Document or File',
+            onPress: () => pickCertificateDocument()
+          },
+          {
+            text: 'Photo Gallery',
+            onPress: () => pickCertificateImage('library')
+          },
+          {
+            text: 'Take Photo',
+            onPress: () => pickCertificateImage('camera')
+          },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+    }
+  };
+
+  const validateAndUploadCertificate = async (asset, initialMimeType) => {
+    if (isCertUploading) {
+      if (__DEV__) console.log('[Cert Upload] Upload already in progress, ignoring duplicate action.');
+      return;
+    }
+
     setErrorMsg(null);
+    setSuccessMsg(null);
+
+    // 1. Missing file check
+    if (!asset || (!asset.uri && !asset.file)) {
+      const err = 'Selected file is invalid or missing.';
+      setErrorMsg(err);
+      if (Platform.OS === 'web') window.alert(err);
+      else Alert.alert('Invalid File', err);
+      return;
+    }
+
+    // 2. Resolve filename and extension
+    const filename = asset.name || (asset.file ? asset.file.name : '') || `cert_${Date.now()}`;
+    const ext = (filename.toLowerCase().split('.').pop() || '').trim();
+
+    // 3. Resolve safe MIME type
+    let resolvedMime = (initialMimeType || asset.mimeType || (asset.file ? asset.file.type : '') || '').toLowerCase();
+    if (!resolvedMime || resolvedMime === '*/*' || resolvedMime === 'application/octet-stream') {
+      if (ext === 'pdf') resolvedMime = 'application/pdf';
+      else if (ext === 'png') resolvedMime = 'image/png';
+      else if (ext === 'jpg' || ext === 'jpeg') resolvedMime = 'image/jpeg';
+      else resolvedMime = 'application/octet-stream';
+    }
+
+    // 4. File type check (PDF, JPG, JPEG, PNG)
+    const isPdf = resolvedMime === 'application/pdf' || ext === 'pdf';
+    const isImage = ['image/jpeg', 'image/png', 'image/jpg'].includes(resolvedMime) ||
+                    ['jpg', 'jpeg', 'png'].includes(ext);
+
+    if (!isPdf && !isImage) {
+      const err = 'Invalid file type. Only PDF, JPG, JPEG, and PNG files are allowed.';
+      setErrorMsg(err);
+      if (Platform.OS === 'web') window.alert(err);
+      else Alert.alert('Unsupported File Type', err);
+      return;
+    }
+
+    // Normalize standard MIME
+    const finalMime = isPdf ? 'application/pdf' : (ext === 'png' || resolvedMime === 'image/png') ? 'image/png' : 'image/jpeg';
+
+    // 5. File size check (Max 5 MB)
+    const MAX_SIZE = 5 * 1024 * 1024;
+    const fileSize = asset.size || (asset.file ? asset.file.size : 0);
+    if (fileSize > MAX_SIZE) {
+      const sizeMB = (fileSize / (1024 * 1024)).toFixed(2);
+      const err = `File size (${sizeMB} MB) exceeds maximum allowed limit of 5 MB. Please select a smaller file.`;
+      setErrorMsg(err);
+      if (Platform.OS === 'web') window.alert(err);
+      else Alert.alert('File Too Large', err);
+      return;
+    }
+
+    const safeFilename = filename.includes('.') ? filename : `${filename}.${isPdf ? 'pdf' : (finalMime === 'image/png' ? 'png' : 'jpg')}`;
+
+    setIsCertUploading(true);
+
+    if (__DEV__) {
+      console.log('[Cert Upload] Preparing FormData payload:', {
+        categoryId: selectedCategoryId,
+        tagId: selectedTagId,
+        filename: safeFilename,
+        finalMime,
+        fileSize,
+        platform: Platform.OS
+      });
+    }
+
     try {
       const formData = new FormData();
       formData.append('categoryId', selectedCategoryId);
       formData.append('tagId', selectedTagId);
 
-      const uri = asset.uri;
-      const isPdf = mimeType.includes('pdf') || (asset.name || '').endsWith('.pdf');
-      const safeFilename = asset.name || `cert_${Date.now()}.${isPdf ? 'pdf' : 'jpg'}`;
-
       if (Platform.OS === 'web') {
         if (asset.file instanceof Blob) {
           formData.append('document', asset.file, safeFilename);
         } else {
-          const fetchRes = await fetch(uri);
+          const fetchRes = await fetch(asset.uri);
           const blob = await fetchRes.blob();
-          const file = new File([blob], safeFilename, { type: mimeType });
+          const file = new File([blob], safeFilename, { type: finalMime });
           formData.append('document', file, safeFilename);
         }
       } else {
         formData.append('document', {
-          uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
+          uri: Platform.OS === 'android' ? asset.uri : asset.uri.replace('file://', ''),
           name: safeFilename,
-          type: mimeType
+          type: finalMime
         });
       }
 
       const res = await providerApi.uploadCertification(formData);
-      if (res?.success && res.data?.serviceCertification) {
-        setCertification(res.data.serviceCertification);
-        Alert.alert('Success', 'Professional service certification uploaded successfully! Verification is pending admin review.');
+
+      if (__DEV__) {
+        console.log('[Cert Upload Response]:', {
+          success: res?.success,
+          message: res?.message,
+          hasData: Boolean(res?.data)
+        });
+      }
+
+      if (res?.success) {
+        const newCert = res.data?.serviceCertification || res.data;
+        setCertification(newCert);
+
+        // Update local provider profile state
+        setProfile((prev) => prev ? { ...prev, serviceCertification: newCert } : prev);
+
+        // Refresh authoritative profile from backend
+        if (typeof refreshProviderProfile === 'function') {
+          refreshProviderProfile().catch((e) => {
+            if (__DEV__) console.log('[Refresh Profile Note]:', e.message);
+          });
+        }
+
+        const successMessage = 'Professional service certification uploaded successfully! Verification is pending admin review.';
+        setSuccessMsg(successMessage);
+        if (Platform.OS !== 'web') {
+          Alert.alert('Upload Successful', successMessage);
+        }
+      } else {
+        const errMsg = res?.message || 'Certificate upload failed. Please try again.';
+        setErrorMsg(errMsg);
+        if (Platform.OS === 'web') window.alert(errMsg);
+        else Alert.alert('Upload Failed', errMsg);
       }
     } catch (err) {
-      const msg = err.response?.data?.error?.message || err.message || 'Failed to upload certification';
-      Alert.alert('Upload Failed', msg);
+      console.error('[Cert Upload Error]:', err);
+      const errMsg = err.response?.data?.error?.message || err.userMessage || err.message || 'Failed to upload certificate. Ensure file is under 5MB.';
+      setErrorMsg(errMsg);
+      if (Platform.OS === 'web') window.alert(errMsg);
+      else Alert.alert('Upload Failed', errMsg);
     } finally {
       setIsCertUploading(false);
     }
   };
 
+  const doRemoveCertification = async () => {
+    setCertActionLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const res = await providerApi.removeCertification();
+      if (res?.success) {
+        setCertification(null);
+        setSelectedCategoryId('');
+        setSelectedTagId('');
+        setProfile((prev) => prev ? { ...prev, serviceCertification: null } : prev);
+        if (typeof refreshProviderProfile === 'function') {
+          refreshProviderProfile().catch(() => {});
+        }
+        const msg = 'Service certification has been removed.';
+        setSuccessMsg(msg);
+        if (Platform.OS !== 'web') {
+          Alert.alert('Removed', msg);
+        }
+      } else {
+        const errMsg = res?.message || 'Failed to remove certification';
+        setErrorMsg(errMsg);
+        if (Platform.OS === 'web') window.alert(errMsg);
+        else Alert.alert('Remove Failed', errMsg);
+      }
+    } catch (err) {
+      console.error('[Cert Remove Error]:', err);
+      const errMsg = err.response?.data?.error?.message || err.userMessage || err.message || 'Failed to remove certification';
+      setErrorMsg(errMsg);
+      if (Platform.OS === 'web') window.alert(errMsg);
+      else Alert.alert('Remove Failed', errMsg);
+    } finally {
+      setCertActionLoading(false);
+    }
+  };
+
   const handleRemoveCertification = () => {
+    if (!profileReady) return;
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to remove your uploaded certification? This will not affect your mandatory KYC verification or registration.')) {
+        doRemoveCertification();
+      }
+      return;
+    }
+
     Alert.alert(
       'Remove Certification',
       'Are you sure you want to remove your uploaded certification? This will not affect your mandatory KYC verification or registration.',
@@ -384,25 +674,25 @@ export default function KYCScreen({ navigation, route }) {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: async () => {
-            setCertActionLoading(true);
-            try {
-              const res = await providerApi.removeCertification();
-              if (res?.success) {
-                setCertification(null);
-                setSelectedCategoryId('');
-                setSelectedTagId('');
-                Alert.alert('Removed', 'Service certification has been removed.');
-              }
-            } catch (err) {
-              Alert.alert('Error', err.response?.data?.error?.message || err.message || 'Failed to remove certification');
-            } finally {
-              setCertActionLoading(false);
-            }
-          }
+          onPress: doRemoveCertification
         }
       ]
     );
+  };
+
+  const handlePreviewCertificate = () => {
+    if (!certification?.documentUrl) return;
+    try {
+      if (Platform.OS === 'web') {
+        window.open(certification.documentUrl, '_blank');
+      } else {
+        Linking.openURL(certification.documentUrl).catch(() => {
+          Alert.alert('Cannot Open Document', 'Failed to open document preview.');
+        });
+      }
+    } catch {
+      Alert.alert('Cannot Open Document', 'Failed to open document preview.');
+    }
   };
 
   const validateKYCPackage = () => {
@@ -427,11 +717,20 @@ export default function KYCScreen({ navigation, route }) {
   };
 
   const handleReviewAndSubmit = () => {
+    if (!profileReady || isKycLocked) return;
     if (!validateKYCPackage()) return;
+    if (!canSubmit) {
+      Alert.alert(
+        'Documents Need Correction',
+        'Replace each rejected document before resubmitting for verification.'
+      );
+      return;
+    }
     setReviewModalVisible(true);
   };
 
   const handleFinalSubmit = async () => {
+    if (!profileReady || isKycLocked || !canSubmit) return;
     setSubmitting(true);
     setErrorMsg(null);
     try {
@@ -444,21 +743,71 @@ export default function KYCScreen({ navigation, route }) {
 
       if (res?.success) {
         setProfile(res.data);
+        setSuccessMsg('Documents submitted successfully. Waiting for admin approval.');
         await checkAuthSession();
         setReviewModalVisible(false);
-        Alert.alert(
-          'Verification Submitted',
-          'Your KYC documents have been submitted for review. Once verified by our administration, your profile will be activated for customer bookings.'
-        );
       }
     } catch (err) {
+      if (err.response?.status === 409) {
+        setReviewModalVisible(false);
+        await fetchProfile();
+      }
       setErrorMsg(err.userMessage || err.message || 'Submission failed. Please check your documents.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const kycStatus = profile?.kycStatus || profile?.verificationStatus || 'pending';
+  const storedKycStatus = String(profile?.kycStatus || 'NOT_SUBMITTED').toUpperCase();
+  const isApproved =
+    storedKycStatus === 'APPROVED' ||
+    storedKycStatus === 'VERIFIED';
+
+  const kycStatus = isApproved
+    ? 'APPROVED'
+    : storedKycStatus === 'REJECTED'
+    ? 'REJECTED'
+    : storedKycStatus === 'UNDER_REVIEW' || storedKycStatus === 'PENDING'
+    ? (profile?.kycSubmittedAt || (profile?.aadhaarFrontImage && profile?.aadhaarBackImage && profile?.panFrontImage && profile?.panBackImage))
+      ? 'PENDING'
+      : 'NOT_SUBMITTED'
+    : storedKycStatus === 'DRAFT'
+    ? 'NOT_SUBMITTED'
+    : storedKycStatus;
+  const isKycLocked = kycStatus === 'PENDING' || kycStatus === 'APPROVED';
+  const getKycDocument = (field) => (profile?.documents || []).find(
+    (document) => document.type.toLowerCase() === field
+  );
+  const canEditKycDocument = (field) =>
+    profileReady &&
+    (
+      kycStatus === 'NOT_SUBMITTED' ||
+      (kycStatus === 'REJECTED' && getKycDocument(field)?.verificationStatus === 'rejected')
+    );
+  const canDeleteKycDocument = (field) =>
+    profileReady && kycStatus === 'NOT_SUBMITTED';
+  const rejectedDocumentTypes = kycStatus === 'REJECTED'
+    ? (profile?.documents || [])
+      .filter((document) =>
+        Object.prototype.hasOwnProperty.call(KYC_IMAGE_FIELDS, document.type.toLowerCase()) &&
+        document.verificationStatus === 'rejected'
+      )
+      .map((document) => document.type.toLowerCase())
+    : [];
+  const allRejectedDocumentsCorrected = rejectedDocumentTypes.length > 0 &&
+    rejectedDocumentTypes.every((field) => {
+      const document = getKycDocument(field);
+      return document?.uploadedAt &&
+        profile?.kycReviewedAt &&
+        new Date(document.uploadedAt).getTime() > new Date(profile.kycReviewedAt).getTime();
+    });
+  const requiredDocumentsComplete = Boolean(aadhaarFront && aadhaarBack && panFront && panBack);
+  const canSubmit = requiredDocumentsComplete &&
+    (kycStatus !== 'REJECTED' || allRejectedDocumentsCorrected);
+  const getKycDocumentRejectionNote = (field) => {
+    const document = getKycDocument(field);
+    return document?.verificationStatus === 'rejected' ? document.reviewNote : '';
+  };
 
   return (
     <View style={styles.container}>
@@ -476,24 +825,35 @@ export default function KYCScreen({ navigation, route }) {
           { paddingBottom: insets.bottom + spacing.xxl }
         ]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7C3AED']} tintColor="#7C3AED" />
+        }
       >
+        {profileLoading ? (
+          <View style={[styles.statusCard, styles.statusPending]}>
+            <ActivityIndicator size="small" color="#F59E0B" />
+            <Text style={styles.statusDesc}>Checking your latest KYC status...</Text>
+          </View>
+        ) : null}
+
         {/* Status Banner */}
+        {profileReady ? (
         <View style={[
           styles.statusCard,
-          kycStatus === 'verified' ? styles.statusVerified :
-          kycStatus === 'rejected' ? styles.statusRejected :
+          kycStatus === 'APPROVED' ? styles.statusVerified :
+          kycStatus === 'REJECTED' ? styles.statusRejected :
           styles.statusPending
         ]}>
           <Ionicons
             name={
-              kycStatus === 'verified' ? 'checkmark-circle' :
-              kycStatus === 'rejected' ? 'close-circle' :
+              kycStatus === 'APPROVED' ? 'shield-checkmark' :
+              kycStatus === 'REJECTED' ? 'close-circle' :
               'time-outline'
             }
             size={24}
             color={
-              kycStatus === 'verified' ? '#10B981' :
-              kycStatus === 'rejected' ? '#EF4444' :
+              kycStatus === 'APPROVED' ? '#10B981' :
+              kycStatus === 'REJECTED' ? '#EF4444' :
               '#F59E0B'
             }
           />
@@ -501,31 +861,46 @@ export default function KYCScreen({ navigation, route }) {
             <Text style={[
               styles.statusTitle,
               {
-                color: kycStatus === 'verified' ? '#34D399' :
-                       kycStatus === 'rejected' ? '#F87171' :
+                color: kycStatus === 'APPROVED' ? '#34D399' :
+                       kycStatus === 'REJECTED' ? '#F87171' :
                        '#FBBF24'
               }
             ]}>
-              {kycStatus === 'verified' ? 'KYC Verified & Approved' :
-               kycStatus === 'rejected' ? 'KYC Verification Rejected' :
-               kycStatus === 'under_review' ? 'Verification Under Review' :
+              {kycStatus === 'APPROVED' ? 'Verified Successfully' :
+               kycStatus === 'REJECTED' ? 'KYC Verification Rejected' :
+               kycStatus === 'PENDING' ? 'Verification Under Review' :
                'KYC Documents Required'}
             </Text>
+            {kycStatus === 'APPROVED' ? (
+              <View style={styles.verifiedBadgeRow}>
+                <Ionicons name="checkmark-circle" size={13} color="#10B981" />
+                <Text style={styles.verifiedBadge}>Verified Successfully</Text>
+              </View>
+            ) : null}
             <Text style={styles.statusDesc}>
-              {kycStatus === 'verified'
-                ? 'Your identity documents are verified. You can receive customer bookings.'
-                : kycStatus === 'rejected'
+              {kycStatus === 'APPROVED'
+                ? `Your identity documents (Aadhaar & PAN) have been verified and approved.${profile?.kycReviewedAt ? ` Approved on ${new Date(profile.kycReviewedAt).toLocaleDateString()}.` : ''}`
+                : kycStatus === 'REJECTED'
                 ? (profile?.kycRejectionReason || profile?.rejectionReason || 'Please upload clear and valid replacement photos.')
+                : kycStatus === 'PENDING'
+                ? 'Documents submitted successfully. Waiting for admin approval.'
                 : 'Upload clear, readable photos of both sides of your Aadhaar Card and PAN Card.'}
             </Text>
           </View>
         </View>
+        ) : null}
 
         {errorMsg ? (
           <View style={styles.alertBannerError}>
             <Ionicons name="alert-circle" size={18} color="#EF4444" />
             <Text style={styles.alertTextError}>{errorMsg}</Text>
           </View>
+        ) : null}
+        {!profileLoading && !profileReady ? (
+          <TouchableOpacity style={styles.retryProfileButton} onPress={fetchProfile} activeOpacity={0.8}>
+            <Ionicons name="refresh" size={16} color="#FFFFFF" />
+            <Text style={styles.retryProfileText}>Retry loading KYC status</Text>
+          </TouchableOpacity>
         ) : null}
 
         {successMsg ? (
@@ -552,7 +927,12 @@ export default function KYCScreen({ navigation, route }) {
             imageUri={resolveImageUrl(aadhaarFront)}
             isUploading={uploadingField === 'aadhaar_front'}
             onUpload={() => handleSelectSource('aadhaar_front')}
-            onRemove={() => setAadhaarFront(null)}
+            onRemove={() => handleRemoveDocument('aadhaar_front')}
+            editable={canEditKycDocument('aadhaar_front')}
+            canDelete={canDeleteKycDocument('aadhaar_front')}
+            isLocked={profileReady && !canEditKycDocument('aadhaar_front')}
+            isApproved={isApproved}
+            reviewNote={getKycDocumentRejectionNote('aadhaar_front')}
           />
 
           {/* Aadhaar Back */}
@@ -562,7 +942,12 @@ export default function KYCScreen({ navigation, route }) {
             imageUri={resolveImageUrl(aadhaarBack)}
             isUploading={uploadingField === 'aadhaar_back'}
             onUpload={() => handleSelectSource('aadhaar_back')}
-            onRemove={() => setAadhaarBack(null)}
+            onRemove={() => handleRemoveDocument('aadhaar_back')}
+            editable={canEditKycDocument('aadhaar_back')}
+            canDelete={canDeleteKycDocument('aadhaar_back')}
+            isLocked={profileReady && !canEditKycDocument('aadhaar_back')}
+            isApproved={isApproved}
+            reviewNote={getKycDocumentRejectionNote('aadhaar_back')}
           />
         </View>
 
@@ -583,7 +968,12 @@ export default function KYCScreen({ navigation, route }) {
             imageUri={resolveImageUrl(panFront)}
             isUploading={uploadingField === 'pan_front'}
             onUpload={() => handleSelectSource('pan_front')}
-            onRemove={() => setPanFront(null)}
+            onRemove={() => handleRemoveDocument('pan_front')}
+            editable={canEditKycDocument('pan_front')}
+            canDelete={canDeleteKycDocument('pan_front')}
+            isLocked={profileReady && !canEditKycDocument('pan_front')}
+            isApproved={isApproved}
+            reviewNote={getKycDocumentRejectionNote('pan_front')}
           />
 
           {/* PAN Back */}
@@ -593,7 +983,12 @@ export default function KYCScreen({ navigation, route }) {
             imageUri={resolveImageUrl(panBack)}
             isUploading={uploadingField === 'pan_back'}
             onUpload={() => handleSelectSource('pan_back')}
-            onRemove={() => setPanBack(null)}
+            onRemove={() => handleRemoveDocument('pan_back')}
+            editable={canEditKycDocument('pan_back')}
+            canDelete={canDeleteKycDocument('pan_back')}
+            isLocked={profileReady && !canEditKycDocument('pan_back')}
+            isApproved={isApproved}
+            reviewNote={getKycDocumentRejectionNote('pan_back')}
           />
         </View>
 
@@ -619,6 +1014,7 @@ export default function KYCScreen({ navigation, route }) {
           <TouchableOpacity
             style={styles.certSelectorBtn}
             onPress={() => setServiceSelectModalVisible(true)}
+            disabled={!profileReady || (kycStatus !== 'NOT_SUBMITTED' && certification?.verificationStatus !== 'REJECTED' && Boolean(certification?.documentUrl))}
             activeOpacity={0.8}
           >
             <Ionicons name="pricetag-outline" size={18} color="#A78BFA" />
@@ -689,13 +1085,7 @@ export default function KYCScreen({ navigation, route }) {
             <TouchableOpacity
               style={styles.certPreviewBox}
               activeOpacity={0.8}
-              onPress={() => {
-                if (certification.documentUrl) {
-                  Linking.openURL(certification.documentUrl).catch(() => {
-                    Alert.alert('Cannot Open Document', 'Failed to open document preview.');
-                  });
-                }
-              }}
+              onPress={handlePreviewCertificate}
             >
               <View style={styles.certFileIconBox}>
                 <Ionicons
@@ -738,49 +1128,66 @@ export default function KYCScreen({ navigation, route }) {
           )}
 
           {/* Certification Actions Row */}
-          <View style={styles.certActionsRow}>
-            <TouchableOpacity
-              style={[
-                styles.certActionBtn,
-                { backgroundColor: '#7C3AED', flex: 1 },
-                (!selectedCategoryId || !selectedTagId) && { opacity: 0.6 }
-              ]}
-              onPress={handlePickCertification}
-              disabled={isCertUploading || certActionLoading}
-              activeOpacity={0.8}
-            >
-              <Ionicons
-                name={certification?.documentUrl ? 'sync-outline' : 'cloud-upload-outline'}
-                size={16}
-                color="#FFFFFF"
-              />
-              <Text style={styles.certActionBtnText}>
-                {certification?.documentUrl ? 'Replace Certificate' : 'Upload Certificate'}
-              </Text>
-            </TouchableOpacity>
-
-            {certification?.documentUrl ? (
+          {profileReady && (kycStatus === 'NOT_SUBMITTED' || certification?.verificationStatus === 'REJECTED' || !certification?.documentUrl) ? (
+            <View style={styles.certActionsRow}>
               <TouchableOpacity
-                style={[styles.certActionBtn, { backgroundColor: '#374151', marginLeft: spacing.sm }]}
-                onPress={handleRemoveCertification}
-                disabled={isCertUploading || certActionLoading}
+                style={[
+                  styles.certActionBtn,
+                  { backgroundColor: '#7C3AED', flex: 1 },
+                  (!selectedCategoryId || !selectedTagId || isCertUploading) && { opacity: 0.6 }
+                ]}
+                onPress={handlePickCertification}
+                disabled={isCertUploading || certActionLoading || !selectedCategoryId || !selectedTagId}
                 activeOpacity={0.8}
               >
-                <Ionicons name="trash-outline" size={16} color="#F87171" />
-                <Text style={[styles.certActionBtnText, { color: '#F87171' }]}>Remove</Text>
+                {isCertUploading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name={certification?.documentUrl ? 'sync-outline' : 'cloud-upload-outline'}
+                      size={16}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.certActionBtnText}>
+                      {certification?.documentUrl ? 'Replace Certificate' : 'Upload Certificate'}
+                    </Text>
+                  </>
+                )}
               </TouchableOpacity>
-            ) : null}
-          </View>
+
+              {certification?.documentUrl ? (
+                <TouchableOpacity
+                  style={[styles.certActionBtn, { backgroundColor: '#374151', marginLeft: spacing.sm }]}
+                  onPress={handleRemoveCertification}
+                  disabled={isCertUploading || certActionLoading}
+                  activeOpacity={0.8}
+                >
+                  {certActionLoading ? (
+                    <ActivityIndicator size="small" color="#F87171" />
+                  ) : (
+                    <>
+                      <Ionicons name="trash-outline" size={16} color="#F87171" />
+                      <Text style={[styles.certActionBtnText, { color: '#F87171' }]}>Remove</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
         </Card>
 
         {/* Submission Action */}
-        <View style={styles.actionContainer}>
-          <Button
-            title="Review & Submit KYC"
-            onPress={handleReviewAndSubmit}
-            style={styles.submitBtn}
-          />
-        </View>
+        {profileReady && !isKycLocked ? (
+          <View style={styles.actionContainer}>
+            <Button
+              title={kycStatus === 'REJECTED' ? 'Resubmit for Verification' : 'Submit for Verification'}
+              onPress={handleReviewAndSubmit}
+              disabled={!canSubmit}
+              style={styles.submitBtn}
+            />
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* Review Modal */}
@@ -983,7 +1390,22 @@ export default function KYCScreen({ navigation, route }) {
   );
 }
 
-function DocumentCard({ title, required, imageUri, isUploading, onUpload, onRemove }) {
+function DocumentCard({
+  title,
+  required,
+  imageUri,
+  isUploading,
+  onUpload,
+  onRemove,
+  editable,
+  canDelete,
+  isLocked,
+  isApproved,
+  reviewNote
+}) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   return (
     <Card style={styles.docCard}>
       <View style={styles.docCardHeader}>
@@ -1014,8 +1436,11 @@ function DocumentCard({ title, required, imageUri, isUploading, onUpload, onRemo
           </View>
         )}
       </View>
+      {reviewNote ? (
+        <Text style={styles.documentReviewNote}>Correction needed: {reviewNote}</Text>
+      ) : null}
 
-      <View style={styles.cardActionsRow}>
+      {editable ? <View style={styles.cardActionsRow}>
         <TouchableOpacity
           style={[styles.btnAction, { backgroundColor: '#7C3AED' }]}
           onPress={onUpload}
@@ -1026,9 +1451,9 @@ function DocumentCard({ title, required, imageUri, isUploading, onUpload, onRemo
           <Text style={styles.btnActionText}>{imageUri ? 'Replace' : 'Upload'}</Text>
         </TouchableOpacity>
 
-        {imageUri ? (
+        {imageUri && canDelete ? (
           <TouchableOpacity
-            style={[styles.btnAction, { backgroundColor: '#374151', marginLeft: spacing.xs }]}
+            style={[styles.btnAction, { backgroundColor: isDark ? '#374151' : '#E5E7EB', marginLeft: spacing.xs }]}
             onPress={onRemove}
             activeOpacity={0.8}
             disabled={isUploading}
@@ -1036,12 +1461,19 @@ function DocumentCard({ title, required, imageUri, isUploading, onUpload, onRemo
             <Ionicons name="trash-outline" size={15} color="#EF4444" />
           </TouchableOpacity>
         ) : null}
-      </View>
+      </View> : isLocked ? (
+        <Text style={styles.readOnlyText}>
+          {isApproved ? 'Verified document · Read-only' : 'Submitted document · Read-only'}
+        </Text>
+      ) : null}
     </Card>
   );
 }
 
 function ReviewThumb({ label, uri }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   return (
     <View style={styles.reviewItem}>
       <Text style={styles.reviewItemLabel}>{label}</Text>
@@ -1059,10 +1491,10 @@ function ReviewThumb({ label, uri }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   scroll: {
     paddingHorizontal: spacing.md,
@@ -1078,15 +1510,15 @@ const styles = StyleSheet.create({
     gap: spacing.sm
   },
   statusPending: {
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.1)' : '#FEF3C7',
     borderColor: 'rgba(245, 158, 11, 0.3)'
   },
   statusVerified: {
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : '#DCFCE7',
     borderColor: 'rgba(16, 185, 129, 0.3)'
   },
   statusRejected: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEE2E2',
     borderColor: 'rgba(239, 68, 68, 0.3)'
   },
   statusTitle: {
@@ -1094,9 +1526,41 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 2
   },
+  verifiedBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    backgroundColor: 'rgba(16, 185, 129, 0.16)',
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginBottom: 4
+  },
+  verifiedBadge: {
+    color: isDark ? '#34D399' : '#059669',
+    fontSize: 10,
+    fontWeight: '800'
+  },
+  retryProfileButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? '#374151' : colors.cardSecondary,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.md,
+    gap: spacing.xs
+  },
+  retryProfileText: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '600'
+  },
   statusDesc: {
     fontSize: 12,
-    color: '#D1D5DB',
+    color: colors.textSecondary,
     lineHeight: 16
   },
   alertBannerError: {
@@ -1128,7 +1592,7 @@ const styles = StyleSheet.create({
   },
   alertTextSuccess: {
     fontSize: 12,
-    color: '#34D399',
+    color: isDark ? '#34D399' : '#059669',
     flex: 1
   },
   sectionHeader: {
@@ -1138,26 +1602,26 @@ const styles = StyleSheet.create({
     marginBottom: 2
   },
   sectionBadge: {
-    backgroundColor: '#2E1065',
+    backgroundColor: isDark ? '#2E1065' : '#EDE9FE',
     borderWidth: 1,
-    borderColor: '#7C3AED',
+    borderColor: colors.primary,
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6
   },
   sectionBadgeText: {
-    color: '#DDD6FE',
+    color: isDark ? '#DDD6FE' : colors.primary,
     fontSize: 11,
     fontWeight: '700'
   },
   sectionHeading: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   sectionSub: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginBottom: spacing.md
   },
   docRow: {
@@ -1166,8 +1630,8 @@ const styles = StyleSheet.create({
   },
   docCard: {
     flex: 1,
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 14,
     padding: spacing.md
@@ -1181,7 +1645,7 @@ const styles = StyleSheet.create({
   docCardTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   badge: {
     paddingHorizontal: 5,
@@ -1194,26 +1658,26 @@ const styles = StyleSheet.create({
     borderWidth: 1
   },
   badgeOptional: {
-    backgroundColor: 'rgba(107, 114, 128, 0.2)',
-    borderColor: 'rgba(107, 114, 128, 0.5)',
+    backgroundColor: isDark ? 'rgba(107, 114, 128, 0.2)' : 'rgba(107, 114, 128, 0.1)',
+    borderColor: 'rgba(107, 114, 128, 0.3)',
     borderWidth: 1
   },
   badgeText: {
     fontSize: 9,
     fontWeight: '700',
-    color: '#E5E7EB'
+    color: isDark ? '#E5E7EB' : colors.textSecondary
   },
   previewContainer: {
     height: 110,
     borderRadius: 8,
-    backgroundColor: '#1F1B2E',
+    backgroundColor: isDark ? '#1F1B2E' : colors.cardSecondary,
     overflow: 'hidden',
     position: 'relative',
     marginBottom: spacing.sm,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#2E2845'
+    borderColor: colors.border
   },
   previewImage: {
     width: '100%',
@@ -1225,7 +1689,7 @@ const styles = StyleSheet.create({
   },
   placeholderText: {
     fontSize: 11,
-    color: '#6B7280',
+    color: colors.textMuted,
     marginTop: 4
   },
   uploadOverlay: {
@@ -1243,6 +1707,19 @@ const styles = StyleSheet.create({
   cardActionsRow: {
     flexDirection: 'row',
     alignItems: 'center'
+  },
+  readOnlyText: {
+    color: isDark ? '#34D399' : '#059669',
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: 7
+  },
+  documentReviewNote: {
+    color: '#FCA5A5',
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: spacing.xs
   },
   btnAction: {
     flex: 1,
@@ -1263,7 +1740,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md
   },
   submitBtn: {
-    backgroundColor: '#7C3AED'
+    backgroundColor: colors.primary
   },
   modalOverlay: {
     flex: 1,
@@ -1272,9 +1749,9 @@ const styles = StyleSheet.create({
     padding: spacing.md
   },
   modalContent: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 18,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderWidth: 1,
     padding: spacing.lg
   },
@@ -1283,37 +1760,37 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#252136',
+    borderBottomColor: colors.border,
     paddingBottom: spacing.sm
   },
   modalTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   modalSubtitle: {
     fontSize: 12,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   closeBtn: {
     padding: spacing.xs
   },
   snapshotCard: {
-    backgroundColor: '#1F1B2E',
+    backgroundColor: isDark ? '#1F1B2E' : colors.cardSecondary,
     borderRadius: 10,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     marginBottom: spacing.md
   },
   snapshotLabel: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     textTransform: 'uppercase'
   },
   snapshotValue: {
     fontSize: 13,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '600'
   },
   reviewGrid: {
@@ -1327,17 +1804,17 @@ const styles = StyleSheet.create({
   },
   reviewItemLabel: {
     fontSize: 11,
-    color: '#D1D5DB',
+    color: colors.textPrimary,
     fontWeight: '600',
     marginBottom: 4
   },
   reviewThumbBox: {
     height: 90,
     borderRadius: 8,
-    backgroundColor: '#1F1B2E',
+    backgroundColor: isDark ? '#1F1B2E' : colors.cardSecondary,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center'
   },
@@ -1357,7 +1834,7 @@ const styles = StyleSheet.create({
   },
   declarationText: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     lineHeight: 16,
     fontStyle: 'italic',
     paddingHorizontal: 2
@@ -1366,30 +1843,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#252136',
+    borderTopColor: colors.border,
     paddingTop: spacing.md
   },
   // Service Certification Card Styles
   certCard: {
-    backgroundColor: '#1E1B2E',
+    backgroundColor: colors.card,
     borderRadius: 14,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: '#2D2845',
+    borderColor: colors.border,
     marginTop: spacing.xs
   },
   certFieldLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#D1D5DB',
+    color: colors.textPrimary,
     marginBottom: 6
   },
   certSelectorBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161324',
+    backgroundColor: isDark ? '#161324' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#373052',
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: spacing.sm,
     paddingVertical: 12,
@@ -1398,7 +1875,7 @@ const styles = StyleSheet.create({
   certSelectorText: {
     flex: 1,
     fontSize: 13,
-    color: '#F3F4F6',
+    color: colors.textPrimary,
     fontWeight: '500',
     marginHorizontal: spacing.xs
   },
@@ -1411,7 +1888,7 @@ const styles = StyleSheet.create({
   },
   certStatusLabel: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontWeight: '500'
   },
   certStatusBadge: {
@@ -1427,9 +1904,9 @@ const styles = StyleSheet.create({
   certRejectionBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#2D151B',
+    backgroundColor: isDark ? '#2D151B' : '#FEE2E2',
     borderWidth: 1,
-    borderColor: '#7F1D1D',
+    borderColor: isDark ? '#7F1D1D' : '#FCA5A5',
     borderRadius: 8,
     padding: spacing.sm,
     marginBottom: spacing.md,
@@ -1442,21 +1919,21 @@ const styles = StyleSheet.create({
   },
   certRejectionText: {
     fontSize: 12,
-    color: '#FECACA',
+    color: isDark ? '#FECACA' : '#991B1B',
     marginTop: 2
   },
   certRejectionSub: {
     fontSize: 10,
-    color: '#FCA5A5',
+    color: isDark ? '#FCA5A5' : '#B91C1C',
     marginTop: 4,
     fontStyle: 'italic'
   },
   certPreviewBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161324',
+    backgroundColor: isDark ? '#161324' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#2E2848',
+    borderColor: colors.border,
     borderRadius: 10,
     padding: spacing.sm,
     marginBottom: spacing.md
@@ -1465,54 +1942,54 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 8,
-    backgroundColor: '#272042',
+    backgroundColor: isDark ? '#272042' : colors.card,
     alignItems: 'center',
     justifyContent: 'center'
   },
   certFileName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   certFileMeta: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   certPlaceholderBox: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#161324',
+    backgroundColor: isDark ? '#161324' : colors.cardSecondary,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: '#373052',
+    borderColor: colors.border,
     borderRadius: 10,
     paddingVertical: spacing.lg,
     marginBottom: spacing.md
   },
   certPlaceholderText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontWeight: '500',
     marginTop: 6
   },
   certPlaceholderSub: {
     fontSize: 10,
-    color: '#6B7280',
+    color: colors.textMuted,
     marginTop: 2
   },
   certUploadingBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: '#251F3D',
+    backgroundColor: isDark ? '#251F3D' : colors.cardSecondary,
     borderRadius: 8,
     padding: spacing.sm,
     marginBottom: spacing.md
   },
   certUploadingText: {
     fontSize: 11,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '500'
   },
   certActionsRow: {
@@ -1542,12 +2019,12 @@ const styles = StyleSheet.create({
   pickerCategoryTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#A78BFA',
+    color: colors.primary,
     textTransform: 'uppercase',
     letterSpacing: 0.5
   },
   pickerCatCountBadge: {
-    backgroundColor: '#2E2845',
+    backgroundColor: isDark ? '#2E2845' : colors.cardSecondary,
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: 10
@@ -1555,34 +2032,34 @@ const styles = StyleSheet.create({
   pickerCatCountText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#D1D5DB'
+    color: colors.textSecondary
   },
   pickerTagItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1F1B2E',
+    backgroundColor: isDark ? '#1F1B2E' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     borderRadius: 8,
     padding: spacing.sm
   },
   pickerTagItemSelected: {
-    borderColor: '#7C3AED',
-    backgroundColor: '#272042'
+    borderColor: colors.primary,
+    backgroundColor: isDark ? '#272042' : '#F5F3FF'
   },
   pickerTagName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#D1D5DB'
+    color: colors.textPrimary
   },
   pickerTagSub: {
     fontSize: 11,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   pickerTagIdText: {
     fontSize: 10,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    color: '#71717A'
+    color: colors.textMuted
   },
   activeTagBadge: {
     backgroundColor: 'rgba(16, 185, 129, 0.15)',
@@ -1595,7 +2072,7 @@ const styles = StyleSheet.create({
   activeTagBadgeText: {
     fontSize: 9,
     fontWeight: '700',
-    color: '#34D399'
+    color: isDark ? '#34D399' : '#059669'
   },
   pickerStateBox: {
     padding: spacing.xl,
@@ -1605,7 +2082,7 @@ const styles = StyleSheet.create({
   },
   pickerStateText: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: spacing.sm
   },
   pickerErrorTitle: {
@@ -1617,12 +2094,12 @@ const styles = StyleSheet.create({
   pickerEmptyTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#E5E7EB',
+    color: colors.textPrimary,
     marginTop: spacing.xs
   },
   pickerStateSub: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
     marginVertical: spacing.xs,
@@ -1632,7 +2109,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingVertical: 8,
     paddingHorizontal: spacing.lg,
     borderRadius: 8,
@@ -1647,7 +2124,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingVertical: 9,
     paddingHorizontal: spacing.lg,
     borderRadius: 8,

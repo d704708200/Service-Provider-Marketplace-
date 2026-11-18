@@ -1,6 +1,7 @@
-import colors, { COLORS } from './colors.js';
+import { Platform } from 'react-native';
+import colors, { COLORS, darkColors, lightColors, getThemeColors } from './colors.js';
 
-export { colors, COLORS };
+export { colors, COLORS, darkColors, lightColors, getThemeColors };
 
 export const spacing = {
   xs: 4,
@@ -29,55 +30,57 @@ export const fontWeight = {
   bold: '700'
 };
 
-export const typography = {
+export const getTypography = (currentColors) => ({
   fontSize,
   fontWeight,
   titleLarge: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: currentColors.textPrimary,
     letterSpacing: -0.5
   },
   titleMedium: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: currentColors.textPrimary,
     letterSpacing: -0.3
   },
   titleSmall: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#FFFFFF'
+    color: currentColors.textPrimary
   },
   bodyLarge: {
     fontSize: 15,
     fontWeight: '400',
-    color: '#E2E8F0',
+    color: currentColors.textSecondary,
     lineHeight: 22
   },
   bodyMedium: {
     fontSize: 14,
     fontWeight: '400',
-    color: '#CBD5E1',
+    color: currentColors.textSecondary,
     lineHeight: 20
   },
   bodySmall: {
     fontSize: 12,
     fontWeight: '400',
-    color: '#9CA3AF',
+    color: currentColors.textMuted,
     lineHeight: 16
   },
   caption: {
     fontSize: 11,
     fontWeight: '500',
-    color: '#71717A'
+    color: currentColors.textMuted
   },
   button: {
     fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF'
   }
-};
+});
+
+export const typography = getTypography(darkColors);
 
 export const borderRadius = {
   sm: 6,
@@ -87,26 +90,57 @@ export const borderRadius = {
   full: 9999
 };
 
-export const shadows = {
-  card: {
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 2
-  },
-  elevated: {
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 4
-  }
+export const getShadows = (isDark = true) => ({
+  card: Platform.select({
+    web: {
+      boxShadow: isDark
+        ? '0px 2px 8px rgba(0, 0, 0, 0.40)'
+        : '0px 2px 8px rgba(23, 23, 37, 0.06)'
+    },
+    default: {
+      shadowColor: isDark ? '#000000' : '#171725',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.35 : 0.06,
+      shadowRadius: 8,
+      elevation: 2
+    }
+  }),
+  elevated: Platform.select({
+    web: {
+      boxShadow: isDark
+        ? '0px 4px 14px rgba(0, 0, 0, 0.55)'
+        : '0px 4px 14px rgba(23, 23, 37, 0.10)'
+    },
+    default: {
+      shadowColor: isDark ? '#000000' : '#171725',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDark ? 0.5 : 0.10,
+      shadowRadius: 12,
+      elevation: 4
+    }
+  })
+});
+
+export const shadows = getShadows(true);
+
+export const getTheme = (isDark = true) => {
+  const currentColors = getThemeColors(isDark);
+  return {
+    isDark,
+    colors: currentColors,
+    COLORS: currentColors,
+    spacing,
+    typography: getTypography(currentColors),
+    fontSize,
+    fontWeight,
+    borderRadius,
+    shadows: getShadows(isDark)
+  };
 };
 
 export const theme = {
-  colors,
-  COLORS: colors,
+  colors: darkColors,
+  COLORS: darkColors,
   spacing,
   typography,
   fontSize,

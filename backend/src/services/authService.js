@@ -36,6 +36,30 @@ const formatSafeUser = (user, profile = null) => {
   if (profile) {
     const profileObj = profile.toObject ? profile.toObject() : { ...profile };
     delete profileObj.__v;
+
+    if (userObj.role === 'provider') {
+      const rawKyc = String(profileObj.kycStatus || 'NOT_SUBMITTED').toUpperCase();
+      if (rawKyc === 'VERIFIED' || rawKyc === 'APPROVED') {
+        profileObj.kycStatus = 'APPROVED';
+      } else if (rawKyc === 'REJECTED') {
+        profileObj.kycStatus = 'REJECTED';
+      } else if (rawKyc === 'UNDER_REVIEW' || rawKyc === 'PENDING') {
+        profileObj.kycStatus = 'PENDING';
+      } else {
+        profileObj.kycStatus = 'NOT_SUBMITTED';
+      }
+
+      const { CURRENT_TERMS_VERSION } = require('../constants/providerTerms');
+      const isTermsAccepted =
+        profileObj.acceptedTermsVersion === CURRENT_TERMS_VERSION &&
+        Boolean(profileObj.acceptedTermsAt);
+      profileObj.requiresTermsAcceptance = !isTermsAccepted;
+      userObj.requiresTermsAcceptance = !isTermsAccepted;
+    } else {
+      userObj.requiresTermsAcceptance = false;
+      if (profileObj) profileObj.requiresTermsAcceptance = false;
+    }
+
     result.profile = profileObj;
   }
   return result;
@@ -164,7 +188,15 @@ const registerCustomer = async ({ name, email, phone, password, address, default
  * Creates User (role='provider') and Provider profile consistently.
  * Provider verificationStatus is set to 'pending' as required.
  */
-const registerProvider = async ({ name, email, phone, password, businessName, bio, experienceYears, categories }) => {
+const registerProvider = async ({ name, email, phone, password, businessName, bio, experienceYears, categories, acceptedTerms, termsVersion }) => {
+  const { CURRENT_TERMS_VERSION, TERMS_HASH } = require('../constants/providerTerms');
+
+  if (acceptedTerms !== true || !termsVersion || termsVersion !== CURRENT_TERMS_VERSION) {
+    const err = new Error(`Explicit acceptance of MENDROO Service Provider Terms & Conditions (${CURRENT_TERMS_VERSION}) is required.`);
+    err.statusCode = 400;
+    throw err;
+  }
+
   const existingEmail = await User.findOne({ email: email.trim().toLowerCase() });
   if (existingEmail) {
     const err = new Error('An account with this email address already exists');
@@ -236,6 +268,7 @@ const registerProvider = async ({ name, email, phone, password, businessName, bi
     createdUser = user;
 
     // 2. Create Provider Profile (Always pending admin verification)
+    const signupAcceptanceDate = new Date();
     const [provider] = await Provider.create(
       [
         {
@@ -245,7 +278,19 @@ const registerProvider = async ({ name, email, phone, password, businessName, bi
           experienceYears: experienceYears || 0,
           categories: activeCategories.map((cat) => cat._id),
           verificationStatus: 'pending',
-          isAvailable: true
+          isAvailable: true,
+          acceptedTermsVersion: CURRENT_TERMS_VERSION,
+          acceptedTermsAt: signupAcceptanceDate,
+          acceptedTermsSource: 'signup',
+          acceptedTermsHash: TERMS_HASH,
+          termsAcceptanceHistory: [
+            {
+              version: CURRENT_TERMS_VERSION,
+              acceptedAt: signupAcceptanceDate,
+              source: 'signup',
+              termsHash: TERMS_HASH
+            }
+          ]
         }
       ],
       sessionOption

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { serviceApi, providerApi, categoryApi } from '../../services/api';
 import { formatRating, formatPrice } from '../../utils/formatters';
 import { getValidCategoryIcon } from '../../utils/categoryIcons';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 const FILTER_PILLS = [
@@ -39,6 +39,8 @@ const POPULAR_GRID_ITEMS = [
 
 export default function SearchScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [activeFilter, setActiveFilter] = useState('near_me');
@@ -405,10 +407,10 @@ export default function SearchScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   scrollView: {
     flex: 1
@@ -426,7 +428,7 @@ const styles = StyleSheet.create({
   mainTitle: {
     fontSize: 26,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     letterSpacing: -0.5,
     lineHeight: 32,
     flexShrink: 1
@@ -434,16 +436,16 @@ const styles = StyleSheet.create({
   mainTitlePurple: {
     fontSize: 26,
     fontWeight: '800',
-    color: '#8B5CF6',
+    color: colors.primary,
     letterSpacing: -0.5,
     lineHeight: 32
   },
   searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 14,
     paddingHorizontal: 12,
     height: 48,
@@ -454,7 +456,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 14,
     paddingVertical: 8,
     backgroundColor: 'transparent',
@@ -480,21 +482,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: '#1A1726',
+    backgroundColor: colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#262238'
+    borderColor: colors.border
   },
   filterPillActive: {
-    backgroundColor: '#2E1065',
-    borderColor: '#7C3AED'
+    backgroundColor: isDark ? '#2E1065' : '#EDE9FE',
+    borderColor: colors.primary
   },
   filterPillText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontWeight: '500'
   },
   filterPillTextActive: {
-    color: '#DDD6FE',
+    color: colors.primary,
     fontWeight: '600'
   },
   recentSection: {
@@ -509,16 +511,16 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   clearText: {
     fontSize: 12,
-    color: '#7C3AED',
+    color: colors.primary,
     fontWeight: '600'
   },
   resultsCountText: {
     fontSize: 12,
-    color: '#71717A'
+    color: colors.textMuted
   },
   recentTagsRow: {
     flexDirection: 'row',
@@ -528,16 +530,16 @@ const styles = StyleSheet.create({
   recentTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161420',
+    backgroundColor: colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 18,
     paddingHorizontal: 12,
     paddingVertical: 6
   },
   recentTagText: {
     fontSize: 12,
-    color: '#E2E8F0'
+    color: colors.textPrimary
   },
   popularSection: {
     marginBottom: 22
@@ -549,10 +551,10 @@ const styles = StyleSheet.create({
   },
   categoryCard: {
     width: '23%',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center'
@@ -561,14 +563,14 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#241F36',
+    backgroundColor: isDark ? '#241F36' : colors.cardSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8
   },
   categoryLabel: {
     fontSize: 11,
-    color: '#E2E8F0',
+    color: colors.textPrimary,
     fontWeight: '500',
     textAlign: 'center'
   },
@@ -577,9 +579,9 @@ const styles = StyleSheet.create({
   },
   providerCard: {
     flexDirection: 'row',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 16,
     padding: 12,
     alignItems: 'center'
@@ -591,7 +593,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 14,
-    backgroundColor: '#262238'
+    backgroundColor: colors.cardSecondary
   },
   providerInfoCol: {
     flex: 1
@@ -603,11 +605,11 @@ const styles = StyleSheet.create({
   providerName: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   providerCategory: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2,
     marginBottom: 4
   },
@@ -628,12 +630,12 @@ const styles = StyleSheet.create({
   },
   metricDot: {
     fontSize: 11,
-    color: '#6B7280',
+    color: colors.textMuted,
     marginHorizontal: 4
   },
   metricText: {
     fontSize: 11,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   availabilityRow: {
     flexDirection: 'row',
@@ -641,12 +643,12 @@ const styles = StyleSheet.create({
   },
   distanceText: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginLeft: 2
   },
   availableNowBadgeText: {
     fontSize: 11,
-    color: '#34D399',
+    color: '#10B981',
     fontWeight: '600'
   },
   providerRightCol: {
@@ -656,12 +658,12 @@ const styles = StyleSheet.create({
   },
   startsAtText: {
     fontSize: 10,
-    color: '#71717A'
+    color: colors.textMuted
   },
   providerPrice: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginTop: 1
   },
   emptyContainer: {
@@ -670,35 +672,35 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 13,
-    color: '#71717A',
+    color: colors.textMuted,
     marginTop: 8,
     textAlign: 'center'
   },
   categoryCardActive: {
-    borderColor: '#7C3AED',
-    backgroundColor: '#201636'
+    borderColor: colors.primary,
+    backgroundColor: isDark ? '#201636' : '#EDE9FE'
   },
   categoryIconCircleActive: {
-    backgroundColor: '#7C3AED'
+    backgroundColor: colors.primary
   },
   categoryLabelActive: {
-    color: '#DDD6FE',
+    color: colors.primary,
     fontWeight: '700'
   },
   loadMoreButton: {
     marginTop: 16,
     paddingVertical: 12,
     paddingHorizontal: 20,
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2D2845',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center'
   },
   loadMoreText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#A78BFA'
+    color: colors.primary
   }
 });

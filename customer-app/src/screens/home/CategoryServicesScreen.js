@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { serviceApi } from '../../services/api';
 import { Header, Card, Badge, LoadingScreen, ErrorView, EmptyState } from '../../components/common';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 import { PRICING_LABELS } from '../../constants';
 
 export default function CategoryServicesScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { categoryId, categoryName, categoryDescription } = route.params || {};
 
   const [services, setServices] = useState([]);
@@ -178,7 +180,7 @@ export default function CategoryServicesScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background
@@ -198,13 +200,13 @@ const styles = StyleSheet.create({
   },
   serviceName: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: colors.textPrimary,
     flex: 1,
     marginRight: spacing.sm
   },
   description: {
     ...typography.bodySmall,
-    color: colors.slate500,
+    color: colors.textSecondary,
     marginBottom: spacing.md
   },
   cardFooter: {
@@ -212,12 +214,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: colors.slate100,
+    borderTopColor: colors.border,
     paddingTop: spacing.sm
   },
   priceText: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: colors.textPrimary,
     fontWeight: '700'
   },
   durationRow: {
@@ -227,7 +229,7 @@ const styles = StyleSheet.create({
   },
   durationText: {
     ...typography.caption,
-    color: colors.slate500
+    color: colors.textSecondary
   },
   cardActionsRow: {
     flexDirection: 'row',
@@ -237,7 +239,7 @@ const styles = StyleSheet.create({
   findProvidersChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F3FF',
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.15)' : '#F5F3FF',
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: borderRadius.full,
@@ -252,9 +254,9 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
-    backgroundColor: '#FAF5FF',
+    backgroundColor: isDark ? '#1F1A2E' : '#FAF5FF',
     borderWidth: 1,
-    borderColor: '#E9D5FF',
+    borderColor: isDark ? '#362B54' : '#E9D5FF',
     borderRadius: borderRadius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -272,18 +274,18 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#EDE9FE',
+    backgroundColor: isDark ? '#2D2045' : '#EDE9FE',
     alignItems: 'center',
     justifyContent: 'center'
   },
   specialistsBannerTitle: {
     ...typography.bodyMedium,
     fontWeight: '700',
-    color: '#5B21B6'
+    color: isDark ? '#DDD6FE' : '#5B21B6'
   },
   specialistsBannerSubtitle: {
     ...typography.caption,
-    color: '#7C3AED',
+    color: isDark ? '#A78BFA' : '#7C3AED',
     fontSize: 11
   }
 });

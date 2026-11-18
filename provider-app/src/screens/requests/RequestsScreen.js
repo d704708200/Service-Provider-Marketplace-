@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,14 +11,16 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { bookingApi } from '../../services/api';
 import { useRequests } from '../../context/RequestContext';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView, EmptyState } from '../../components/common';
-import colors from '../../theme/colors';
 import { spacing, typography } from '../../theme';
 
 export default function RequestsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { setPendingRequestsCount, decrementPendingRequestsCount, refreshPendingRequestsCount } = useRequests();
 
   const [requests, setRequests] = useState([]);
@@ -247,18 +249,18 @@ export default function RequestsScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   listContent: {
     padding: spacing.lg,
     paddingBottom: spacing.xxxl
   },
   card: {
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     borderRadius: 16,
     marginBottom: spacing.md
   },
@@ -274,13 +276,13 @@ const styles = StyleSheet.create({
   },
   reference: {
     fontSize: 11,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '700',
     marginBottom: 2
   },
   serviceName: {
     ...typography.titleSmall,
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   row: {
     flexDirection: 'row',
@@ -290,21 +292,21 @@ const styles = StyleSheet.create({
   },
   text: {
     ...typography.bodySmall,
-    color: '#CBD5E1',
+    color: colors.textSecondary,
     flex: 1
   },
   notesBox: {
-    backgroundColor: '#1C1929',
+    backgroundColor: colors.cardSecondary,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#2A253E',
+    borderColor: colors.border,
     padding: spacing.sm,
     marginTop: spacing.xs,
     marginBottom: spacing.xs
   },
   notesText: {
     ...typography.caption,
-    color: '#9CA3AF',
+    color: colors.textMuted,
     fontStyle: 'italic'
   },
   footer: {
@@ -312,13 +314,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#252136',
+    borderTopColor: colors.border,
     paddingTop: spacing.sm,
     marginTop: spacing.xs
   },
   price: {
     ...typography.titleSmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '700'
   },
   actionBtns: {
@@ -326,15 +328,16 @@ const styles = StyleSheet.create({
     gap: spacing.sm
   },
   rejectBtn: {
-    borderColor: '#36314D',
+    borderColor: colors.border,
+    backgroundColor: colors.cardSecondary,
     paddingHorizontal: spacing.md
   },
   rejectBtnText: {
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontSize: 12
   },
   acceptBtn: {
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingHorizontal: spacing.md
   }
 });

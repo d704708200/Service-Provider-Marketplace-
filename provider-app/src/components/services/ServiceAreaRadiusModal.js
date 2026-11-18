@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,8 +15,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import { useTheme } from '../../context/ThemeContext';
 import { providerServiceAreaRadiusApi } from '../../services/api';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 export const GPS_ERROR_CODES = {
@@ -226,6 +226,8 @@ export default function ServiceAreaRadiusModal({
   serviceItem, // { category, serviceName, serviceArea, radiusRule }
   onSaved
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [locationMode, setLocationMode] = useState('gps'); // 'gps' | 'manual'
 
   // Permission & GPS Detection State
@@ -932,7 +934,7 @@ export default function ServiceAreaRadiusModal({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',

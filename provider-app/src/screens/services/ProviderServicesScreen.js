@@ -15,14 +15,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { providerTagApi, providerServicesApi, categoryApi, providerServiceAreaRadiusApi } from '../../services/api';
 import { Header, Card, Badge, Button, Input } from '../../components/common';
 import ServiceAreaRadiusModal from '../../components/services/ServiceAreaRadiusModal';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 export default function ProviderServicesScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   // Active top tab: 'tags' (Marketplace Service Tags) vs 'legacy' (Custom Services)
   const [activeTab, setActiveTab] = useState('tags');
@@ -1193,18 +1195,18 @@ export default function ProviderServicesScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   tabContainer: {
     flexDirection: 'row',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: '#12111A',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E1B2E',
+    borderBottomColor: colors.border,
     gap: spacing.sm
   },
   tabButton: {
@@ -1215,20 +1217,20 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: '#161420'
+    backgroundColor: isDark ? colors.cardSecondary : colors.cardSecondary
   },
   tabButtonActive: {
-    backgroundColor: 'rgba(124, 58, 237, 0.18)',
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.18)' : 'rgba(124, 58, 237, 0.12)',
     borderWidth: 1,
-    borderColor: '#7C3AED'
+    borderColor: colors.primary
   },
   tabText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#71717A'
+    color: colors.textSecondary
   },
   tabTextActive: {
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '700'
   },
   centeredContainer: {
@@ -1239,7 +1241,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: spacing.md,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontSize: 14
   },
   contentScroll: {
@@ -1249,10 +1251,10 @@ const styles = StyleSheet.create({
     padding: spacing.md
   },
   summaryCard: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.md
   },
@@ -1262,7 +1264,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#221E33'
+    borderBottomColor: colors.border
   },
   summaryKpi: {
     flex: 1,
@@ -1271,17 +1273,17 @@ const styles = StyleSheet.create({
   summaryKpiValue: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   summaryKpiLabel: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   summaryDivider: {
     width: 1,
     height: 28,
-    backgroundColor: '#2A253D'
+    backgroundColor: colors.border
   },
   guidanceBox: {
     flexDirection: 'row',
@@ -1293,14 +1295,14 @@ const styles = StyleSheet.create({
   guidanceText: {
     flex: 1,
     fontSize: 12,
-    color: '#CBD5E1',
+    color: colors.textSecondary,
     lineHeight: 16
   },
   successBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.1)',
     borderWidth: 1,
     borderColor: '#10B981',
     paddingHorizontal: spacing.md,
@@ -1311,15 +1313,15 @@ const styles = StyleSheet.create({
   successBannerText: {
     flex: 1,
     fontSize: 12,
-    color: '#34D399',
+    color: isDark ? '#34D399' : '#059669',
     fontWeight: '600'
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#262238',
+    borderColor: colors.border,
     borderRadius: 12,
     paddingHorizontal: spacing.md,
     height: 44,
@@ -1330,7 +1332,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 13
   },
   categoryChipsContainer: {
@@ -1342,17 +1344,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136'
+    borderColor: colors.border
   },
   categoryFilterChipActive: {
-    backgroundColor: '#7C3AED',
-    borderColor: '#8B5CF6'
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   categoryFilterChipText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontWeight: '500'
   },
   categoryFilterChipTextActive: {
@@ -1368,21 +1370,21 @@ const styles = StyleSheet.create({
   emptyStateTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#E2E8F0',
+    color: colors.textPrimary,
     marginTop: 12
   },
   emptyStateSub: {
     fontSize: 12,
-    color: '#71717A',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 4,
     lineHeight: 18
   },
   categoryCard: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     marginBottom: spacing.md,
     overflow: 'hidden'
   },
@@ -1391,7 +1393,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: spacing.md,
-    backgroundColor: '#1A1726'
+    backgroundColor: isDark ? colors.cardSecondary : colors.cardSecondary
   },
   categoryHeaderLeft: {
     flexDirection: 'row',
@@ -1403,18 +1405,18 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.15)' : 'rgba(124, 58, 237, 0.1)',
     alignItems: 'center',
     justifyContent: 'center'
   },
   categoryTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   categorySubtitle: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   categoryHeaderRight: {
@@ -1432,12 +1434,12 @@ const styles = StyleSheet.create({
   },
   activePillText: {
     fontSize: 11,
-    color: '#34D399',
+    color: isDark ? '#34D399' : '#059669',
     fontWeight: '600'
   },
   categoryCardBody: {
     padding: spacing.md,
-    backgroundColor: '#13111C'
+    backgroundColor: isDark ? '#13111C' : colors.card
   },
   subcategorySection: {
     marginBottom: spacing.md
@@ -1452,33 +1454,32 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#8B5CF6'
+    backgroundColor: colors.primary
   },
   subcategoryTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#CBD5E1',
+    color: colors.textPrimary,
     textTransform: 'uppercase',
     letterSpacing: 0.5
   },
   subcategoryCount: {
     fontSize: 11,
-    color: '#71717A'
+    color: colors.textSecondary
   },
   tagsContainer: {
     gap: 8
   },
   tagItemCard: {
-    backgroundColor: '#191624',
+    backgroundColor: isDark ? '#191624' : colors.cardSecondary,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#262238',
-    padding: spacing.sm,
-    transition: 'all 0.2s'
+    borderColor: colors.border,
+    padding: spacing.sm
   },
   tagItemCardSelected: {
-    borderColor: '#7C3AED',
-    backgroundColor: '#1F1B2E'
+    borderColor: colors.primary,
+    backgroundColor: isDark ? '#1F1B2E' : '#F5F3FF'
   },
   tagItemMain: {
     flexDirection: 'row',
@@ -1490,14 +1491,14 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: '#4B5563',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2
   },
   checkboxSelected: {
-    backgroundColor: '#7C3AED',
-    borderColor: '#7C3AED'
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   tagItemInfo: {
     flex: 1
@@ -1510,15 +1511,15 @@ const styles = StyleSheet.create({
   tagNameText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#CBD5E1'
+    color: colors.textPrimary
   },
   tagNameTextSelected: {
-    color: '#FFFFFF',
+    color: colors.primary,
     fontWeight: '700'
   },
   tagDescText: {
     fontSize: 11,
-    color: '#71717A',
+    color: colors.textSecondary,
     marginTop: 2,
     lineHeight: 15
   },
@@ -1529,22 +1530,22 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#2B263E'
+    borderTopColor: colors.border
   },
   rateBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(124, 58, 237, 0.12)',
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.12)' : 'rgba(124, 58, 237, 0.08)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: 'rgba(124, 58, 237, 0.25)'
+    borderColor: isDark ? 'rgba(124, 58, 237, 0.25)' : 'rgba(124, 58, 237, 0.2)'
   },
   rateBadgeText: {
     fontSize: 11,
-    color: '#A78BFA',
+    color: isDark ? '#A78BFA' : colors.primary,
     fontWeight: '600'
   },
   switchRow: {
@@ -1561,9 +1562,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#12111A',
+    backgroundColor: colors.card,
     borderTopWidth: 1,
-    borderTopColor: '#221E33',
+    borderTopColor: colors.border,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     flexDirection: 'row',
@@ -1577,24 +1578,24 @@ const styles = StyleSheet.create({
   bottomSaveCount: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   bottomSaveSub: {
     fontSize: 10,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 1
   },
   saveButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 10
   },
   saveButtonDisabled: {
-    backgroundColor: '#2D2845',
+    backgroundColor: isDark ? '#2D2845' : '#E5E7EB',
     opacity: 0.6
   },
   saveButtonText: {
@@ -1612,18 +1613,18 @@ const styles = StyleSheet.create({
   legacyHeaderTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   legacyHeaderSub: {
     fontSize: 11,
-    color: '#71717A',
+    color: colors.textSecondary,
     marginTop: 2
   },
   legacyAddBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8
@@ -1634,10 +1635,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF'
   },
   legacyServiceCard: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.sm
   },
@@ -1649,11 +1650,11 @@ const styles = StyleSheet.create({
   legacyServiceName: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   legacyServiceCat: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   legacyServicePrice: {
@@ -1663,7 +1664,7 @@ const styles = StyleSheet.create({
   },
   legacyServiceDesc: {
     fontSize: 12,
-    color: '#71717A',
+    color: colors.textSecondary,
     marginVertical: 6,
     lineHeight: 16
   },
@@ -1674,7 +1675,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#221E33'
+    borderTopColor: colors.border
   },
   legacyActions: {
     flexDirection: 'row',
@@ -1685,7 +1686,7 @@ const styles = StyleSheet.create({
   },
   emptyAddBtn: {
     marginTop: spacing.md,
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8
@@ -1703,17 +1704,17 @@ const styles = StyleSheet.create({
     padding: spacing.lg
   },
   rateModalContent: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     padding: spacing.lg
   },
   legacyModalContent: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     padding: spacing.lg,
     maxHeight: '80%'
   },
@@ -1726,28 +1727,28 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   modalSub: {
     fontSize: 12,
-    color: '#A78BFA',
+    color: colors.primary,
     marginTop: 2
   },
   modalInputLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#CBD5E1',
+    color: colors.textPrimary,
     marginBottom: 6,
     marginTop: 8
   },
   modalInput: {
-    backgroundColor: '#100E17',
+    backgroundColor: isDark ? '#100E17' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 13,
     marginBottom: 8
   },
@@ -1761,21 +1762,21 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     alignItems: 'center',
-    backgroundColor: '#100E17'
+    backgroundColor: isDark ? '#100E17' : colors.cardSecondary
   },
   pricingTypeBtnSelected: {
-    borderColor: '#7C3AED',
-    backgroundColor: 'rgba(124, 58, 237, 0.2)'
+    borderColor: colors.primary,
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.2)' : 'rgba(124, 58, 237, 0.1)'
   },
   pricingTypeBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#71717A'
+    color: colors.textSecondary
   },
   pricingTypeBtnTextSelected: {
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '700'
   },
   modalActionButtons: {
@@ -1786,18 +1787,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: '#100E17',
+    backgroundColor: isDark ? '#100E17' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     marginRight: 8
   },
   catChipSelected: {
-    backgroundColor: '#7C3AED',
-    borderColor: '#8B5CF6'
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   catChipText: {
     fontSize: 11,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   catChipTextSelected: {
     color: '#FFFFFF',
@@ -1831,37 +1832,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     padding: spacing.md,
-    backgroundColor: '#1E1B2E',
+    backgroundColor: isDark ? '#1E1B2E' : colors.cardSecondary,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
-    borderColor: '#3B3358',
+    borderColor: colors.border,
     marginBottom: spacing.md
   },
   areaInfoIconCircle: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#2A2440',
+    backgroundColor: isDark ? '#2A2440' : colors.card,
     alignItems: 'center',
     justifyContent: 'center'
   },
   areaInfoBannerTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: 2
   },
   areaInfoBannerSub: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     lineHeight: 16
   },
   areaServiceCard: {
-    backgroundColor: '#181524',
+    backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     marginBottom: spacing.md
   },
   areaCardTopRow: {
@@ -1876,11 +1877,11 @@ const styles = StyleSheet.create({
   areaServiceName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   areaServiceSub: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   statusPill: {
@@ -1911,11 +1912,11 @@ const styles = StyleSheet.create({
     color: '#F59E0B'
   },
   areaConfiguredBox: {
-    backgroundColor: '#100E17',
+    backgroundColor: isDark ? '#100E17' : colors.cardSecondary,
     borderRadius: borderRadius.md,
     padding: spacing.sm,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     marginBottom: spacing.sm
   },
   areaDetailRow: {
@@ -1926,7 +1927,7 @@ const styles = StyleSheet.create({
   },
   areaAddressText: {
     fontSize: 12,
-    color: '#E2E8F0',
+    color: colors.textPrimary,
     flex: 1
   },
   areaMetaRow: {
@@ -1940,13 +1941,13 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    backgroundColor: '#1E1B2E',
+    backgroundColor: isDark ? '#1E1B2E' : colors.card,
     borderRadius: 4
   },
   metaBadgeText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#CBD5E1'
+    color: colors.textSecondary
   },
   areaWarningBox: {
     flexDirection: 'row',
@@ -1974,12 +1975,12 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md
   },
   configureAreaBtnEdit: {
-    backgroundColor: '#2E2845',
+    backgroundColor: isDark ? '#2E2845' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#4C426D'
+    borderColor: colors.border
   },
   configureAreaBtnText: {
-    color: '#FFFFFF',
+    color: isDark ? '#FFFFFF' : colors.primary,
     fontSize: 12,
     fontWeight: '700'
   }

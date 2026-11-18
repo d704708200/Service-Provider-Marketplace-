@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { useLocation } from '../../context/LocationContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { categoryApi, serviceApi, providerApi, bannerApi, homeBannerApi } from '../../services/api';
@@ -26,6 +27,8 @@ const resolveIconName = (icon, name) => getValidCategoryIcon(icon, name);
 
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { user } = useAuth();
   const { unreadCount } = useNotifications();
   const {
@@ -609,10 +612,10 @@ export default function HomeScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   headerContainer: {
     flexDirection: 'row',
@@ -620,7 +623,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 12,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   headerLeft: {
     flexDirection: 'row',
@@ -631,7 +634,7 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 19,
     marginRight: 10,
-    backgroundColor: '#262238'
+    backgroundColor: colors.cardSecondary
   },
   userTextCol: {
     justifyContent: 'center'
@@ -639,7 +642,7 @@ const styles = StyleSheet.create({
   greetingText: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   locationRow: {
     flexDirection: 'row',
@@ -649,7 +652,7 @@ const styles = StyleSheet.create({
   },
   locationText: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     maxWidth: 140
   },
   headerRight: {
@@ -661,9 +664,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative'
@@ -680,7 +683,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
     borderWidth: 1.5,
-    borderColor: '#0F0E16'
+    borderColor: colors.card
   },
   headerBadgeText: {
     color: '#FFFFFF',
@@ -696,12 +699,12 @@ const styles = StyleSheet.create({
     paddingBottom: 40
   },
   heroBanner: {
-    backgroundColor: '#1C162E',
+    backgroundColor: isDark ? '#1C162E' : '#EDE9FE',
     borderRadius: 18,
     padding: 18,
     marginVertical: 12,
     borderWidth: 1,
-    borderColor: '#31284F'
+    borderColor: isDark ? '#31284F' : '#DDD6FE'
   },
   heroBadgeRow: {
     flexDirection: 'row',
@@ -712,19 +715,19 @@ const styles = StyleSheet.create({
   heroBadgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#C084FC',
+    color: isDark ? '#C084FC' : '#7C3AED',
     letterSpacing: 0.5
   },
   heroTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: isDark ? '#FFFFFF' : '#1E1B4B',
     lineHeight: 24,
     marginBottom: 4
   },
   heroSubtitle: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: isDark ? '#9CA3AF' : '#6B7280',
     marginBottom: 16
   },
   heroBottomRow: {
@@ -735,7 +738,7 @@ const styles = StyleSheet.create({
   findServiceButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? '#FFFFFF' : '#7C3AED',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
@@ -744,18 +747,18 @@ const styles = StyleSheet.create({
   findServiceBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#161420'
+    color: isDark ? '#161420' : '#FFFFFF'
   },
   expertsBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161224',
+    backgroundColor: isDark ? '#161224' : '#F5F3FF',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 16,
     gap: 6,
     borderWidth: 1,
-    borderColor: '#292242'
+    borderColor: isDark ? '#292242' : '#DDD6FE'
   },
   expertsAvatarsRow: {
     flexDirection: 'row'
@@ -765,12 +768,12 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: '#1C162E'
+    borderColor: isDark ? '#1C162E' : '#EDE9FE'
   },
   expertsBadgeText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#D8B4FE'
+    color: isDark ? '#D8B4FE' : '#6D28D9'
   },
   sectionContainer: {
     marginTop: 14
@@ -784,12 +787,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   seeAllText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#8B5CF6'
+    color: colors.primary
   },
   quickServicesGrid: {
     flexDirection: 'row',
@@ -798,9 +801,9 @@ const styles = StyleSheet.create({
   },
   quickServiceCard: {
     width: '23%',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 6,
@@ -810,7 +813,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#241F36',
+    backgroundColor: isDark ? '#241F36' : colors.cardSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8
@@ -818,12 +821,12 @@ const styles = StyleSheet.create({
   quickServiceTitle: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     textAlign: 'center'
   },
   quickServiceSubtitle: {
     fontSize: 9,
-    color: '#71717A',
+    color: colors.textMuted,
     textAlign: 'center',
     marginTop: 2
   },
@@ -834,9 +837,9 @@ const styles = StyleSheet.create({
   },
   popularServiceCard: {
     width: '31%',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 14,
     padding: 12,
     alignItems: 'center'
@@ -845,7 +848,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#241F36',
+    backgroundColor: isDark ? '#241F36' : colors.cardSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8
@@ -853,23 +856,23 @@ const styles = StyleSheet.create({
   popularCardTitle: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: 4
   },
   popularPriceFrom: {
     fontSize: 10,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   popularPriceVal: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '700'
   },
   topRatedCard: {
     flexDirection: 'row',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 16,
     padding: 12,
     alignItems: 'center'
@@ -879,7 +882,7 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 12,
     marginRight: 12,
-    backgroundColor: '#262238'
+    backgroundColor: colors.cardSecondary
   },
   topRatedInfo: {
     flex: 1
@@ -891,11 +894,11 @@ const styles = StyleSheet.create({
   topRatedName: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   topRatedCategory: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   ratingRow: {
@@ -911,19 +914,19 @@ const styles = StyleSheet.create({
   },
   dotDivider: {
     fontSize: 11,
-    color: '#6B7280',
+    color: colors.textMuted,
     marginHorizontal: 4
   },
   expText: {
     fontSize: 11,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   topRatedPrice: {
     fontSize: 10,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   viewBtnPurple: {
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 7,
     borderRadius: 10
@@ -935,9 +938,9 @@ const styles = StyleSheet.create({
   },
   availableNearCard: {
     flexDirection: 'row',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 16,
     padding: 12,
     alignItems: 'center'
@@ -947,19 +950,20 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 12,
     marginRight: 12,
-    backgroundColor: '#262238'
+    backgroundColor: colors.cardSecondary
   },
   availableInfo: {
     flex: 1
   },
   availableNowText: {
     fontSize: 11,
-    color: '#34D399',
+    color: '#10B981',
     fontWeight: '600'
   },
   requestOutlineBtn: {
     borderWidth: 1,
-    borderColor: '#36314D',
+    borderColor: colors.border,
+    backgroundColor: colors.cardSecondary,
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 10
@@ -967,15 +971,15 @@ const styles = StyleSheet.create({
   requestBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#E2E8F0'
+    color: colors.textPrimary
   },
   promoBanner: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#1C152B',
+    backgroundColor: isDark ? '#1C152B' : '#F5F3FF',
     borderWidth: 1,
-    borderColor: '#2D2348',
+    borderColor: isDark ? '#2D2348' : '#DDD6FE',
     borderRadius: 16,
     padding: 16,
     marginTop: 18
@@ -986,21 +990,21 @@ const styles = StyleSheet.create({
   promoSmallTag: {
     fontSize: 9,
     fontWeight: '700',
-    color: '#A78BFA',
+    color: isDark ? '#A78BFA' : '#7C3AED',
     letterSpacing: 0.5
   },
   promoTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: isDark ? '#FFFFFF' : '#1E1B4B',
     marginVertical: 2
   },
   promoSub: {
     fontSize: 11,
-    color: '#9CA3AF'
+    color: isDark ? '#9CA3AF' : '#6B7280'
   },
   bookNowBtn: {
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 10
@@ -1019,9 +1023,9 @@ const styles = StyleSheet.create({
   },
   allServiceCard: {
     width: '23%',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 4,
@@ -1032,23 +1036,23 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#241F36',
+    backgroundColor: isDark ? '#241F36' : colors.cardSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6
   },
   allServiceLabel: {
     fontSize: 10,
-    color: '#E2E8F0',
+    color: colors.textPrimary,
     textAlign: 'center',
     fontWeight: '500'
   },
   trustFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#13111C',
+    backgroundColor: isDark ? '#13111C' : colors.card,
     borderWidth: 1,
-    borderColor: '#221E31',
+    borderColor: colors.border,
     borderRadius: 14,
     padding: 14,
     marginTop: 14,
@@ -1060,18 +1064,18 @@ const styles = StyleSheet.create({
   trustTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   trustSubtitle: {
     fontSize: 10,
-    color: '#71717A',
+    color: colors.textMuted,
     marginTop: 2,
     lineHeight: 14
   },
   emptySectionBox: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',
@@ -1080,7 +1084,7 @@ const styles = StyleSheet.create({
   },
   emptySectionText: {
     fontSize: 12,
-    color: '#71717A'
+    color: colors.textMuted
   },
   loadingContainer: {
     paddingVertical: 24,
@@ -1090,15 +1094,15 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 13,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   errorBannerBox: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#2A1515',
+    backgroundColor: isDark ? '#2A1515' : '#FEE2E2',
     borderWidth: 1,
-    borderColor: '#7F1D1D',
+    borderColor: isDark ? '#7F1D1D' : '#FCA5A5',
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 14,
@@ -1107,7 +1111,7 @@ const styles = StyleSheet.create({
   errorBannerText: {
     flex: 1,
     fontSize: 12,
-    color: '#FCA5A5'
+    color: isDark ? '#FCA5A5' : '#B91C1C'
   },
   retryButton: {
     backgroundColor: '#DC2626',
@@ -1124,9 +1128,9 @@ const styles = StyleSheet.create({
   locationPromptCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#2F264A',
+    borderColor: colors.border,
     borderRadius: 14,
     padding: 14,
     gap: 12,
@@ -1136,7 +1140,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#261F3D',
+    backgroundColor: isDark ? '#261F3D' : '#F3E8FF',
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -1146,12 +1150,12 @@ const styles = StyleSheet.create({
   locationPromptTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: 2
   },
   locationPromptSubtitle: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     lineHeight: 15
   }
 });

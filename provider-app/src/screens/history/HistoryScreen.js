@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { bookingApi } from '../../services/api';
 import { Header, Card, Badge, LoadingScreen, ErrorView, EmptyState } from '../../components/common';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 const STATUS_FILTERS = [
@@ -26,6 +26,8 @@ const STATUS_FILTERS = [
 
 export default function HistoryScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const [bookings, setBookings] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -204,15 +206,15 @@ export default function HistoryScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   filterSection: {
-    backgroundColor: '#0F0E16',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#1F1C2B',
+    borderBottomColor: colors.border,
     paddingVertical: spacing.sm
   },
   filterScroll: {
@@ -223,18 +225,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
     borderRadius: borderRadius.full,
-    backgroundColor: '#1E1B2E',
+    backgroundColor: colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#2D2845',
+    borderColor: colors.border,
     marginRight: spacing.xs
   },
   filterTabActive: {
-    backgroundColor: '#7C3AED',
-    borderColor: '#7C3AED'
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   filterTabText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontWeight: '600'
   },
   filterTabTextActive: {
@@ -245,8 +247,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxxl
   },
   card: {
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     borderRadius: 16,
     marginBottom: spacing.md
   },
@@ -262,13 +264,13 @@ const styles = StyleSheet.create({
   },
   reference: {
     fontSize: 11,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '700',
     marginBottom: 2
   },
   serviceName: {
     ...typography.titleSmall,
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   row: {
     flexDirection: 'row',
@@ -278,7 +280,7 @@ const styles = StyleSheet.create({
   },
   text: {
     ...typography.bodySmall,
-    color: '#CBD5E1',
+    color: colors.textSecondary,
     flex: 1
   },
   footer: {
@@ -286,13 +288,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#252136',
+    borderTopColor: colors.border,
     paddingTop: spacing.sm,
     marginTop: spacing.xs
   },
   price: {
     ...typography.titleSmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '700'
   },
   viewRow: {
@@ -302,7 +304,7 @@ const styles = StyleSheet.create({
   },
   viewText: {
     fontSize: 12,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '600'
   }
 });

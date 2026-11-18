@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -16,9 +16,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTheme } from '../../context/ThemeContext';
 import { walletApi } from '../../services/api';
 import { openCommissionPaymentCheckout } from '../../services/commissionPaymentService';
-import colors from '../../theme/colors';
 
 const FILTER_TABS = [
   { key: 'all', label: 'All' },
@@ -29,6 +29,9 @@ const FILTER_TABS = [
 ];
 
 export default function WalletScreen({ navigation }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [summary, setSummary] = useState(null);
@@ -1231,20 +1234,20 @@ export default function WalletScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#0B0B0E',
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center'
   },
   loadingText: {
     marginTop: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontSize: 14
   },
   header: {
@@ -1254,26 +1257,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1F1C2B',
-    backgroundColor: '#0F0E16'
+    borderBottomColor: colors.border,
+    backgroundColor: colors.card
   },
   backButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#1E1B2E',
+    backgroundColor: isDark ? '#1E1B2E' : colors.cardSecondary,
     justifyContent: 'center',
     alignItems: 'center'
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   headerWithdrawButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -1289,11 +1292,11 @@ const styles = StyleSheet.create({
     paddingBottom: 40
   },
   balanceCard: {
-    backgroundColor: '#1C1635',
+    backgroundColor: isDark ? '#1C1635' : '#EDE9FE',
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#382D67',
+    borderColor: isDark ? '#382D67' : '#DDD6FE',
     marginBottom: 20
   },
   balanceCardHeader: {
@@ -1302,7 +1305,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start'
   },
   balanceLabel: {
-    color: '#A78BFA',
+    color: colors.primary,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 1,
@@ -1311,7 +1314,7 @@ const styles = StyleSheet.create({
   balanceAmount: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   walletBadge: {
     flexDirection: 'row',
@@ -1367,11 +1370,11 @@ const styles = StyleSheet.create({
   statBox: {
     flex: 1,
     minWidth: '46%',
-    backgroundColor: '#16141F',
+    backgroundColor: colors.card,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#252136'
+    borderColor: colors.border
   },
   statIconCircle: {
     width: 34,
@@ -1382,13 +1385,13 @@ const styles = StyleSheet.create({
     marginBottom: 8
   },
   statLabel: {
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontSize: 12,
     fontWeight: '500',
     marginBottom: 4
   },
   statValue: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 17,
     fontWeight: '700'
   },
@@ -1401,20 +1404,20 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   commissionNote: {
     fontSize: 11,
-    color: '#A78BFA'
+    color: colors.primary
   },
   breakdownCard: {
     flexDirection: 'row',
-    backgroundColor: '#16141F',
+    backgroundColor: colors.card,
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     marginBottom: 24,
     justifyContent: 'space-between',
     alignItems: 'center'
@@ -1426,10 +1429,10 @@ const styles = StyleSheet.create({
   breakdownDivider: {
     width: 1,
     height: 36,
-    backgroundColor: '#252136'
+    backgroundColor: colors.border
   },
   breakdownLabel: {
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontSize: 11,
     fontWeight: '500',
     marginBottom: 4
@@ -1441,7 +1444,7 @@ const styles = StyleSheet.create({
     marginBottom: 2
   },
   breakdownCount: {
-    color: '#71717A',
+    color: colors.textMuted,
     fontSize: 11
   },
   filterTabsRow: {
@@ -1453,16 +1456,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#16141F',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136'
+    borderColor: colors.border
   },
   filterChipActive: {
-    backgroundColor: '#7C3AED',
-    borderColor: '#8B5CF6'
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   filterChipText: {
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontSize: 12,
     fontWeight: '600'
   },
@@ -1474,20 +1477,20 @@ const styles = StyleSheet.create({
     paddingVertical: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#16141F',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#252136'
+    borderColor: colors.border
   },
   emptyTitle: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '700',
     marginTop: 12,
     marginBottom: 4
   },
   emptySubtitle: {
-    color: '#71717A',
+    color: colors.textMuted,
     fontSize: 12,
     textAlign: 'center',
     paddingHorizontal: 32
@@ -1497,11 +1500,11 @@ const styles = StyleSheet.create({
   },
   txnCard: {
     flexDirection: 'row',
-    backgroundColor: '#16141F',
+    backgroundColor: colors.card,
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     alignItems: 'center'
   },
   txnIconWrap: {
@@ -1517,13 +1520,13 @@ const styles = StyleSheet.create({
     marginRight: 8
   },
   txnTitle: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 2
   },
   txnDate: {
-    color: '#71717A',
+    color: colors.textMuted,
     fontSize: 11,
     marginBottom: 4
   },
@@ -1533,7 +1536,7 @@ const styles = StyleSheet.create({
     gap: 6
   },
   txnRef: {
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontSize: 10
   },
   statusTag: {
@@ -1775,41 +1778,41 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end'
   },
   modalContent: {
-    backgroundColor: '#16141F',
+    backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#252136'
+    borderColor: colors.border
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     borderBottomWidth: 1,
-    borderBottomColor: '#252136',
+    borderBottomColor: colors.border,
     paddingBottom: 12
   },
   modalTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   modalSubtitle: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   modalCloseBtn: {
     padding: 4
   },
   modalDueSummaryBox: {
-    backgroundColor: '#27151D',
+    backgroundColor: isDark ? '#27151D' : '#FEE2E2',
     borderRadius: 12,
     padding: 14,
     marginTop: 12,
     borderWidth: 1,
-    borderColor: '#541C2A'
+    borderColor: isDark ? '#541C2A' : '#FCA5A5'
   },
   modalDueSummaryLabel: {
     color: '#F87171',
@@ -1824,23 +1827,23 @@ const styles = StyleSheet.create({
     marginVertical: 4
   },
   modalDueSummaryNote: {
-    color: '#FDA4AF',
+    color: isDark ? '#FDA4AF' : '#991B1B',
     fontSize: 11,
     lineHeight: 15
   },
   modalListHeading: {
-    color: '#D1D5DB',
+    color: colors.textPrimary,
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 8
   },
   commissionDetailItem: {
-    backgroundColor: '#1E1B2E',
+    backgroundColor: isDark ? '#1E1B2E' : colors.cardSecondary,
     borderRadius: 10,
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#2E2845'
+    borderColor: colors.border
   },
   commissionItemTopRow: {
     flexDirection: 'row',
@@ -1849,12 +1852,12 @@ const styles = StyleSheet.create({
     marginBottom: 8
   },
   commissionItemRef: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 13,
     fontWeight: '600'
   },
   commissionItemService: {
-    color: '#A78BFA',
+    color: colors.primary,
     fontSize: 11,
     marginTop: 2
   },
@@ -1871,7 +1874,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: '#28233C',
+    borderTopColor: colors.border,
     paddingTop: 8,
     marginBottom: 6
   },
@@ -1879,17 +1882,17 @@ const styles = StyleSheet.create({
     flex: 1
   },
   commissionGridLabel: {
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontSize: 10
   },
   commissionGridVal: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 12,
     fontWeight: '700',
     marginTop: 2
   },
   commissionItemDate: {
-    color: '#71717A',
+    color: colors.textMuted,
     fontSize: 10
   },
   // Auto Deduct Confirmation Modal Styles
@@ -1901,13 +1904,13 @@ const styles = StyleSheet.create({
     padding: 20
   },
   confirmModalContent: {
-    backgroundColor: '#16141F',
+    backgroundColor: colors.card,
     borderRadius: 20,
     padding: 24,
     width: '100%',
     maxWidth: 420,
     borderWidth: 1,
-    borderColor: '#2D2842'
+    borderColor: colors.border
   },
   confirmIconCircle: {
     width: 60,
@@ -1920,12 +1923,12 @@ const styles = StyleSheet.create({
   confirmModalTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     textAlign: 'center'
   },
   confirmModalBody: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 19,
     marginTop: 8
@@ -1937,16 +1940,16 @@ const styles = StyleSheet.create({
   },
   confirmCancelBtn: {
     flex: 1,
-    backgroundColor: '#262238',
+    backgroundColor: isDark ? '#262238' : colors.cardSecondary,
     borderRadius: 12,
     paddingVertical: 13,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#37324E'
+    borderColor: colors.border
   },
   confirmCancelBtnText: {
-    color: '#D1D5DB',
+    color: colors.textPrimary,
     fontSize: 14,
     fontWeight: '600'
   },
@@ -1963,7 +1966,7 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   commissionPayModalAmountCard: {
-    backgroundColor: '#1E1B2E',
+    backgroundColor: isDark ? '#1E1B2E' : colors.cardSecondary,
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 20,
@@ -1971,7 +1974,7 @@ const styles = StyleSheet.create({
     marginVertical: 14,
     width: '100%',
     borderWidth: 1,
-    borderColor: '#2E2845'
+    borderColor: colors.border
   },
   commissionPayModalAmountLabel: {
     color: '#9CA3AF',

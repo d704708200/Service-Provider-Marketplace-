@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
-import colors from '../../theme/colors';
-import { spacing, borderRadius, shadows } from '../../theme';
+import { useTheme } from '../../context/ThemeContext';
+import { spacing, borderRadius } from '../../theme';
 
 export default function Card({
   children,
@@ -11,10 +11,16 @@ export default function Card({
   bordered = true,
   ...props
 }) {
+  const { colors, theme } = useTheme();
+
   const cardStyles = [
     styles.card,
+    {
+      backgroundColor: colors.card,
+      borderColor: colors.border
+    },
     bordered && styles.bordered,
-    elevated && shadows.elevated,
+    elevated ? theme.shadows.elevated : theme.shadows.card,
     style
   ];
 
@@ -40,13 +46,10 @@ export default function Card({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    ...shadows.card
+    padding: spacing.lg
   },
   bordered: {
-    borderWidth: 1,
-    borderColor: colors.border
+    borderWidth: 1
   }
 });

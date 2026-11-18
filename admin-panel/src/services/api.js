@@ -200,11 +200,17 @@ export const providerApi = {
     return response.data;
   },
   getPendingVerifications: async (params = {}) => {
-    const response = await api.get('/providers/admin/pending', { params });
+    const response = await api.get('/providers/admin/pending', {
+      params: { ...params, _t: Date.now() },
+      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' }
+    });
     return response.data;
   },
   getAdminProviderById: async (id) => {
-    const response = await api.get(`/providers/admin/${id}`);
+    const response = await api.get(`/providers/admin/${id}`, {
+      params: { _t: Date.now() },
+      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' }
+    });
     return response.data;
   },
   reviewDocument: async (providerId, documentId, reviewData) => {

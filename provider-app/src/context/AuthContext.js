@@ -1,7 +1,8 @@
 import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import { authStorage } from '../storage/authStorage';
-import { authApi, setOnUnauthorizedCallback } from '../services/api';
+import { authApi, providerApi, setOnUnauthorizedCallback } from '../services/api';
 import { registerTokenWithBackend, unregisterTokenFromBackend } from '../services/notificationService';
+import { CURRENT_TERMS_VERSION, TERMS_HASH } from '../constants/providerTerms';
 
 const AuthContext = createContext(null);
 
@@ -50,6 +51,9 @@ export const AuthProvider = ({ children }) => {
         setUser(response.data.user);
         setProfile(response.data.profile || null);
         await authStorage.setUser(response.data.user);
+        if (response.data.profile) {
+          await authStorage.setProfile(response.data.profile);
+        }
 
         // Register push token in background
         registerTokenWithBackend('provider').catch((e) => console.log('Token sync note:', e.message));
@@ -69,6 +73,17 @@ export const AuthProvider = ({ children }) => {
       setIsLoading(false);
     }
   }, [logout]);
+
+  const refreshProviderProfile = useCallback(async () => {
+    const response = await providerApi.getProfile();
+    if (!response?.success || !response.data) {
+      throw new Error(response?.message || 'Unable to refresh provider profile.');
+    }
+
+    setProfile(response.data);
+    await authStorage.setProfile(response.data);
+    return response.data;
+  }, []);
 
   useEffect(() => {
     setOnUnauthorizedCallback(() => {
@@ -105,6 +120,9 @@ export const AuthProvider = ({ children }) => {
         setToken(receivedToken);
         setUser(receivedUser);
         setProfile(receivedProfile || null);
+        if (receivedProfile) {
+          await authStorage.setProfile(receivedProfile);
+        }
 
         // Register push token on successful login
         registerTokenWithBackend('provider').catch((e) => console.log('Token sync note:', e.message));
@@ -132,7 +150,9 @@ export const AuthProvider = ({ children }) => {
         businessName: (providerData.businessName || '').trim(),
         bio: providerData.bio ? providerData.bio.trim() : '',
         experienceYears: Number(providerData.experienceYears) || 0,
-        categories: Array.isArray(providerData.categories) ? providerData.categories : []
+        categories: Array.isArray(providerData.categories) ? providerData.categories : [],
+        acceptedTerms: providerData.acceptedTerms === true,
+        termsVersion: providerData.termsVersion || CURRENT_TERMS_VERSION
       });
 
       if (response?.success && response.data) {
@@ -144,6 +164,9 @@ export const AuthProvider = ({ children }) => {
         setToken(receivedToken);
         setUser(receivedUser);
         setProfile(receivedProfile || null);
+        if (receivedProfile) {
+          await authStorage.setProfile(receivedProfile);
+        }
 
         // Register push token on successful registration
         registerTokenWithBackend('provider').catch((e) => console.log('Token sync note:', e.message));
@@ -160,6 +183,48 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const acceptTerms = useCallback(async () => {
+    clearError();
+    try {
+      const response = await providerApi.acceptTerms({
+        termsVersion: CURRENT_TERMS_VERSION,
+        termsHash: TERMS_HASH
+      });
+      if (response?.success) {
+        const updatedUser = user ? { ...user, requiresTermsAcceptance: false } : null;
+        const updatedProfile = profile
+          ? {
+              ...profile,
+              acceptedTermsVersion: CURRENT_TERMS_VERSION,
+              acceptedTermsAt: new Date().toISOString(),
+              requiresTermsAcceptance: false
+            }
+          : null;
+
+        if (updatedUser) {
+          setUser(updatedUser);
+          await authStorage.setUser(updatedUser);
+        }
+        if (updatedProfile) {
+          setProfile(updatedProfile);
+          await authStorage.setProfile(updatedProfile);
+        }
+        return { success: true, data: response.data };
+      }
+      const errMsg = response?.message || 'Failed to accept Terms & Conditions.';
+      setError(errMsg);
+      return { success: false, error: errMsg };
+    } catch (err) {
+      const msg = err.userMessage || err.message || 'Failed to accept Terms & Conditions.';
+      setError(msg);
+      return { success: false, error: msg };
+    }
+  }, [clearError, profile, user]);
+
+  const requiresTermsAcceptance = Boolean(
+    token && user && (user.requiresTermsAcceptance || profile?.requiresTermsAcceptance)
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -168,12 +233,15 @@ export const AuthProvider = ({ children }) => {
         token,
         isLoading,
         isAuthenticated: Boolean(token && user),
+        requiresTermsAcceptance,
         error,
         clearError,
         login,
         register,
+        acceptTerms,
         logout,
-        checkAuthSession
+        checkAuthSession,
+        refreshProviderProfile
       }}
     >
       {children}

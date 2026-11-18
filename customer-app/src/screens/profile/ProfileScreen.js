@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,13 +17,15 @@ import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { customerApi } from '../../services/api';
-import { Header, Card, Badge, Button, Input } from '../../components/common';
-import colors from '../../theme/colors';
+import { Header, Card, Badge, Button, Input, AppearanceSettings } from '../../components/common';
 import { spacing, typography, borderRadius } from '../../theme';
 
 export default function ProfileScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { user, logout, checkAuthSession } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -579,6 +581,11 @@ export default function ProfileScreen({ navigation }) {
           )}
         </Card>
 
+        {/* Appearance & Theme Settings */}
+        <Card style={styles.sectionCard}>
+          <AppearanceSettings />
+        </Card>
+
         {/* Application Information */}
         <Card style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Application Information</Text>
@@ -810,18 +817,18 @@ export default function ProfileScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   scrollContent: {
     padding: spacing.lg
   },
   profileCard: {
     marginBottom: spacing.lg,
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 16
   },
@@ -838,18 +845,18 @@ const styles = StyleSheet.create({
     height: 68,
     borderRadius: 34,
     borderWidth: 2,
-    borderColor: '#8B5CF6',
-    backgroundColor: '#1E1B2E'
+    borderColor: colors.primary,
+    backgroundColor: colors.cardSecondary
   },
   avatarPlaceholder: {
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: '#241F36',
+    backgroundColor: isDark ? '#241F36' : colors.cardSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#36314D'
+    borderColor: colors.border
   },
   avatarLoadingOverlay: {
     position: 'absolute',
@@ -869,9 +876,9 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#8B5CF6',
+    backgroundColor: colors.primary,
     borderWidth: 2,
-    borderColor: '#161420',
+    borderColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -886,18 +893,18 @@ const styles = StyleSheet.create({
   },
   userName: {
     ...typography.titleSmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     flex: 1,
     marginRight: spacing.sm
   },
   userEmail: {
     ...typography.bodySmall,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginBottom: 2
   },
   userPhone: {
     ...typography.caption,
-    color: '#71717A'
+    color: colors.textMuted
   },
   editProfileButton: {
     flexDirection: 'row',
@@ -907,19 +914,19 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingVertical: spacing.xs + 2,
     borderWidth: 1,
-    borderColor: '#36314D',
-    backgroundColor: '#241F36',
+    borderColor: colors.border,
+    backgroundColor: isDark ? '#241F36' : colors.cardSecondary,
     borderRadius: borderRadius.md
   },
   editProfileButtonText: {
     ...typography.bodySmall,
-    color: '#C084FC',
+    color: colors.primary,
     fontWeight: '600'
   },
   sectionCard: {
     marginBottom: spacing.lg,
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 16
   },
@@ -931,7 +938,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.titleSmall,
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   addAddressBtn: {
     flexDirection: 'row',
@@ -940,7 +947,7 @@ const styles = StyleSheet.create({
   },
   addAddressText: {
     ...typography.bodySmall,
-    color: '#8B5CF6',
+    color: colors.primary,
     fontWeight: '600'
   },
   detailRow: {
@@ -956,25 +963,25 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     ...typography.bodyMedium,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   detailValue: {
     ...typography.bodyMedium,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '500'
   },
   divider: {
     height: 1,
-    backgroundColor: '#252136',
+    backgroundColor: colors.border,
     marginVertical: spacing.sm
   },
   addressBox: {
-    backgroundColor: '#1C1929',
+    backgroundColor: colors.cardSecondary,
     padding: spacing.md,
     borderRadius: borderRadius.md,
     marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: '#2D2742'
+    borderColor: colors.border
   },
   addressTopRow: {
     flexDirection: 'row',
@@ -990,7 +997,7 @@ const styles = StyleSheet.create({
   addressTitle: {
     ...typography.bodyMedium,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   addressActions: {
     flexDirection: 'row',
@@ -1002,12 +1009,12 @@ const styles = StyleSheet.create({
   },
   addressStreet: {
     ...typography.bodyMedium,
-    color: '#E2E8F0',
+    color: colors.textPrimary,
     marginTop: 2
   },
   addressCity: {
     ...typography.bodySmall,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   emptyAddress: {
@@ -1017,7 +1024,7 @@ const styles = StyleSheet.create({
   },
   emptyAddressText: {
     ...typography.bodySmall,
-    color: colors.slate500,
+    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 18
   },
@@ -1026,7 +1033,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(15, 23, 42, 0.5)',
     justifyContent: 'center',
     padding: spacing.lg
   },
@@ -1035,11 +1042,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   modalContent: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     borderWidth: 1,
-    borderColor: '#252136'
+    borderColor: colors.border
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1049,11 +1056,11 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     ...typography.titleMedium,
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   inputLabel: {
     ...typography.caption,
-    color: '#CBD5E1',
+    color: colors.textSecondary,
     fontWeight: '600',
     marginBottom: 6
   },
@@ -1067,20 +1074,20 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: borderRadius.sm,
     borderWidth: 1,
-    borderColor: '#2D2742',
-    backgroundColor: '#1C1929'
+    borderColor: colors.border,
+    backgroundColor: colors.cardSecondary
   },
   paymentMethodTabActive: {
-    borderColor: '#7C3AED',
-    backgroundColor: '#2E1065'
+    borderColor: colors.primary,
+    backgroundColor: isDark ? '#2E1065' : '#EDE9FE'
   },
   paymentMethodText: {
     ...typography.caption,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontWeight: '600'
   },
   paymentMethodTextActive: {
-    color: '#DDD6FE',
+    color: colors.primary,
     fontWeight: '700'
   },
   row: {
@@ -1098,7 +1105,7 @@ const styles = StyleSheet.create({
   },
   defaultCheckboxText: {
     ...typography.bodySmall,
-    color: colors.slate700
+    color: colors.textSecondary
   },
   errorBanner: {
     backgroundColor: '#FEF2F2',
@@ -1113,11 +1120,11 @@ const styles = StyleSheet.create({
     color: '#B91C1C'
   },
   deleteModalContent: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 20,
     padding: spacing.lg,
     borderWidth: 1,
-    borderColor: '#2F2942',
+    borderColor: colors.border,
     maxWidth: 420,
     width: '100%',
     alignSelf: 'center',
@@ -1134,35 +1141,35 @@ const styles = StyleSheet.create({
   },
   deleteModalTitle: {
     ...typography.titleMedium,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: spacing.xs
   },
   deleteModalMessage: {
     ...typography.bodyMedium,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: spacing.md
   },
   deleteAddressPreview: {
     width: '100%',
-    backgroundColor: '#1C1929',
+    backgroundColor: colors.cardSecondary,
     borderRadius: borderRadius.md,
     padding: spacing.sm + 2,
     borderWidth: 1,
-    borderColor: '#2D2742',
+    borderColor: colors.border,
     marginBottom: spacing.lg
   },
   deleteAddressPreviewStreet: {
     ...typography.bodySmall,
-    color: '#E2E8F0',
+    color: colors.textPrimary,
     fontWeight: '600'
   },
   deleteAddressPreviewCity: {
     ...typography.caption,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   deleteAddressPreviewDefaultNote: {
@@ -1178,9 +1185,9 @@ const styles = StyleSheet.create({
   },
   deleteCancelBtn: {
     flex: 1,
-    backgroundColor: '#241F36',
+    backgroundColor: colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#36314D',
+    borderColor: colors.border,
     borderRadius: borderRadius.md,
     paddingVertical: spacing.sm + 4,
     alignItems: 'center',
@@ -1188,7 +1195,7 @@ const styles = StyleSheet.create({
   },
   deleteCancelBtnText: {
     ...typography.bodyMedium,
-    color: '#D1D5DB',
+    color: colors.textSecondary,
     fontWeight: '600'
   },
   deleteConfirmBtn: {

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import colors from '../../theme/colors';
+import { useTheme } from '../../context/ThemeContext';
 import { spacing, typography } from '../../theme';
 import Button from './Button';
 
@@ -11,13 +11,15 @@ export default function ErrorView({
   onRetry,
   containerStyle
 }) {
+  const { colors } = useTheme();
+
   return (
     <View style={[styles.container, containerStyle]}>
-      <View style={styles.iconCircle}>
+      <View style={[styles.iconCircle, { backgroundColor: colors.dangerSubtle }]}>
         <Ionicons name="cloud-offline-outline" size={40} color={colors.danger} />
       </View>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.message}>{message}</Text>
+      <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
+      <Text style={[styles.message, { color: colors.textSecondary }]}>{message}</Text>
       {onRetry && (
         <Button
           title="Try Again"
@@ -41,20 +43,17 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: colors.dangerSubtle,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.lg
   },
   title: {
     ...typography.titleSmall,
-    color: colors.slate900,
     textAlign: 'center',
     marginBottom: spacing.xs
   },
   message: {
     ...typography.bodyMedium,
-    color: colors.slate600,
     textAlign: 'center',
     maxWidth: 300,
     marginBottom: spacing.lg

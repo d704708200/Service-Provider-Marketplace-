@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,12 +15,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { bookingApi, reviewApi } from '../../services/api';
 import { openRazorpayCheckout } from '../../services/razorpayService';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView } from '../../components/common';
 import { callPhoneNumber } from '../../utils/phoneUtils';
 import { getWarrantyContactStatus } from '../../utils/warrantyUtils';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 // Formatters
@@ -99,6 +99,8 @@ const getBookingStatusBadge = (status) => {
 
 export default function BookingDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const bookingId = route.params?.bookingId || route.params?.id;
   const { booking: initialBooking } = route.params || {};
 
@@ -1090,10 +1092,10 @@ export default function BookingDetailScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   scrollContent: {
     padding: spacing.md,
@@ -1102,10 +1104,10 @@ const styles = StyleSheet.create({
   heroCard: {
     width: '100%',
     maxWidth: 600,
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.md
   },

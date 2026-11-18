@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { notificationApi } from '../../services/api';
 import { useNotifications } from '../../context/NotificationContext';
 
@@ -55,6 +56,8 @@ const getNotificationIcon = (type, title = '') => {
 
 export default function NotificationsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { unreadCount, decrementUnreadCount, clearUnreadCount, refreshUnreadCount } = useNotifications();
 
   const [notifications, setNotifications] = useState([]);
@@ -125,7 +128,7 @@ export default function NotificationsScreen({ navigation }) {
         onPress={() => handlePressItem(item)}
         activeOpacity={0.7}
       >
-        <View style={[styles.iconBox, { backgroundColor: '#241F36' }]}>
+        <View style={[styles.iconBox, { backgroundColor: isDark ? '#241F36' : colors.cardSecondary }]}>
           <Ionicons name={iconName} size={20} color={iconColor} />
         </View>
 
@@ -153,7 +156,7 @@ export default function NotificationsScreen({ navigation }) {
             activeOpacity={0.7}
             accessibilityLabel="Go back"
           >
-            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <View>
             <Text style={styles.mainTitle}>Notifications</Text>
@@ -173,7 +176,7 @@ export default function NotificationsScreen({ navigation }) {
       {/* Notifications List */}
       {loading ? (
         <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color="#8B5CF6" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList showsHorizontalScrollIndicator={false}
@@ -183,11 +186,11 @@ export default function NotificationsScreen({ navigation }) {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7C3AED']} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons name="notifications-outline" size={48} color="#252136" />
+              <Ionicons name="notifications-outline" size={48} color={colors.border} />
               <Text style={styles.emptyText}>No notifications right now</Text>
             </View>
           }
@@ -197,10 +200,10 @@ export default function NotificationsScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   header: {
     flexDirection: 'row',
@@ -221,17 +224,17 @@ const styles = StyleSheet.create({
   mainTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     letterSpacing: -0.5
   },
   subtitle: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   markAllText: {
     fontSize: 12,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '600'
   },
   loaderContainer: {
@@ -245,17 +248,17 @@ const styles = StyleSheet.create({
   },
   notificationCard: {
     flexDirection: 'row',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 14,
     padding: 12,
     marginBottom: 12,
     alignItems: 'flex-start'
   },
   unreadCard: {
-    backgroundColor: '#1E1B2E',
-    borderColor: '#4C3B78'
+    backgroundColor: isDark ? '#1E1B2E' : '#F5F3FF',
+    borderColor: isDark ? '#4C3B78' : '#DDD6FE'
   },
   iconBox: {
     width: 38,
@@ -278,24 +281,24 @@ const styles = StyleSheet.create({
   titleText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     flex: 1,
     marginRight: 8
   },
   timeText: {
     fontSize: 11,
-    color: '#71717A'
+    color: colors.textMuted
   },
   descText: {
     fontSize: 13,
-    color: '#D1D5DB',
+    color: colors.textSecondary,
     lineHeight: 18
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#8B5CF6',
+    backgroundColor: colors.primary,
     marginTop: 4
   },
   emptyContainer: {
@@ -304,7 +307,7 @@ const styles = StyleSheet.create({
     paddingTop: 80
   },
   emptyText: {
-    color: '#6B7280',
+    color: colors.textMuted,
     fontSize: 14,
     marginTop: 12
   }

@@ -188,6 +188,10 @@ export const providerApi = {
     const response = await api.post('/providers/me/kyc/upload', formData);
     return response.data;
   },
+  deleteKYCDocument: async (docType) => {
+    const response = await api.delete(`/providers/me/kyc/${docType}`);
+    return response.data;
+  },
   submitKYCDocuments: async (kycData) => {
     const response = await api.post('/providers/me/kyc/submit', kycData);
     return response.data;
@@ -203,6 +207,15 @@ export const providerApi = {
   },
   removeCertification: async () => {
     const response = await api.delete('/providers/me/certification');
+    return response.data;
+  },
+  // Terms & Conditions APIs
+  getTerms: async () => {
+    const response = await api.get('/providers/terms');
+    return response.data;
+  },
+  acceptTerms: async (data = {}) => {
+    const response = await api.post('/providers/accept-terms', data);
     return response.data;
   }
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,9 +12,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { availabilityApi } from '../../services/api';
 import { Header, Card, Badge, Button, Input } from '../../components/common';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 const DAYS_OF_WEEK = [
@@ -29,6 +29,9 @@ const DAYS_OF_WEEK = [
 
 export default function AvailabilityScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [schedule, setSchedule] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -281,18 +284,18 @@ export default function AvailabilityScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   scroll: {
     padding: spacing.lg
   },
   infoCard: {
     marginBottom: spacing.md,
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     borderWidth: 1
   },
   infoRow: {
@@ -304,30 +307,30 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#1E1B2E',
+    backgroundColor: isDark ? '#1E1B2E' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#2F264A',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center'
   },
   infoTitle: {
     ...typography.titleSmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '700'
   },
   infoSubtitle: {
     ...typography.bodySmall,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   scheduleCard: {
     marginBottom: spacing.lg,
-    backgroundColor: '#161420',
-    borderColor: '#252136'
+    backgroundColor: colors.card,
+    borderColor: colors.border
   },
   sectionTitle: {
     ...typography.titleSmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: spacing.md
   },
   dayRow: {
@@ -342,7 +345,7 @@ const styles = StyleSheet.create({
   dayName: {
     ...typography.bodyLarge,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   timeTag: {
     flexDirection: 'row',
@@ -352,12 +355,12 @@ const styles = StyleSheet.create({
   },
   timeText: {
     ...typography.bodySmall,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '600'
   },
   offText: {
     ...typography.caption,
-    color: '#71717A',
+    color: colors.textMuted,
     marginTop: 4
   },
   toggleBtn: {
@@ -367,25 +370,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.md,
-    backgroundColor: '#1E1B2E',
+    backgroundColor: isDark ? '#1E1B2E' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#2D2845'
+    borderColor: colors.border
   },
   toggleBtnActive: {
-    backgroundColor: '#064E3B',
-    borderColor: '#065F46'
+    backgroundColor: isDark ? '#064E3B' : '#DCFCE7',
+    borderColor: isDark ? '#065F46' : '#86EFAC'
   },
   toggleText: {
     ...typography.caption,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontWeight: '700'
   },
   toggleTextActive: {
-    color: '#34D399'
+    color: isDark ? '#34D399' : '#15803D'
   },
   divider: {
     height: 1,
-    backgroundColor: '#252136',
+    backgroundColor: colors.border,
     marginVertical: 4
   },
   modalOverlay: {
@@ -395,10 +398,10 @@ const styles = StyleSheet.create({
     padding: spacing.lg
   },
   modalContent: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     padding: spacing.lg
   },
   modalHeader: {
@@ -409,7 +412,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     ...typography.titleMedium,
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   row: {
     flexDirection: 'row',

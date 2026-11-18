@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { AuthProvider } from './src/context/AuthContext';
 import { LocationProvider } from './src/context/LocationContext';
 import { NotificationProvider } from './src/context/NotificationContext';
@@ -18,6 +19,26 @@ setupGlobalScrollbars();
 
 if (__DEV__ && Platform.OS === 'web' && typeof window !== 'undefined') {
   window.__navigationRef = navigationRef;
+}
+
+function AppContent() {
+  const { statusBarStyle, navigationTheme, colors } = useTheme();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <StatusBar style={statusBarStyle} />
+      <AuthProvider>
+        <LocationProvider>
+          <NotificationProvider navigationRef={navigationRef}>
+            <NavigationContainer ref={navigationRef} theme={navigationTheme}>
+              <RootNavigator />
+              <LocationPermissionModal />
+            </NavigationContainer>
+          </NotificationProvider>
+        </LocationProvider>
+      </AuthProvider>
+    </View>
+  );
 }
 
 export default function App() {
@@ -58,18 +79,9 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" />
-      <AuthProvider>
-        <LocationProvider>
-          <NotificationProvider navigationRef={navigationRef}>
-            <NavigationContainer ref={navigationRef}>
-              <RootNavigator />
-              <LocationPermissionModal />
-            </NavigationContainer>
-          </NotificationProvider>
-        </LocationProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
-

@@ -14,6 +14,9 @@
     "test:services": "node test_service_unit.js && node test_service_integration.js",
     "test:providers": "node test_provider_unit.js && node test_provider_integration.js",
     "test:bookings": "node test_booking_unit.js && node test_booking_integration.js",
+    "test:provider-contact": "node test_provider_contact_visibility.js",
+    "test:provider-rates": "node test_provider_standard_rates.js",
+    "test:provider-kyc": "node test_provider_kyc_workflow.js",
     "seed:admin": "node src/seeds/provisionAdmin.js",
     "seed:provider": "node src/seeds/provisionProvider.js"
   },

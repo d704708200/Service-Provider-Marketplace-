@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,22 +14,38 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { providerApi } from '../../services/api';
-import { Header, Card, Badge, Button, Input } from '../../components/common';
+import { Header, Card, Badge, Button, Input, AppearanceSettings } from '../../components/common';
 import { getApiBaseUrl, API_CONFIG } from '../../config/env';
-import colors from '../../theme/colors';
+import { CURRENT_TERMS_VERSION, TERMS_EFFECTIVE_DATE, PLATFORM_NAME } from '../../constants/providerTerms';
 import { spacing, typography, borderRadius } from '../../theme';
 
 export default function ProfileScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { user, profile: authProfile, logout, checkAuthSession } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { user, profile: authProfile, logout, checkAuthSession, refreshProviderProfile } = useAuth();
   const [profile, setProfile] = useState(authProfile);
   const [refreshing, setRefreshing] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [cacheBuster, setCacheBuster] = useState(Date.now());
   const [loggingOut, setLoggingOut] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (typeof refreshProviderProfile === 'function') {
+        refreshProviderProfile().then(setProfile).catch(() => {});
+      }
+    }, [refreshProviderProfile])
+  );
+
+  useEffect(() => {
+    setProfile(authProfile);
+  }, [authProfile]);
 
   // Helper to format avatar URL with full backend base URL for relative paths
   const getFullAvatarUrl = (avatarPath) => {
@@ -236,6 +252,10 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const verificationStatus = profile?.verificationStatus || 'pending';
+  const storedKycStatus = String(profile?.kycStatus || '').toUpperCase();
+  const isKycApproved = ['APPROVED', 'VERIFIED'].includes(storedKycStatus);
+  const isKycRejected = storedKycStatus === 'REJECTED';
+  const isKycPending = !isKycApproved && !isKycRejected && ['PENDING', 'UNDER_REVIEW'].includes(storedKycStatus);
 
   return (
     <View style={styles.container}>
@@ -286,8 +306,12 @@ export default function ProfileScreen({ navigation }) {
                   ]}
                 >
                   {verificationStatus === 'pending'
-                    ? (profile?.kycStatus === 'under_review'
-                      ? 'Platform administrators are reviewing your KYC documents (Aadhaar & PAN). Once verified, you will be eligible for customer bookings.'
+                    ? (isKycPending
+                      ? 'Platform administrators are reviewing your KYC documents (Aadhaar & PAN).'
+                      : isKycApproved
+                      ? 'KYC verification is complete. Your provider account is awaiting review.'
+                      : isKycRejected
+                      ? (profile?.kycRejectionReason || 'Please upload corrected Aadhaar and PAN documents.')
                       : 'Upload required Aadhaar and PAN documents in KYC Verification to proceed with account approval.')
                     : profile?.kycRejectionReason || profile?.rejectionReason || 'Please review your uploaded KYC documents or contact support.'}
                 </Text>
@@ -298,7 +322,11 @@ export default function ProfileScreen({ navigation }) {
                 >
                   <Ionicons name="shield-checkmark-outline" size={15} color="#FFFFFF" />
                   <Text style={styles.kycActionBtnText}>
-                    {profile?.kycStatus === 'under_review' ? 'View KYC Status' : 'Complete KYC Verification'}
+                    {isKycPending || isKycApproved
+                      ? 'View KYC Status'
+                      : isKycRejected
+                      ? 'Correct KYC Documents'
+                      : 'Complete KYC Verification'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -444,12 +472,19 @@ export default function ProfileScreen({ navigation }) {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <View style={[
                 styles.kycNavBadge,
-                verificationStatus === 'verified' ? styles.kycNavBadgeVerified :
-                  verificationStatus === 'rejected' ? styles.kycNavBadgeRejected :
-                    styles.kycNavBadgePending
+                isKycApproved ? styles.kycNavBadgeVerified :
+                  isKycRejected ? styles.kycNavBadgeRejected :
+                    isKycPending ? styles.kycNavBadgePending :
+                      styles.kycNavBadgePending
               ]}>
                 <Text style={styles.kycNavBadgeText}>
-                  {verificationStatus.toUpperCase()}
+                  {isKycApproved
+                    ? 'VERIFIED'
+                    : isKycRejected
+                    ? 'REJECTED'
+                    : isKycPending
+                    ? 'UNDER REVIEW'
+                    : 'ACTION NEEDED'}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
@@ -549,6 +584,53 @@ export default function ProfileScreen({ navigation }) {
               size="sm"
             />
           </View>
+        </Card>
+
+        {/* Appearance & Theme Settings */}
+        <Card style={styles.card}>
+          <AppearanceSettings />
+        </Card>
+
+        {/* Legal & Policies */}
+        <Card style={styles.card}>
+          <Text style={styles.sectionTitle}>Legal & Policies</Text>
+
+          <TouchableOpacity
+            style={styles.navRow}
+            onPress={() => navigation.navigate('ProviderTerms')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.navLeft}>
+              <View style={[styles.iconCircle, { backgroundColor: '#2E1065' }]}>
+                <Ionicons name="document-text-outline" size={18} color="#C4B5FD" />
+              </View>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.navLabel}>Provider Terms & Conditions</Text>
+                <Text style={styles.navSub}>v{CURRENT_TERMS_VERSION} • Effective: {TERMS_EFFECTIVE_DATE}</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Badge
+                label={profile?.acceptedTermsVersion === CURRENT_TERMS_VERSION ? 'ACCEPTED' : 'PENDING'}
+                variant={profile?.acceptedTermsVersion === CURRENT_TERMS_VERSION ? 'success' : 'warning'}
+                size="sm"
+              />
+              <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+            </View>
+          </TouchableOpacity>
+
+          {profile?.acceptedTermsAt && (
+            <View style={[styles.row, { marginTop: spacing.sm, paddingTop: spacing.xs }]}>
+              <Text style={styles.label}>Accepted On</Text>
+              <Text style={styles.val}>
+                {new Date(profile.acceptedTermsAt).toLocaleDateString('en-IN', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric'
+                })}
+              </Text>
+            </View>
+          )}
         </Card>
 
         {/* Application Information */}
@@ -655,28 +737,28 @@ export default function ProfileScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   scroll: {
     padding: spacing.lg
   },
   card: {
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     borderRadius: 16,
     marginBottom: spacing.lg
   },
   pendingCard: {
-    backgroundColor: '#351F0B',
-    borderColor: '#78350F',
+    backgroundColor: isDark ? '#351F0B' : '#FEF3C7',
+    borderColor: isDark ? '#78350F' : '#FCD34D',
     borderWidth: 1
   },
   rejectedCard: {
-    backgroundColor: '#3C0F17',
-    borderColor: '#7F1D1D',
+    backgroundColor: isDark ? '#3C0F17' : '#FEE2E2',
+    borderColor: isDark ? '#7F1D1D' : '#FCA5A5',
     borderWidth: 1
   },
   statusBannerRow: {
@@ -706,16 +788,16 @@ const styles = StyleSheet.create({
     height: 66,
     borderRadius: 33,
     borderWidth: 2,
-    borderColor: '#8B5CF6',
-    backgroundColor: '#1F1B2E'
+    borderColor: colors.primary,
+    backgroundColor: colors.cardSecondary
   },
   avatarPlaceholder: {
     width: 66,
     height: 66,
     borderRadius: 33,
-    backgroundColor: '#1F1B2E',
+    backgroundColor: isDark ? '#1F1B2E' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#362E52',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -737,9 +819,9 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     borderWidth: 2,
-    borderColor: '#161420',
+    borderColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -748,11 +830,11 @@ const styles = StyleSheet.create({
   },
   name: {
     ...typography.titleSmall,
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   email: {
     ...typography.bodySmall,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginBottom: 2
   },
   editProfileBtn: {
@@ -762,14 +844,14 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     marginTop: spacing.md,
     paddingVertical: 8,
-    backgroundColor: '#1F1A2E',
+    backgroundColor: isDark ? '#1F1A2E' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#31284F',
+    borderColor: colors.border,
     borderRadius: borderRadius.md
   },
   editProfileBtnText: {
     ...typography.bodySmall,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '700'
   },
   navRow: {
@@ -787,24 +869,24 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#1F1A2E',
+    backgroundColor: isDark ? '#1F1A2E' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#2F264A',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center'
   },
   navLabel: {
     ...typography.bodyMedium,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '600'
   },
   navSub: {
     ...typography.caption,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   sectionTitle: {
     ...typography.titleSmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: spacing.md
   },
   statsGrid: {
@@ -815,15 +897,15 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     padding: spacing.sm,
-    backgroundColor: '#1C1929',
+    backgroundColor: colors.cardSecondary,
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     marginHorizontal: 4
   },
   statVal: {
     ...typography.titleSmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '700'
   },
   ratingRow: {
@@ -833,7 +915,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     ...typography.caption,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   row: {
@@ -844,16 +926,16 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.bodySmall,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   val: {
     ...typography.bodySmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '500'
   },
   divider: {
     height: 1,
-    backgroundColor: '#252136',
+    backgroundColor: colors.border,
     marginVertical: spacing.xs
   },
   logoutBtn: {
@@ -861,7 +943,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(15, 23, 42, 0.5)',
     justifyContent: 'center',
     padding: spacing.lg
   },
@@ -870,10 +952,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   modalContent: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     padding: spacing.lg
   },
   modalHeader: {
@@ -884,7 +966,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     ...typography.titleMedium,
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   checkboxRow: {
     flexDirection: 'row',
@@ -894,24 +976,24 @@ const styles = StyleSheet.create({
   },
   checkboxText: {
     ...typography.bodySmall,
-    color: '#E2E8F0'
+    color: colors.textSecondary
   },
   errorBox: {
-    backgroundColor: '#4C0519',
+    backgroundColor: isDark ? '#4C0519' : '#FEE2E2',
     borderWidth: 1,
-    borderColor: '#991B1B',
+    borderColor: isDark ? '#991B1B' : '#FCA5A5',
     padding: spacing.sm,
     borderRadius: borderRadius.md,
     marginBottom: spacing.md
   },
   errorText: {
     ...typography.bodySmall,
-    color: '#F87171'
+    color: isDark ? '#F87171' : '#B91C1C'
   },
   kycActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingVertical: 7,
     paddingHorizontal: 12,
     borderRadius: 8,
@@ -947,7 +1029,7 @@ const styles = StyleSheet.create({
   kycNavBadgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#E5E7EB'
+    color: isDark ? '#E5E7EB' : '#374151'
   },
   categoriesRow: {
     paddingVertical: spacing.xs,
@@ -962,22 +1044,22 @@ const styles = StyleSheet.create({
   categoryPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.15)' : 'rgba(124, 58, 237, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(167, 139, 250, 0.35)',
+    borderColor: isDark ? 'rgba(167, 139, 250, 0.35)' : 'rgba(124, 58, 237, 0.25)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6
   },
   categoryPillText: {
     ...typography.caption,
-    color: '#DDD6FE',
+    color: colors.primary,
     fontWeight: '600',
     fontSize: 11
   },
   noCategoriesText: {
     ...typography.bodySmall,
-    color: '#6B7280',
+    color: colors.textMuted,
     fontStyle: 'italic'
   }
 });

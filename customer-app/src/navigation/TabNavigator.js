@@ -8,21 +8,28 @@ import BookingHistoryScreen from '../screens/history/BookingHistoryScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
 import { useNotifications } from '../context/NotificationContext';
-import colors from '../theme/colors';
+import { useTheme } from '../context/ThemeContext';
 
 const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
   const { unreadCount } = useNotifications();
+  const { colors, isDark } = useTheme();
 
   return (
     <Tab.Navigator
       initialRouteName="HomeTab"
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#A78BFA',
-        tabBarInactiveTintColor: '#71717A',
-        tabBarStyle: styles.tabBar,
+        tabBarActiveTintColor: isDark ? '#A78BFA' : colors.primary,
+        tabBarInactiveTintColor: isDark ? '#71717A' : colors.textMuted,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            backgroundColor: isDark ? '#0F0E16' : colors.card,
+            borderTopColor: isDark ? '#1F1C2B' : colors.border
+          }
+        ],
         tabBarLabelStyle: styles.tabBarLabel,
         tabBarItemStyle: styles.tabBarItem,
         tabBarIcon: ({ focused, color }) => {
@@ -43,7 +50,14 @@ export default function TabNavigator() {
           return (
             <View style={styles.iconContainer}>
               <Ionicons name={iconName} size={20} color={color} />
-              {focused && <View style={styles.activePill} />}
+              {focused && (
+                <View
+                  style={[
+                    styles.activePill,
+                    { backgroundColor: isDark ? '#8B5CF6' : colors.primary }
+                  ]}
+                />
+              )}
             </View>
           );
         }

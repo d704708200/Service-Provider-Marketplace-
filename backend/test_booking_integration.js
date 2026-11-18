@@ -10,6 +10,7 @@ const User = require('./src/models/User');
 const Customer = require('./src/models/Customer');
 const Provider = require('./src/models/Provider');
 const Category = require('./src/models/Category');
+const ServiceTag = require('./src/models/ServiceTag');
 const Service = require('./src/models/Service');
 const Booking = require('./src/models/Booking');
 const { generateToken } = require('./src/utils/jwt');
@@ -29,7 +30,7 @@ let provider2User, provider2Profile, provider2Token;
 let adminUser, adminToken;
 
 // Test catalog
-let activeCategory, inactiveCategory;
+let activeCategory, inactiveCategory, activeTag;
 let activeService, inactiveService;
 
 async function setup() {
@@ -59,6 +60,13 @@ async function setup() {
     slug: `inactive-cat-${uniqueId}`,
     isActive: false
   });
+  activeTag = await ServiceTag.create({
+    name: `Booking Rate Tag ${uniqueId}`,
+    slug: `booking-rate-tag-${uniqueId}`,
+    category: activeCategory._id,
+    isActive: true,
+    isCustomerVisible: true
+  });
 
   // 3. Create Provider 1 (Verified, active)
   provider1User = await User.create({
@@ -73,7 +81,20 @@ async function setup() {
     businessName: `P1 Repairs ${uniqueId}`,
     categories: [activeCategory._id],
     verificationStatus: 'verified',
-    isAvailable: true
+    isAvailable: true,
+    serviceTags: [{
+      tag: activeTag._id,
+      isActive: true,
+      approvalStatus: 'approved',
+      basePrice: 299,
+      pricingType: 'hourly'
+    }],
+    serviceAreasConfig: [{
+      category: activeCategory._id,
+      radiusKm: 5,
+      location: { type: 'Point', coordinates: [72.8777, 19.076] },
+      isActive: true
+    }]
   });
   provider1Token = generateToken({ userId: provider1User._id, email: provider1User.email, role: 'provider' });
 
@@ -90,7 +111,13 @@ async function setup() {
     businessName: `P2 Repairs ${uniqueId}`,
     categories: [activeCategory._id],
     verificationStatus: 'verified',
-    isAvailable: true
+    isAvailable: true,
+    serviceAreasConfig: [{
+      category: activeCategory._id,
+      radiusKm: 5,
+      location: { type: 'Point', coordinates: [72.8777, 19.076] },
+      isActive: true
+    }]
   });
   provider2Token = generateToken({ userId: provider2User._id, email: provider2User.email, role: 'provider' });
 
@@ -136,6 +163,7 @@ async function teardown() {
   // Clean up all created test records
   await Booking.deleteMany({ customer: customerProfile._id });
   await Service.deleteMany({ _id: { $in: [activeService._id, inactiveService._id] } });
+  if (activeTag) await ServiceTag.deleteOne({ _id: activeTag._id });
   await Category.deleteMany({ _id: { $in: [activeCategory._id, inactiveCategory._id] } });
   await Provider.deleteMany({ _id: { $in: [provider1Profile._id, provider2Profile._id] } });
   await Customer.deleteMany({ _id: customerProfile._id });
@@ -237,6 +265,8 @@ async function run() {
         serviceId: activeService._id,
         bookingMode: 'scheduled',
         address: { street: '456 Hill Road', city: 'Mumbai', zipCode: '400050' },
+        longitude: 72.8777,
+        latitude: 19.076,
         scheduledDate: futureDate.toISOString(),
         scheduledTimeSlot: { startTime: '11:00', endTime: '13:00' },
         // Malicious client inputs:
@@ -262,6 +292,32 @@ async function run() {
 
     const scheduledBookingId = spoofAttempt.body.data._id;
 
+    // Provider-specific selected tag pricing overrides the catalog Service price on the server.
+    const tagRateBooking = await request(
+      'POST',
+      '/bookings',
+      {
+        serviceId: activeService._id,
+        providerId: provider1Profile._id,
+        tagId: activeTag._id,
+        bookingMode: 'instant',
+        address: {
+          street: '456 Hill Road',
+          city: 'Mumbai',
+          zipCode: '400050',
+          location: { type: 'Point', coordinates: [72.8777, 19.076] }
+        },
+        pricing: { basePrice: 1, totalAmount: 1 }
+      },
+      customerToken
+    );
+    assert(
+      tagRateBooking.status === 201 &&
+        tagRateBooking.body.data.pricing.basePrice === 299 &&
+        tagRateBooking.body.data.pricing.totalAmount === 299,
+      `Booking estimate uses the selected provider tag's configured rate (Status: ${tagRateBooking.status})`
+    );
+
     // 5. Past scheduled date rejected
     const pastDate = new Date();
     pastDate.setDate(pastDate.getDate() - 3);
@@ -286,7 +342,11 @@ async function run() {
       {
         serviceId: activeService._id,
         bookingMode: 'instant',
-        address: { street: '789 Marine Drive', city: 'Mumbai' },
+        address: {
+          street: '789 Marine Drive',
+          city: 'Mumbai',
+          location: { type: 'Point', coordinates: [72.8777, 19.076] }
+        },
         notes: 'Water pipe leaking under kitchen sink'
       },
       customerToken

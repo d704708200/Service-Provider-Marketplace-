@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const HORIZONTAL_MARGIN = 16;
@@ -19,6 +20,8 @@ const BANNER_ASPECT_RATIO = 2.1; // ~2.1:1 aspect ratio yielding ~145-155px heig
 const SLIDE_INTERVAL = 3500; // 3.5 seconds
 
 export default function HomeSliderBanner({ banners = [], navigation }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [containerWidth, setContainerWidth] = useState(DEFAULT_CARD_WIDTH);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isInteracting, setIsInteracting] = useState(false);
@@ -298,7 +301,7 @@ export default function HomeSliderBanner({ banners = [], navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     width: '100%',
     marginTop: 8,
@@ -312,7 +315,7 @@ const styles = StyleSheet.create({
   slideCard: {
     borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: '#161424',
+    backgroundColor: colors.cardSecondary,
     position: 'relative'
   },
   bannerImage: {
@@ -322,7 +325,7 @@ const styles = StyleSheet.create({
   },
   skeletonBox: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#161424',
+    backgroundColor: colors.cardSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
@@ -330,7 +333,7 @@ const styles = StyleSheet.create({
   },
   fallbackCard: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#1C162E',
+    backgroundColor: isDark ? '#1C162E' : '#EDE9FE',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
@@ -341,7 +344,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: '#2E2250',
+    backgroundColor: isDark ? '#2E2250' : '#DDD6FE',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8
@@ -349,12 +352,12 @@ const styles = StyleSheet.create({
   fallbackTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: isDark ? '#FFFFFF' : '#1E1B4B',
     letterSpacing: -0.2
   },
   fallbackSubtitle: {
     fontSize: 12,
-    color: '#A1A1AA',
+    color: isDark ? '#A1A1AA' : '#6B7280',
     marginTop: 3
   },
   paginationRow: {
@@ -370,10 +373,10 @@ const styles = StyleSheet.create({
   },
   activeDot: {
     width: 18,
-    backgroundColor: '#A78BFA'
+    backgroundColor: colors.primary
   },
   inactiveDot: {
     width: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)'
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.2)'
   }
 });

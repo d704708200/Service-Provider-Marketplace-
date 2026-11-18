@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
+import { useTheme } from '../../context/ThemeContext';
 import { bookingApi, customerApi, serviceApi, providerApi } from '../../services/api';
 import { openRazorpayCheckout } from '../../services/razorpayService';
 import { Header, Card, Input, Button, Badge, SelectLocationModal } from '../../components/common';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 import { PRICING_LABELS } from '../../constants';
 
@@ -94,6 +94,8 @@ const getBookingStatusBadge = (status) => {
 
 export default function RequestServiceScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { user } = useAuth();
   const { location: contextLocation } = useLocation();
   const { service: initialService, serviceId, provider: initialProvider, providerId } = route.params || {};
@@ -257,8 +259,23 @@ export default function RequestServiceScreen({ route, navigation }) {
   }, [serviceId, providerId, initialProvider]);
 
   // Pricing calculations
-  const rawBase = Number(currentService?.price !== undefined ? currentService.price : currentService?.basePrice);
-  const effectiveBasePrice = !isNaN(rawBase) && rawBase >= 0 ? rawBase : 0;
+  const selectedRate = route.params?.standardRate;
+  const selectedTagId = route.params?.tagId;
+  const usesSelectedTagRate =
+    Boolean(selectedTagId) &&
+    selectedRate?.sourceType === 'tag' &&
+    String(selectedRate.tagId) === String(selectedTagId);
+  const rawBase = selectedTagId
+    ? usesSelectedTagRate
+      ? Number(selectedRate.amount)
+      : NaN
+    : (selectedRate?.amount && Number(selectedRate.amount) > 0)
+    ? Number(selectedRate.amount)
+    : Number(currentService?.price !== undefined ? currentService.price : currentService?.basePrice);
+  const effectiveBasePrice = Number.isFinite(rawBase) && rawBase > 0 ? rawBase : 0;
+  const effectivePricingType = usesSelectedTagRate || (selectedRate?.pricingType && !currentService?.priceType)
+    ? selectedRate.pricingType
+    : currentService?.pricingType || currentService?.priceType || selectedRate?.pricingType;
   const effectiveTotal = effectiveBasePrice;
 
   // Details
@@ -1082,10 +1099,14 @@ export default function RequestServiceScreen({ route, navigation }) {
               </View>
               <View style={styles.summaryPriceCol}>
                 <Text style={styles.summaryPrice}>
-                  ₹{effectiveBasePrice.toLocaleString('en-IN')}
+                  {effectiveBasePrice > 0
+                    ? `₹${effectiveBasePrice.toLocaleString('en-IN')}`
+                    : route.params?.rateStatus === 'not_configured'
+                    ? 'Rate not configured'
+                    : 'Rate not available'}
                 </Text>
                 <Badge
-                  label={PRICING_LABELS[currentService.pricingType || currentService.priceType] || currentService.pricingType || currentService.priceType || 'Fixed'}
+                  label={PRICING_LABELS[effectivePricingType] || effectivePricingType || 'Fixed'}
                   variant="slate"
                   size="sm"
                 />
@@ -1589,7 +1610,7 @@ export default function RequestServiceScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   keyboardContainer: {
     flex: 1,
     backgroundColor: colors.background
@@ -1615,15 +1636,15 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1.5,
     borderColor: colors.border,
-    backgroundColor: colors.slate50
+    backgroundColor: colors.cardSecondary
   },
   modeTabActive: {
     borderColor: colors.primary,
-    backgroundColor: colors.primarySubtle
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.20)' : 'rgba(124, 58, 237, 0.10)'
   },
   modeTabText: {
     ...typography.bodyMedium,
-    color: colors.slate600,
+    color: colors.textSecondary,
     fontWeight: '600'
   },
   modeTabTextActive: {
@@ -1631,16 +1652,16 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   summaryCard: {
-    backgroundColor: '#1E1A2E',
+    backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
-    borderColor: '#362E4F',
+    borderColor: colors.border,
     padding: spacing.lg,
     marginBottom: spacing.md
   },
   priceSummaryTitle: {
     ...typography.titleSmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '700',
     marginBottom: spacing.sm
   },
@@ -1652,12 +1673,12 @@ const styles = StyleSheet.create({
   },
   confirmKey: {
     fontSize: 14,
-    color: '#A7A4BC',
+    color: colors.textSecondary,
     fontWeight: '500'
   },
   confirmVal: {
     fontSize: 14,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '600',
     textAlign: 'right'
   },
@@ -1669,18 +1690,18 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: '#312845',
+    backgroundColor: colors.border,
     marginVertical: spacing.sm
   },
   totalPayableLabel: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   confirmValPrice: {
     fontSize: 19,
     fontWeight: '800',
-    color: '#A855F7',
+    color: colors.primary,
     textAlign: 'right'
   },
   formCard: {
@@ -1688,12 +1709,12 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: colors.textPrimary,
     marginBottom: spacing.md
   },
   sectionTitleNoMargin: {
     ...typography.titleSmall,
-    color: colors.slate900
+    color: colors.textPrimary
   },
   cardHeaderWithIcon: {
     flexDirection: 'row',
@@ -1709,39 +1730,39 @@ const styles = StyleSheet.create({
     width: 64,
     height: 76,
     borderRadius: borderRadius.md,
-    backgroundColor: colors.slate50,
+    backgroundColor: colors.cardSecondary,
     borderWidth: 1.5,
-    borderColor: colors.slate200,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4
   },
   dateChipActive: {
-    backgroundColor: colors.primarySubtle,
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.20)' : 'rgba(124, 58, 237, 0.10)',
     borderColor: colors.primary
   },
   dateChipDay: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.slate500,
+    color: colors.textSecondary,
     textTransform: 'uppercase'
   },
   dateChipDayActive: {
-    color: colors.primaryDark
+    color: colors.primary
   },
   dateChipNumber: {
     fontSize: 18,
     fontWeight: '800',
-    color: colors.slate800,
+    color: colors.textPrimary,
     marginVertical: 1
   },
   dateChipNumberActive: {
-    color: colors.primaryDark
+    color: colors.primary
   },
   dateChipMonth: {
     fontSize: 11,
     fontWeight: '500',
-    color: colors.slate400
+    color: colors.textMuted
   },
   dateChipMonthActive: {
     color: colors.primary
@@ -1757,25 +1778,25 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: borderRadius.md,
     borderWidth: 1.5,
-    borderColor: colors.slate200,
-    backgroundColor: colors.slate50
+    borderColor: colors.border,
+    backgroundColor: colors.cardSecondary
   },
   timeSlotCardActive: {
     borderColor: colors.primary,
-    backgroundColor: colors.primarySubtle
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.20)' : 'rgba(124, 58, 237, 0.10)'
   },
   timeSlotText: {
     ...typography.bodyMedium,
     fontWeight: '600',
-    color: colors.slate800
+    color: colors.textPrimary
   },
   timeSlotTextActive: {
-    color: colors.primaryDark,
+    color: colors.primary,
     fontWeight: '700'
   },
   timeSlotSubText: {
     ...typography.caption,
-    color: colors.slate500
+    color: colors.textSecondary
   },
   slotRadioCircle: {
     width: 20,
@@ -1926,7 +1947,7 @@ const styles = StyleSheet.create({
   },
   confirmContainer: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   confirmScrollContent: {
     paddingHorizontal: spacing.lg,
@@ -1961,13 +1982,13 @@ const styles = StyleSheet.create({
     ...typography.titleLarge,
     fontSize: 24,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: spacing.xs,
     textAlign: 'center'
   },
   successSubtitle: {
     ...typography.bodyMedium,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     textAlign: 'center',
     maxWidth: 320,
     lineHeight: 20
@@ -1975,10 +1996,10 @@ const styles = StyleSheet.create({
   refBanner: {
     width: '100%',
     maxWidth: 580,
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     flexDirection: 'row',
@@ -1994,22 +2015,22 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.8,
-    color: '#A78BFA',
+    color: colors.primary,
     marginBottom: 2
   },
   refCodeText: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     letterSpacing: 0.5
   },
   copyButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.15)' : 'rgba(124, 58, 237, 0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(124, 58, 237, 0.35)',
+    borderColor: isDark ? 'rgba(124, 58, 237, 0.35)' : 'rgba(124, 58, 237, 0.25)',
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: borderRadius.md
@@ -2021,7 +2042,7 @@ const styles = StyleSheet.create({
   copyButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#A78BFA'
+    color: colors.primary
   },
   copyButtonTextActive: {
     color: '#34D399'
@@ -2029,10 +2050,10 @@ const styles = StyleSheet.create({
   confirmCard: {
     width: '100%',
     maxWidth: 580,
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     padding: spacing.lg,
     marginBottom: spacing.lg
   },

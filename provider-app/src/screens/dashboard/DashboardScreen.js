@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,16 +17,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useRequests } from '../../context/RequestContext';
 import { bookingApi, providerApi, walletApi } from '../../services/api';
 import { getApiBaseUrl } from '../../config/env';
 import { Card, Badge, Button } from '../../components/common';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 export default function DashboardScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { user, profile: authProfile, checkAuthSession } = useAuth();
   const { unreadCount, refreshUnreadCount } = useNotifications();
   const { setPendingRequestsCount } = useRequests();
@@ -611,10 +613,10 @@ export default function DashboardScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   headerContainer: {
     flexDirection: 'row',
@@ -622,9 +624,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 12,
-    backgroundColor: '#0B0B0E',
+    backgroundColor: colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: '#1F1C2B'
+    borderBottomColor: colors.border
   },
   headerLeft: {
     flexDirection: 'row',
@@ -636,9 +638,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#1E1B2E',
+    backgroundColor: colors.cardSecondary,
     borderWidth: 1.5,
-    borderColor: '#36314D',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -655,7 +657,7 @@ const styles = StyleSheet.create({
     borderRadius: 20.5,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1E1B2E'
+    backgroundColor: colors.cardSecondary
   },
   avatarLoadingOverlay: {
     position: 'absolute',
@@ -675,9 +677,9 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     borderWidth: 1.5,
-    borderColor: '#0B0B0E',
+    borderColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -687,7 +689,7 @@ const styles = StyleSheet.create({
   greetingText: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   statusIndicatorRow: {
     flexDirection: 'row',
@@ -702,7 +704,7 @@ const styles = StyleSheet.create({
   },
   statusLabelText: {
     fontSize: 12,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   headerRight: {
     flexDirection: 'row',
@@ -712,9 +714,9 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative'
@@ -744,23 +746,23 @@ const styles = StyleSheet.create({
     paddingBottom: 40
   },
   availabilityBanner: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 18,
     padding: 18,
     marginVertical: 12,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center'
   },
   walletGlanceCard: {
-    backgroundColor: '#1B1530',
+    backgroundColor: isDark ? '#1B1530' : '#F5F3FF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#382D67',
+    borderColor: isDark ? '#382D67' : '#DDD6FE',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center'
@@ -774,19 +776,19 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#2E1A5A',
+    backgroundColor: isDark ? '#2E1A5A' : '#EDE9FE',
     justifyContent: 'center',
     alignItems: 'center'
   },
   walletGlanceLabel: {
-    color: '#A78BFA',
+    color: colors.primary,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.8,
     marginBottom: 3
   },
   walletGlanceAmount: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 18,
     fontWeight: '800'
   },
@@ -796,7 +798,7 @@ const styles = StyleSheet.create({
   walletPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -820,18 +822,18 @@ const styles = StyleSheet.create({
   dutyLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#A78BFA',
+    color: colors.primary,
     letterSpacing: 0.5
   },
   bannerTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: 4
   },
   bannerSubtitle: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     lineHeight: 16
   },
   switchWrapper: {
@@ -848,17 +850,17 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#252136'
+    borderColor: colors.border
   },
   statIconBadge: {
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: '#1F1B2E',
+    backgroundColor: colors.cardSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8
@@ -866,12 +868,12 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: 2
   },
   statLabel: {
     fontSize: 12,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   sectionContainer: {
     marginTop: 18
@@ -885,11 +887,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   seeAllText: {
     fontSize: 12,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '600'
   },
   quickGrid: {
@@ -898,20 +900,20 @@ const styles = StyleSheet.create({
   },
   quickActionCard: {
     flex: 1,
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     alignItems: 'center'
   },
   quickIconCircle: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#201A36',
+    backgroundColor: isDark ? '#201A36' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#362E52',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6
@@ -919,17 +921,17 @@ const styles = StyleSheet.create({
   quickActionTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: 2
   },
   quickActionSub: {
     fontSize: 10,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     textAlign: 'center'
   },
   emptyCard: {
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     alignItems: 'center',
     padding: 24,
     borderRadius: 16
@@ -937,25 +939,25 @@ const styles = StyleSheet.create({
   emptyCardTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginTop: 8,
     marginBottom: 4
   },
   emptyCardSub: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     textAlign: 'center'
   },
   broadcastCard: {
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     borderRadius: 16,
     padding: 14,
     marginBottom: 10
   },
   activeJobCard: {
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     borderRadius: 16,
     padding: 14,
     marginBottom: 10
@@ -969,13 +971,13 @@ const styles = StyleSheet.create({
   broadcastRef: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#A78BFA',
+    color: colors.primary,
     marginBottom: 2
   },
   broadcastService: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   metaRow: {
     flexDirection: 'row',
@@ -985,21 +987,21 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: 12,
-    color: '#CBD5E1'
+    color: colors.textSecondary
   },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#252136',
+    borderTopColor: colors.border,
     paddingTop: 8,
     marginTop: 8
   },
   cardPrice: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   viewLink: {
     flexDirection: 'row',
@@ -1009,6 +1011,6 @@ const styles = StyleSheet.create({
   viewLinkText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#A78BFA'
+    color: colors.primary
   }
 });

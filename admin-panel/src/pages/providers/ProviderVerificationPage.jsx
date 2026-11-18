@@ -29,6 +29,35 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
 import ConfirmationModal from '../../components/modals/ConfirmationModal';
 
+const KYC_REJECTION_OPTIONS = [
+  { value: 'aadhaar_front', label: 'Aadhaar Front', image: 'aadhaarFrontImage' },
+  { value: 'aadhaar_back', label: 'Aadhaar Back', image: 'aadhaarBackImage' },
+  { value: 'pan_front', label: 'PAN Front', image: 'panFrontImage' },
+  { value: 'pan_back', label: 'PAN Back', image: 'panBackImage' }
+];
+const isKycDocumentType = (type) =>
+  KYC_REJECTION_OPTIONS.some((document) => document.value === String(type).toLowerCase());
+const getKycApprovalBlockers = (provider) =>
+  KYC_REJECTION_OPTIONS.flatMap(({ value, label, image }) => {
+    if (!provider?.[image]) return [`${label} is missing.`];
+    const sameTypeDocuments = (provider.documents || []).filter(
+      (document) => document.type.toLowerCase() === value
+    );
+    const document = sameTypeDocuments.find(
+      (item) => item.documentUrl === provider[image]
+    );
+    if (!document) {
+      return [
+        sameTypeDocuments.length
+          ? `${label} review does not match the current upload.`
+          : `${label} has no individual review record.`
+      ];
+    }
+    if (document.verificationStatus === 'rejected') return [`${label} was rejected.`];
+    if (document.verificationStatus === 'pending') return [`${label} must be approved first.`];
+    return [];
+  });
+
 const ProviderVerificationPage = () => {
   // Data State
   const [pendingProviders, setPendingProviders] = useState([]);
@@ -52,6 +81,7 @@ const ProviderVerificationPage = () => {
     type: 'provider', // 'provider' | 'document' | 'certification'
     documentId: null,
     reason: '',
+    rejectedDocuments: [],
     error: null
   });
 
@@ -162,6 +192,46 @@ const ProviderVerificationPage = () => {
     });
   };
 
+  const handleOpenRejectKYC = () => {
+    setRejectionDialog({
+      isOpen: true,
+      type: 'kyc',
+      documentId: null,
+      reason: '',
+      rejectedDocuments: [],
+      error: null
+    });
+  };
+
+  const handleApproveKYC = () => {
+    if (!reviewingProvider) return;
+    if (getKycApprovalBlockers(reviewingProvider).length > 0) return;
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Approve KYC Documents',
+      message: `Approve the submitted Aadhaar and PAN documents for '${reviewingProvider.businessName || reviewingProvider.user?.name}'?`,
+      confirmText: 'Approve KYC',
+      confirmVariant: 'primary',
+      isLoading: false,
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+        try {
+          const response = await providerApi.reviewKYC(reviewingProvider._id, { status: 'approved' });
+          if (response?.success) {
+            setReviewingProvider(response.data);
+            setSuccessMessage('KYC approved successfully.');
+            setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+            fetchPendingQueue();
+          }
+        } catch (err) {
+          setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+          setApiError(err.userMessage || 'Failed to approve KYC.');
+        }
+      }
+    });
+  };
+
   // Submit Rejection (Either Document or Provider)
   const handleSubmitRejection = async () => {
     if (!rejectionDialog.reason.trim()) {
@@ -171,10 +241,32 @@ const ProviderVerificationPage = () => {
       }));
       return;
     }
+    if (
+      rejectionDialog.type === 'kyc' &&
+      rejectionDialog.rejectedDocuments.length === 0
+    ) {
+      setRejectionDialog((prev) => ({
+        ...prev,
+        error: 'Select at least one document that needs correction.'
+      }));
+      return;
+    }
 
     setIsActionLoading(true);
     try {
-      if (rejectionDialog.type === 'certification') {
+      if (rejectionDialog.type === 'kyc') {
+        const response = await providerApi.reviewKYC(reviewingProvider._id, {
+          status: 'rejected',
+          rejectionReason: rejectionDialog.reason.trim(),
+          rejectedDocuments: rejectionDialog.rejectedDocuments
+        });
+        if (response?.success) {
+          setReviewingProvider(response.data);
+          setSuccessMessage('KYC rejected with a reason for correction.');
+          setRejectionDialog({ isOpen: false, type: 'provider', documentId: null, reason: '', error: null });
+          fetchPendingQueue();
+        }
+      } else if (rejectionDialog.type === 'certification') {
         const response = await providerApi.reviewServiceCertification(
           reviewingProvider._id,
           {
@@ -299,6 +391,12 @@ const ProviderVerificationPage = () => {
       }
     });
   };
+
+  const normalizedKycStatus = String(reviewingProvider?.kycStatus || 'NOT_SUBMITTED').toUpperCase();
+  const canReviewKYC = ['PENDING', 'UNDER_REVIEW'].includes(normalizedKycStatus);
+  const kycApprovalBlockers = canReviewKYC
+    ? getKycApprovalBlockers(reviewingProvider)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -638,6 +736,12 @@ const ProviderVerificationPage = () => {
                       {reviewingProvider.user?.isActive ? 'Active User' : 'Suspended'}
                     </Badge>
                   </div>
+                  {reviewingProvider.verificationReviewedAt && (
+                    <span className="text-[11px] text-slate-500 block mt-1">
+                      Provider status reviewed on {new Date(reviewingProvider.verificationReviewedAt).toLocaleString()}
+                      {reviewingProvider.verificationReviewedBy?.name && ` by ${reviewingProvider.verificationReviewedBy.name}`}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -652,13 +756,13 @@ const ProviderVerificationPage = () => {
                   </div>
                   <Badge
                     variant={
-                      reviewingProvider.kycStatus === 'verified' ? 'success' :
-                      reviewingProvider.kycStatus === 'rejected' ? 'danger' :
-                      reviewingProvider.kycStatus === 'under_review' ? 'primary' :
+                      ['VERIFIED', 'APPROVED'].includes(normalizedKycStatus) ? 'success' :
+                      normalizedKycStatus === 'REJECTED' ? 'danger' :
+                      ['PENDING', 'UNDER_REVIEW'].includes(normalizedKycStatus) ? 'primary' :
                       'warning'
                     }
                   >
-                    KYC: {reviewingProvider.kycStatus || 'pending'}
+                    KYC: {normalizedKycStatus}
                   </Badge>
                 </div>
 
@@ -785,7 +889,7 @@ const ProviderVerificationPage = () => {
                       {reviewingProvider.panBackImage ? (
                         <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Uploaded</span>
                       ) : (
-                        <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">Optional / None</span>
+                        <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">Required / Missing</span>
                       )}
                     </div>
                     {reviewingProvider.panBackImage ? (
@@ -819,6 +923,49 @@ const ProviderVerificationPage = () => {
                   <div className="text-xs text-rose-700 bg-rose-50 p-2.5 rounded-lg border border-rose-200 mt-2">
                     <strong>Current KYC Rejection Note:</strong> {reviewingProvider.kycRejectionReason}
                   </div>
+                )}
+
+                {reviewingProvider.kycReviewedAt && (
+                  <p className="text-[11px] text-slate-500">
+                    {normalizedKycStatus === 'APPROVED' || normalizedKycStatus === 'VERIFIED' ? 'Approved' : 'Reviewed'} on {new Date(reviewingProvider.kycReviewedAt).toLocaleString()}
+                    {reviewingProvider.kycReviewedBy?.name && ` by ${reviewingProvider.kycReviewedBy.name}`}
+                  </p>
+                )}
+
+                {canReviewKYC && (
+                  <>
+                    {kycApprovalBlockers.length > 0 && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                        <p className="font-semibold">Approve KYC is unavailable until these document reviews are complete:</p>
+                        <ul className="mt-1 list-disc pl-5">
+                          {kycApprovalBlockers.map((blocker) => (
+                            <li key={blocker}>{blocker}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-indigo-100">
+                      <button
+                        type="button"
+                        disabled={isActionLoading}
+                        onClick={handleOpenRejectKYC}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg border border-rose-200 disabled:opacity-40"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        Reject KYC
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isActionLoading || kycApprovalBlockers.length > 0}
+                        onClick={handleApproveKYC}
+                        title={kycApprovalBlockers.join(' ')}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg disabled:opacity-40"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Approve KYC
+                      </button>
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -1004,29 +1151,50 @@ const ProviderVerificationPage = () => {
                             <strong>Review Note:</strong> {doc.reviewNote}
                           </div>
                         )}
+                        {doc.reviewedAt && (
+                          <p className="text-[11px] text-slate-500">
+                            Reviewed on {new Date(doc.reviewedAt).toLocaleString()}
+                            {doc.reviewedBy?.name && ` by ${doc.reviewedBy.name}`}
+                          </p>
+                        )}
 
-                        {/* Individual Document Actions */}
-                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200/60">
-                          <button
-                            type="button"
-                            disabled={isActionLoading || doc.verificationStatus === 'rejected'}
-                            onClick={() => handleOpenRejectDocument(doc._id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-md transition-colors disabled:opacity-40"
-                          >
-                            <XCircle className="w-3.5 h-3.5" />
-                            <span>Reject Document</span>
-                          </button>
+                        {isKycDocumentType(doc.type) ? (
+                          canReviewKYC && doc.verificationStatus === 'pending' && (
+                            <div className="flex justify-end pt-1 border-t border-slate-200/60">
+                              <button
+                                type="button"
+                                disabled={isActionLoading}
+                                onClick={() => handleApproveDocument(doc._id)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors disabled:opacity-40"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Approve KYC Document</span>
+                              </button>
+                            </div>
+                          )
+                        ) : (
+                          <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200/60">
+                            <button
+                              type="button"
+                              disabled={isActionLoading || doc.verificationStatus === 'rejected'}
+                              onClick={() => handleOpenRejectDocument(doc._id)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-md transition-colors disabled:opacity-40"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              <span>Reject Document</span>
+                            </button>
 
-                          <button
-                            type="button"
-                            disabled={isActionLoading || doc.verificationStatus === 'approved'}
-                            onClick={() => handleApproveDocument(doc._id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors disabled:opacity-40"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Approve Document</span>
-                          </button>
-                        </div>
+                            <button
+                              type="button"
+                              disabled={isActionLoading || doc.verificationStatus === 'approved'}
+                              onClick={() => handleApproveDocument(doc._id)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors disabled:opacity-40"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Approve Document</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1089,7 +1257,13 @@ const ProviderVerificationPage = () => {
                   <AlertTriangle className="w-4 h-4" />
                 </div>
                 <h3 className="text-base font-bold text-slate-900">
-                  {rejectionDialog.type === 'document' ? 'Reject Document' : 'Reject Provider Application'}
+                  {rejectionDialog.type === 'kyc'
+                    ? 'Reject KYC Documents'
+                    : rejectionDialog.type === 'certification'
+                    ? 'Reject Service Certification'
+                    : rejectionDialog.type === 'document'
+                    ? 'Reject Document'
+                    : 'Reject Provider Application'}
                 </h3>
               </div>
               <button
@@ -1108,6 +1282,36 @@ const ProviderVerificationPage = () => {
             </p>
 
             <div className="mt-4">
+              {rejectionDialog.type === 'kyc' && (
+                <fieldset className="mb-4">
+                  <legend className="block text-xs font-semibold text-slate-700 mb-2">
+                    Documents requiring correction <span className="text-rose-500">*</span>
+                  </legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    {KYC_REJECTION_OPTIONS.map((document) => (
+                      <label
+                        key={document.value}
+                        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={rejectionDialog.rejectedDocuments.includes(document.value)}
+                          onChange={() =>
+                            setRejectionDialog((prev) => ({
+                              ...prev,
+                              rejectedDocuments: prev.rejectedDocuments.includes(document.value)
+                                ? prev.rejectedDocuments.filter((type) => type !== document.value)
+                                : [...prev.rejectedDocuments, document.value],
+                              error: null
+                            }))
+                          }
+                        />
+                        {document.label}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Rejection Reason <span className="text-rose-500">*</span>
               </label>

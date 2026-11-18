@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { bookingApi, reviewApi } from '../../services/api';
 import { openRazorpayCheckout } from '../../services/razorpayService';
 import { callPhoneNumber } from '../../utils/phoneUtils';
@@ -28,6 +29,8 @@ const TABS = [
 
 export default function BookingHistoryScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const [bookings, setBookings] = useState([]);
   const [selectedTab, setSelectedTab] = useState('pending');
@@ -1430,10 +1433,10 @@ export default function BookingHistoryScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   headerSection: {
     paddingHorizontal: 16,
@@ -1443,7 +1446,7 @@ const styles = StyleSheet.create({
   mainTitle: {
     fontSize: 26,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     letterSpacing: -0.5,
     lineHeight: 30
   },
@@ -1459,36 +1462,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136'
+    borderColor: colors.border
   },
   tabButtonActive: {
-    backgroundColor: '#2E1065',
-    borderColor: '#7C3AED'
+    backgroundColor: isDark ? '#2E1065' : '#EDE9FE',
+    borderColor: colors.primary
   },
   tabLabel: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontWeight: '500'
   },
   tabLabelActive: {
-    color: '#DDD6FE',
+    color: colors.primary,
     fontWeight: '600'
   },
   countBadge: {
     marginLeft: 6,
-    backgroundColor: '#241F36',
+    backgroundColor: isDark ? '#241F36' : colors.cardSecondary,
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 1
   },
   countBadgeActive: {
-    backgroundColor: '#7C3AED'
+    backgroundColor: colors.primary
   },
   countBadgeText: {
     fontSize: 10,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontWeight: '600'
   },
   countBadgeTextActive: {
@@ -1499,9 +1502,9 @@ const styles = StyleSheet.create({
     paddingBottom: 40
   },
   bookingCard: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 16,
     padding: 14,
     marginBottom: 14
@@ -1515,9 +1518,9 @@ const styles = StyleSheet.create({
   statusBadgeYellow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2D2314',
+    backgroundColor: isDark ? '#2D2314' : '#FEF3C7',
     borderWidth: 1,
-    borderColor: '#4A3B18',
+    borderColor: isDark ? '#4A3B18' : '#FCD34D',
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -1532,11 +1535,11 @@ const styles = StyleSheet.create({
   statusYellowText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#FBBF24'
+    color: isDark ? '#FBBF24' : '#B45309'
   },
   refText: {
     fontSize: 10,
-    color: '#71717A'
+    color: colors.textMuted
   },
   providerRow: {
     flexDirection: 'row',
@@ -1548,7 +1551,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 12,
     marginRight: 10,
-    backgroundColor: '#262238'
+    backgroundColor: colors.cardSecondary
   },
   providerInfoCol: {
     flex: 1
@@ -1560,25 +1563,25 @@ const styles = StyleSheet.create({
   providerName: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   categorySub: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   callIconBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#241F36',
+    backgroundColor: colors.cardSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#36314D'
+    borderColor: colors.border
   },
   metaBox: {
-    backgroundColor: '#1C1929',
+    backgroundColor: colors.cardSecondary,
     borderRadius: 12,
     padding: 10,
     marginBottom: 14
@@ -1589,7 +1592,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: 11,
-    color: '#E2E8F0',
+    color: colors.textPrimary,
     marginLeft: 6
   },
   actionButtonsRow: {
@@ -1599,9 +1602,9 @@ const styles = StyleSheet.create({
   },
   cancelActionBtn: {
     flex: 1,
-    backgroundColor: '#161420',
+    backgroundColor: colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#2E2942',
+    borderColor: colors.border,
     borderRadius: 10,
     paddingVertical: 9,
     alignItems: 'center',
@@ -1610,11 +1613,11 @@ const styles = StyleSheet.create({
   cancelActionText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   viewDetailsActionBtn: {
     flex: 1,
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 9,
     alignItems: 'center',
@@ -1630,9 +1633,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    backgroundColor: '#201A36',
+    backgroundColor: isDark ? '#201A36' : '#EDE9FE',
     borderWidth: 1,
-    borderColor: '#7C3AED',
+    borderColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 9,
     paddingHorizontal: 12
@@ -1640,7 +1643,7 @@ const styles = StyleSheet.create({
   reviewPartsActionText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#A78BFA'
+    color: colors.primary
   },
   pricingSummaryRow: {
     flexDirection: 'row',
@@ -1648,12 +1651,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 6,
     borderTopWidth: 1,
-    borderTopColor: '#1F1B2D',
+    borderTopColor: colors.border,
     marginBottom: 8
   },
   pricingSummaryLabel: {
     fontSize: 12,
-    color: '#9CA3AF'
+    color: colors.textSecondary
+  },
+  pricingSummaryAmount: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textPrimary
+  },
+  paymentStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary
   },
   pricingSummaryAmount: {
     fontSize: 14,

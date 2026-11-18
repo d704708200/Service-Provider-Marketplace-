@@ -13,11 +13,13 @@ import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 import WalletScreen from '../screens/wallet/WalletScreen';
 import WithdrawScreen from '../screens/wallet/WithdrawScreen';
 import ReviewsScreen from '../screens/reviews/ReviewsScreen';
+import ProviderTermsScreen from '../screens/legal/ProviderTermsScreen';
+import TermsAcceptanceScreen from '../screens/legal/TermsAcceptanceScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function RootNavigator() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, requiresTermsAcceptance } = useAuth();
 
   if (isLoading) {
     return <LoadingScreen message="Checking session..." />;
@@ -27,6 +29,11 @@ export default function RootNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
       {!isAuthenticated ? (
         <Stack.Screen name="Auth" component={AuthNavigator} />
+      ) : requiresTermsAcceptance ? (
+        <>
+          <Stack.Screen name="TermsAcceptance" component={TermsAcceptanceScreen} />
+          <Stack.Screen name="ProviderTerms" component={ProviderTermsScreen} />
+        </>
       ) : (
         <>
           <Stack.Screen name="MainTabs" component={TabNavigator} />
@@ -39,6 +46,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Wallet" component={WalletScreen} />
           <Stack.Screen name="Withdraw" component={WithdrawScreen} />
           <Stack.Screen name="Reviews" component={ReviewsScreen} />
+          <Stack.Screen name="ProviderTerms" component={ProviderTermsScreen} />
         </>
       )}
     </Stack.Navigator>

@@ -233,6 +233,11 @@ const certUpload = multer({
 const uploadSingleCertificationDocument = (fieldName = 'document') => {
   return (req, res, next) => {
     const contentType = req.headers['content-type'] || '';
+    if (process.env.NODE_ENV !== 'production' || process.env.DEBUG_UPLOAD) {
+      const hasBoundary = contentType.toLowerCase().includes('boundary');
+      console.log(`[Cert Upload Diagnostic] Method: ${req.method} | Path: ${req.originalUrl || req.url} | Content-Type: ${contentType.substring(0, 80)} | Has Boundary: ${hasBoundary}`);
+    }
+
     if (!contentType.toLowerCase().includes('multipart/form-data')) {
       return res.status(400).json({
         success: false,
@@ -244,7 +249,7 @@ const uploadSingleCertificationDocument = (fieldName = 'document') => {
       });
     }
 
-    if (!contentType.includes('boundary=')) {
+    if (!contentType.toLowerCase().includes('boundary')) {
       return res.status(400).json({
         success: false,
         error: {

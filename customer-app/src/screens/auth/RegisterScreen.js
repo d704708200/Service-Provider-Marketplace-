@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,12 +12,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { Input, Button, Card } from '../../components/common';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 export default function RegisterScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { register, error: authError, clearError } = useAuth();
 
   const [name, setName] = useState('');
@@ -228,10 +230,10 @@ export default function RegisterScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   keyboardContainer: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   scrollContent: {
     paddingHorizontal: spacing.lg,
@@ -257,40 +259,40 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.titleLarge,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: spacing.xs
   },
   subtitle: {
     ...typography.bodyMedium,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   formCard: {
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 18,
     padding: spacing.xl
   },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#4C0519',
+    backgroundColor: isDark ? '#4C0519' : '#FEE2E2',
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: '#991B1B',
+    borderColor: isDark ? '#991B1B' : '#FCA5A5',
     padding: spacing.md,
     marginBottom: spacing.lg
   },
   errorBannerText: {
     ...typography.bodySmall,
-    color: '#F87171',
+    color: isDark ? '#F87171' : '#B91C1C',
     marginLeft: spacing.sm,
     flex: 1,
     fontWeight: '500'
   },
   submitBtn: {
     marginTop: spacing.sm,
-    backgroundColor: '#7C3AED'
+    backgroundColor: colors.primary
   },
   loginRow: {
     flexDirection: 'row',
@@ -300,11 +302,11 @@ const styles = StyleSheet.create({
   },
   loginPrompt: {
     ...typography.bodyMedium,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   loginLink: {
     ...typography.bodyMedium,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '700'
   }
 });

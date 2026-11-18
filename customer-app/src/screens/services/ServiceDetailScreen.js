@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,14 +8,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { serviceApi } from '../../services/api';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView } from '../../components/common';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius, shadows } from '../../theme';
 import { PRICING_TYPES, PRICING_LABELS } from '../../constants';
 
 export default function ServiceDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { serviceId } = route.params || {};
 
   const [service, setService] = useState(null);
@@ -196,7 +198,7 @@ export default function ServiceDetailScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background
@@ -218,30 +220,32 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.titleLarge,
-    color: colors.slate900,
+    color: colors.textPrimary,
     marginBottom: spacing.lg
   },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: colors.slate50,
+    backgroundColor: colors.cardSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: borderRadius.md,
     padding: spacing.md
   },
   priceContainer: {},
   priceLabel: {
     ...typography.caption,
-    color: colors.slate500,
+    color: colors.textSecondary,
     marginBottom: 2
   },
   priceValue: {
     ...typography.titleMedium,
-    color: colors.primaryDark,
+    color: colors.primary,
     fontWeight: '700'
   },
   unitText: {
     fontSize: 14,
-    color: colors.slate500,
+    color: colors.textSecondary,
     fontWeight: '500'
   },
   durationContainer: {
@@ -249,7 +253,7 @@ const styles = StyleSheet.create({
   },
   durationLabel: {
     ...typography.caption,
-    color: colors.slate500,
+    color: colors.textSecondary,
     marginBottom: 2
   },
   durationValueRow: {
@@ -259,7 +263,7 @@ const styles = StyleSheet.create({
   },
   durationValue: {
     ...typography.bodyMedium,
-    color: colors.slate800,
+    color: colors.textPrimary,
     fontWeight: '600'
   },
   sectionCard: {
@@ -267,12 +271,12 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: colors.textPrimary,
     marginBottom: spacing.md
   },
   bodyText: {
     ...typography.bodyMedium,
-    color: colors.slate700,
+    color: colors.textSecondary,
     lineHeight: 22
   },
   bulletRow: {
@@ -283,7 +287,7 @@ const styles = StyleSheet.create({
   },
   bulletText: {
     ...typography.bodyMedium,
-    color: colors.slate700,
+    color: colors.textSecondary,
     flex: 1
   },
   bottomBar: {
@@ -291,7 +295,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: colors.white,
+    backgroundColor: colors.card,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingHorizontal: spacing.lg,
@@ -306,11 +310,11 @@ const styles = StyleSheet.create({
   },
   bottomPriceLabel: {
     ...typography.caption,
-    color: colors.slate500
+    color: colors.textMuted
   },
   bottomPriceValue: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: colors.textPrimary,
     fontWeight: '700'
   },
   actionButtonsCol: {

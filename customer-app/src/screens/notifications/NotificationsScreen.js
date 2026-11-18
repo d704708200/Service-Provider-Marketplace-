@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { notificationApi } from '../../services/api';
 import { useNotifications } from '../../context/NotificationContext';
-import colors from '../../theme/colors';
 
 const formatTimeAgo = (dateString) => {
   if (!dateString) return '';
@@ -53,6 +53,8 @@ const getNotificationIcon = (type, title = '') => {
 
 export default function NotificationsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { unreadCount, decrementUnreadCount, clearUnreadCount, refreshUnreadCount } = useNotifications();
 
   const [notifications, setNotifications] = useState([]);
@@ -194,10 +196,10 @@ export default function NotificationsScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   header: {
     flexDirection: 'row',
@@ -218,17 +220,17 @@ const styles = StyleSheet.create({
   mainTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     letterSpacing: -0.5
   },
   subtitle: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   markAllText: {
     fontSize: 12,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '600'
   },
   loaderContainer: {
@@ -242,17 +244,17 @@ const styles = StyleSheet.create({
   },
   notificationCard: {
     flexDirection: 'row',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: 14,
     padding: 12,
     marginBottom: 12,
     alignItems: 'flex-start'
   },
   unreadCard: {
-    borderColor: '#3B3354',
-    backgroundColor: '#1A1828'
+    borderColor: isDark ? '#3B3354' : '#DDD6FE',
+    backgroundColor: isDark ? '#1A1828' : '#F5F3FF'
   },
   iconBox: {
     width: 38,
@@ -274,22 +276,22 @@ const styles = StyleSheet.create({
   titleText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   timeText: {
     fontSize: 11,
-    color: '#71717A'
+    color: colors.textMuted
   },
   descText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     lineHeight: 16
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     marginLeft: 8,
     marginTop: 4
   },
@@ -299,7 +301,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 13,
-    color: '#71717A',
+    color: colors.textMuted,
     marginTop: 12
   }
 });

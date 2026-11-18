@@ -19,11 +19,14 @@ import { useAuth } from '../../context/AuthContext';
 import { Input, Button, Card } from '../../components/common';
 import { categoryApi } from '../../services/api';
 import API_CONFIG from '../../config/env';
-import colors from '../../theme/colors';
+import { useTheme } from '../../context/ThemeContext';
+import { CURRENT_TERMS_VERSION, TERMS_EFFECTIVE_DATE, PLATFORM_NAME } from '../../constants/providerTerms';
 import { spacing, typography, borderRadius } from '../../theme';
 
 export default function RegisterScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { register, error: authError, clearError } = useAuth();
 
   const [name, setName] = useState('');
@@ -154,7 +157,7 @@ export default function RegisterScreen({ navigation }) {
     }
 
     if (!agreeTerms) {
-      errors.terms = 'You must agree to the Terms & Conditions and Privacy Policy';
+      errors.terms = 'You must read and agree to the MENDROO Service Provider Terms & Conditions to register.';
     }
 
     setFormErrors(errors);
@@ -174,7 +177,9 @@ export default function RegisterScreen({ navigation }) {
         email: email.trim().toLowerCase(),
         phone: cleanPhone,
         password,
-        categories: selectedCategoryIds
+        categories: selectedCategoryIds,
+        acceptedTerms: true,
+        termsVersion: CURRENT_TERMS_VERSION
       });
 
       if (!result.success) {
@@ -211,7 +216,7 @@ export default function RegisterScreen({ navigation }) {
               }}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+              <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
             </TouchableOpacity>
             <Image
               source={require('../../../assets/mendroo-logo.png')}
@@ -236,9 +241,9 @@ export default function RegisterScreen({ navigation }) {
 
           {/* 5-Step Registration & KYC Flow Notice */}
           <View style={styles.noticeBanner}>
-            <Ionicons name="shield-checkmark-outline" size={20} color="#A78BFA" />
+            <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
             <Text style={styles.noticeText}>
-              <Text style={{ fontWeight: '700', color: '#FFFFFF' }}>Step 1 of 5: </Text>
+              <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Step 1 of 5: </Text>
               Submit your basic registration details, then complete <Text style={styles.noticeHighlight}>Aadhaar & PAN Card KYC</Text> verification to activate customer dispatch.
             </Text>
           </View>
@@ -321,7 +326,7 @@ export default function RegisterScreen({ navigation }) {
                   <Ionicons
                     name={dropdownVisible ? 'chevron-up' : 'chevron-down'}
                     size={20}
-                    color="#9CA3AF"
+                    color={colors.textMuted}
                   />
                 )}
               </View>
@@ -417,32 +422,54 @@ export default function RegisterScreen({ navigation }) {
             error={formErrors.confirmPassword}
           />
 
-          {/* Terms & Conditions Checkbox */}
-          <TouchableOpacity
-            style={styles.termsRow}
-            onPress={() => {
-              setAgreeTerms(!agreeTerms);
-              if (formErrors.terms) setFormErrors({ ...formErrors, terms: null });
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.checkbox, agreeTerms && styles.checkboxActive]}>
-              {agreeTerms ? <Ionicons name="checkmark" size={16} color="#FFFFFF" /> : null}
+          {/* Mandatory Legal Agreement Section */}
+          <View style={styles.legalSection}>
+            <View style={styles.legalHeaderRow}>
+              <View style={styles.legalHeaderLeft}>
+                <Ionicons name="shield-checkmark-outline" size={16} color="#A78BFA" />
+                <Text style={styles.legalSectionTitle}>Provider Terms & Conditions</Text>
+              </View>
+              <Text style={styles.legalEffectiveDate}>Effective: {TERMS_EFFECTIVE_DATE}</Text>
             </View>
-            <Text style={styles.termsText}>
-              I agree to the <Text style={styles.termsHighlight}>Terms and Conditions</Text> & <Text style={styles.termsHighlight}>Provider Service Agreement</Text>
-            </Text>
-          </TouchableOpacity>
-          {formErrors.terms ? (
-            <Text style={styles.fieldErrorText}>{formErrors.terms}</Text>
-          ) : null}
+
+            <View style={styles.legalLinkRow}>
+              <TouchableOpacity
+                onPress={() => navigation?.navigate('ProviderTerms')}
+                style={styles.readFullTermsLink}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="document-text-outline" size={14} color="#C4B5FD" />
+                <Text style={styles.readFullTermsText}>Read Full Terms & Conditions</Text>
+                <Ionicons name="chevron-forward" size={14} color="#C4B5FD" />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.termsRow, formErrors.terms && styles.termsRowError]}
+              onPress={() => {
+                setAgreeTerms(!agreeTerms);
+                if (formErrors.terms) setFormErrors({ ...formErrors, terms: null });
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.checkbox, agreeTerms && styles.checkboxActive]}>
+                {agreeTerms ? <Ionicons name="checkmark" size={15} color="#FFFFFF" /> : null}
+              </View>
+              <Text style={styles.termsText}>
+                I have read and agree to the {PLATFORM_NAME} Service Provider Terms & Conditions.
+              </Text>
+            </TouchableOpacity>
+            {formErrors.terms ? (
+              <Text style={styles.fieldErrorText}>{formErrors.terms}</Text>
+            ) : null}
+          </View>
 
           <Button
             title="Create Provider Account"
             onPress={handleRegister}
             loading={loading}
-            disabled={loading}
-            style={styles.submitBtn}
+            disabled={loading || !agreeTerms}
+            style={[styles.submitBtn, (!agreeTerms || loading) && styles.submitBtnDisabled]}
           />
 
           {/* Navigation to Sign In */}
@@ -493,17 +520,17 @@ export default function RegisterScreen({ navigation }) {
                     onPress={() => setDropdownVisible(false)}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    <Ionicons name="close" size={22} color="#9CA3AF" />
+                    <Ionicons name="close" size={22} color={colors.textMuted} />
                   </TouchableOpacity>
                 </View>
 
                 {/* Search Bar Inside Dropdown */}
                 <View style={styles.searchContainer}>
-                  <Ionicons name="search-outline" size={18} color="#9CA3AF" style={{ marginRight: 8 }} />
+                  <Ionicons name="search-outline" size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
                   <TextInput
                     style={styles.searchInput}
                     placeholder="Search categories..."
-                    placeholderTextColor="#6B7280"
+                    placeholderTextColor={colors.textMuted}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                     autoCapitalize="none"
@@ -515,7 +542,7 @@ export default function RegisterScreen({ navigation }) {
                       onPress={() => setSearchQuery('')}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Ionicons name="close-circle" size={16} color="#6B7280" />
+                      <Ionicons name="close-circle" size={16} color={colors.textMuted} />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -524,12 +551,12 @@ export default function RegisterScreen({ navigation }) {
                 <View style={styles.listWrapper}>
                   {categoriesLoading ? (
                     <View style={styles.modalLoadingBox}>
-                      <ActivityIndicator size="small" color="#7C3AED" />
+                      <ActivityIndicator size="small" color={colors.primary} />
                       <Text style={styles.modalLoadingText}>Loading service categories...</Text>
                     </View>
                   ) : categoriesError ? (
                     <View style={styles.modalErrorBox}>
-                      <Ionicons name="alert-circle-outline" size={24} color="#F87171" />
+                      <Ionicons name="alert-circle-outline" size={24} color={colors.danger} />
                       <Text style={styles.modalErrorText}>{categoriesError}</Text>
                       <TouchableOpacity
                         style={styles.retryBtn}
@@ -542,7 +569,7 @@ export default function RegisterScreen({ navigation }) {
                     </View>
                   ) : categoriesList.length === 0 ? (
                     <View style={styles.modalEmptyBox}>
-                      <Ionicons name="folder-open-outline" size={28} color="#6B7280" />
+                      <Ionicons name="folder-open-outline" size={28} color={colors.textMuted} />
                       <Text style={styles.modalEmptyText}>No service categories currently available.</Text>
                       <TouchableOpacity
                         style={styles.retryBtn}
@@ -554,7 +581,7 @@ export default function RegisterScreen({ navigation }) {
                     </View>
                   ) : filteredCategories.length === 0 ? (
                     <View style={styles.modalEmptyBox}>
-                      <Ionicons name="search-outline" size={28} color="#6B7280" />
+                      <Ionicons name="search-outline" size={28} color={colors.textMuted} />
                       <Text style={styles.modalEmptyText}>No categories match "{searchQuery}"</Text>
                     </View>
                   ) : (
@@ -639,10 +666,10 @@ export default function RegisterScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   keyboardContainer: {
     flex: 1,
-    backgroundColor: '#0B0B0E'
+    backgroundColor: colors.background
   },
   scrollContent: {
     paddingHorizontal: spacing.lg,
@@ -668,11 +695,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     zIndex: 10
   },
   headerLogo: {
@@ -681,29 +708,29 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.titleLarge,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: spacing.xs
   },
   subtitle: {
     ...typography.bodyMedium,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     textAlign: 'center',
     maxWidth: 380,
     lineHeight: 20
   },
   formCard: {
     padding: spacing.xl,
-    backgroundColor: '#161420',
-    borderColor: '#252136',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: borderRadius.lg
   },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEE2E2',
     borderColor: colors.danger,
     borderWidth: 1,
     borderRadius: borderRadius.md,
@@ -720,9 +747,9 @@ const styles = StyleSheet.create({
   noticeBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#1E1B2E',
+    backgroundColor: isDark ? '#1E1B2E' : '#F5F3FF',
     borderWidth: 1,
-    borderColor: '#3B2D54',
+    borderColor: isDark ? '#3B2D54' : '#DDD6FE',
     borderRadius: borderRadius.md,
     padding: spacing.md,
     marginBottom: spacing.lg,
@@ -730,55 +757,104 @@ const styles = StyleSheet.create({
   },
   noticeText: {
     ...typography.bodySmall,
-    color: '#D1D5DB',
+    color: colors.textSecondary,
     flex: 1,
     lineHeight: 18
   },
   noticeHighlight: {
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '700'
+  },
+  legalSection: {
+    backgroundColor: isDark ? '#1E1B2E' : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? '#3B2D54' : '#E2E8F0',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs
+  },
+  legalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8
+  },
+  legalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  legalSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary
+  },
+  legalEffectiveDate: {
+    fontSize: 11,
+    color: colors.textMuted
+  },
+  legalLinkRow: {
+    marginBottom: spacing.sm
+  },
+  readFullTermsLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.15)' : 'rgba(124, 58, 237, 0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    gap: 6
+  },
+  readFullTermsText: {
+    fontSize: 12,
+    color: isDark ? '#C4B5FD' : '#6D28D9',
+    fontWeight: '600'
   },
   termsRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    marginTop: 4,
     gap: spacing.sm
+  },
+  termsRowError: {
+    borderColor: colors.danger
   },
   checkbox: {
     width: 20,
     height: 20,
     borderRadius: 4,
     borderWidth: 1.5,
-    borderColor: '#4B5563',
-    backgroundColor: '#0B0B0E',
+    borderColor: colors.border,
+    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2
   },
   checkboxActive: {
-    backgroundColor: '#7C3AED',
-    borderColor: '#7C3AED'
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   termsText: {
     ...typography.bodySmall,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     flex: 1,
-    lineHeight: 20
-  },
-  termsHighlight: {
-    color: '#A78BFA',
-    fontWeight: '600'
+    lineHeight: 19
   },
   fieldErrorText: {
     fontSize: 12,
     color: colors.danger,
-    marginTop: 4,
+    marginTop: 6,
     fontWeight: '500'
   },
   submitBtn: {
     marginTop: spacing.lg,
-    backgroundColor: '#7C3AED'
+    backgroundColor: colors.primary
+  },
+  submitBtnDisabled: {
+    backgroundColor: isDark ? '#374151' : '#CBD5E1',
+    opacity: 0.6
   },
   signInRow: {
     flexDirection: 'row',
@@ -788,11 +864,11 @@ const styles = StyleSheet.create({
   },
   signInPrompt: {
     ...typography.bodyMedium,
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   signInLink: {
     ...typography.bodyMedium,
-    color: '#A78BFA',
+    color: colors.primary,
     fontWeight: '700'
   },
   connectivityRow: {
@@ -806,11 +882,11 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: '#10B981'
+    backgroundColor: colors.success || '#10B981'
   },
   connectivityText: {
     ...typography.caption,
-    color: '#6B7280',
+    color: colors.textMuted,
     fontSize: 11
   },
 
@@ -826,19 +902,19 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     ...typography.bodySmall,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '600'
   },
   selectedCountBadge: {
-    backgroundColor: '#2E1065',
+    backgroundColor: isDark ? '#2E1065' : '#EDE9FE',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#7C3AED'
+    borderColor: colors.primary
   },
   selectedCountText: {
-    color: '#DDD6FE',
+    color: isDark ? '#DDD6FE' : '#6D28D9',
     fontSize: 11,
     fontWeight: '600'
   },
@@ -846,17 +922,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#0B0B0E',
+    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: borderRadius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: Platform.OS === 'ios' ? 14 : 12,
     minHeight: 48
   },
   dropdownTriggerActive: {
-    borderColor: '#7C3AED',
-    backgroundColor: '#12101A'
+    borderColor: colors.primary,
+    backgroundColor: isDark ? '#12101A' : '#FAF5FF'
   },
   dropdownTriggerError: {
     borderColor: colors.danger
@@ -871,10 +947,10 @@ const styles = StyleSheet.create({
   },
   dropdownPlaceholder: {
     ...typography.bodyMedium,
-    color: '#6B7280'
+    color: colors.textMuted
   },
   dropdownValueText: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '600'
   },
 
@@ -889,9 +965,9 @@ const styles = StyleSheet.create({
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2E1065',
+    backgroundColor: isDark ? '#2E1065' : '#EDE9FE',
     borderWidth: 1,
-    borderColor: '#7C3AED',
+    borderColor: colors.primary,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 16,
@@ -899,7 +975,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 12,
-    color: '#DDD6FE',
+    color: isDark ? '#DDD6FE' : '#6D28D9',
     fontWeight: '600'
   },
   chipRemoveBtn: {
@@ -912,7 +988,7 @@ const styles = StyleSheet.create({
   },
   clearAllInlineText: {
     fontSize: 12,
-    color: '#F87171',
+    color: colors.danger,
     fontWeight: '600',
     textDecorationLine: 'underline'
   },
@@ -929,10 +1005,10 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 480,
     maxHeight: '80%',
-    backgroundColor: '#161420',
+    backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
@@ -948,32 +1024,32 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#252136'
+    borderBottomColor: colors.border
   },
   modalTitle: {
     ...typography.titleMedium,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontWeight: '700'
   },
   modalSubtitle: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   modalCloseBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#1E1B2E',
+    backgroundColor: colors.cardSecondary,
     alignItems: 'center',
     justifyContent: 'center'
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0B0B0E',
+    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: '#252136',
+    borderColor: colors.border,
     borderRadius: borderRadius.md,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
@@ -983,7 +1059,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 13,
     paddingVertical: 0
   },
@@ -1006,28 +1082,28 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: '#12101A',
+    backgroundColor: isDark ? '#12101A' : '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#1F1A2E'
+    borderColor: colors.border
   },
   categoryItemRowSelected: {
-    backgroundColor: '#1E1833',
-    borderColor: '#7C3AED'
+    backgroundColor: isDark ? '#1E1833' : '#F5F3FF',
+    borderColor: colors.primary
   },
   categoryItemCheckbox: {
     width: 20,
     height: 20,
     borderRadius: 4,
     borderWidth: 1.5,
-    borderColor: '#4B5563',
-    backgroundColor: '#0B0B0E',
+    borderColor: colors.border,
+    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12
   },
   categoryItemCheckboxSelected: {
-    backgroundColor: '#7C3AED',
-    borderColor: '#7C3AED'
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   categoryItemInfo: {
     flex: 1
@@ -1035,15 +1111,15 @@ const styles = StyleSheet.create({
   categoryItemName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#E5E7EB'
+    color: colors.textPrimary
   },
   categoryItemNameSelected: {
-    color: '#FFFFFF',
+    color: colors.primary,
     fontWeight: '700'
   },
   categoryItemDesc: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   modalLoadingBox: {
@@ -1055,7 +1131,7 @@ const styles = StyleSheet.create({
   },
   modalLoadingText: {
     fontSize: 12,
-    color: '#9CA3AF'
+    color: colors.textMuted
   },
   modalErrorBox: {
     alignItems: 'center',
@@ -1064,13 +1140,13 @@ const styles = StyleSheet.create({
   },
   modalErrorText: {
     fontSize: 12,
-    color: '#F87171',
+    color: colors.danger,
     textAlign: 'center'
   },
   retryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
@@ -1090,7 +1166,7 @@ const styles = StyleSheet.create({
   },
   modalEmptyText: {
     fontSize: 12,
-    color: '#6B7280',
+    color: colors.textMuted,
     textAlign: 'center'
   },
   modalFooter: {
@@ -1100,8 +1176,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: '#252136',
-    backgroundColor: '#12101A'
+    borderTopColor: colors.border,
+    backgroundColor: colors.cardSecondary
   },
   clearAllBtn: {
     paddingVertical: 8,
@@ -1109,14 +1185,14 @@ const styles = StyleSheet.create({
   },
   clearAllBtnText: {
     fontSize: 13,
-    color: '#F87171',
+    color: colors.danger,
     fontWeight: '600'
   },
   clearAllBtnTextDisabled: {
-    color: '#4B5563'
+    color: colors.textMuted
   },
   doneBtn: {
-    backgroundColor: '#7C3AED',
+    backgroundColor: colors.primary,
     paddingVertical: 8,
     paddingHorizontal: 20,
     borderRadius: 8

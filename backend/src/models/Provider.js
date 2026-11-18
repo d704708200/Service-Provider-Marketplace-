@@ -28,6 +28,11 @@ const documentSchema = new mongoose.Schema(
     reviewedAt: {
       type: Date,
       default: null
+    },
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
     }
   },
   { _id: true }
@@ -260,7 +265,15 @@ const providerSchema = new mongoose.Schema(
       type: String,
       default: null
     },
+    aadhaarFrontImagePublicId: {
+      type: String,
+      default: null
+    },
     aadhaarBackImage: {
+      type: String,
+      default: null
+    },
+    aadhaarBackImagePublicId: {
       type: String,
       default: null
     },
@@ -268,14 +281,22 @@ const providerSchema = new mongoose.Schema(
       type: String,
       default: null
     },
+    panFrontImagePublicId: {
+      type: String,
+      default: null
+    },
     panBackImage: {
+      type: String,
+      default: null
+    },
+    panBackImagePublicId: {
       type: String,
       default: null
     },
     kycStatus: {
       type: String,
-      enum: ['pending', 'under_review', 'verified', 'rejected'],
-      default: 'pending'
+      enum: ['NOT_SUBMITTED', 'DRAFT', 'PENDING', 'APPROVED', 'REJECTED', 'pending', 'under_review', 'verified', 'rejected'],
+      default: 'NOT_SUBMITTED'
     },
     kycSubmittedAt: {
       type: Date,
@@ -299,6 +320,15 @@ const providerSchema = new mongoose.Schema(
       type: String,
       enum: ['pending', 'verified', 'rejected', 'suspended'],
       default: 'pending'
+    },
+    verificationReviewedAt: {
+      type: Date,
+      default: null
+    },
+    verificationReviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
     },
     rejectionReason: {
       type: String,
@@ -346,12 +376,43 @@ const providerSchema = new mongoose.Schema(
     deletedAt: {
       type: Date,
       default: null
-    }
+    },
+    // Terms & Conditions Acceptance Tracking
+    acceptedTermsVersion: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    acceptedTermsAt: {
+      type: Date,
+      default: null
+    },
+    acceptedTermsSource: {
+      type: String,
+      enum: ['signup', 'existing_provider_login', null],
+      default: null
+    },
+    acceptedTermsHash: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    termsAcceptanceHistory: [
+      {
+        version: { type: String, required: true },
+        acceptedAt: { type: Date, default: Date.now },
+        source: { type: String, enum: ['signup', 'existing_provider_login'] },
+        termsHash: { type: String, required: true },
+        ipAddress: { type: String, default: null }
+      }
+    ]
   },
   {
     timestamps: true
   }
 );
+
+providerSchema.index({ acceptedTermsVersion: 1 });
 
 providerSchema.index({ verificationStatus: 1 });
 providerSchema.index({ isAvailable: 1 });

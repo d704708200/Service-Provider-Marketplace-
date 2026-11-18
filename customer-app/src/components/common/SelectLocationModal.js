@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocation } from '../../context/LocationContext';
+import { useTheme } from '../../context/ThemeContext';
 import { locationApi } from '../../services/api';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 export default function SelectLocationModal({
@@ -23,6 +23,8 @@ export default function SelectLocationModal({
   onLocationSelected,
   initialLocation
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const {
     location: contextLocation,
     fetchCurrentLocation,
@@ -366,10 +368,10 @@ const defaultFontWeight = {
 const fontSizes = typography?.fontSize || defaultFontSize;
 const fontWeights = typography?.fontWeight || defaultFontWeight;
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(15, 23, 42, 0.65)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.md

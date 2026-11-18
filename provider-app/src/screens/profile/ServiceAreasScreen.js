@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,14 +11,17 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { providerServiceAreaRadiusApi } from '../../services/api';
 import { Header, Card, Badge, Button } from '../../components/common';
 import ServiceAreaRadiusModal from '../../components/services/ServiceAreaRadiusModal';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 
 export default function ServiceAreasScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -230,10 +233,10 @@ export default function ServiceAreasScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F0D15'
+    backgroundColor: colors.background
   },
   scrollContent: {
     padding: spacing.md
@@ -241,9 +244,9 @@ const styles = StyleSheet.create({
   bannerCard: {
     flexDirection: 'row',
     gap: 12,
-    backgroundColor: '#1E1B2E',
+    backgroundColor: isDark ? '#1E1B2E' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#3B3358',
+    borderColor: colors.border,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
     marginBottom: spacing.md
@@ -252,18 +255,18 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#2A2440',
+    backgroundColor: isDark ? '#2A2440' : colors.card,
     alignItems: 'center',
     justifyContent: 'center'
   },
   bannerTitle: {
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   bannerSub: {
     fontSize: typography.fontSize.xs,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2,
     lineHeight: 16
   },
@@ -274,9 +277,9 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#181524',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     borderRadius: borderRadius.md,
     padding: spacing.sm,
     alignItems: 'center'
@@ -284,11 +287,11 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   statLabel: {
     fontSize: 10,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2,
     fontWeight: '600'
   },
@@ -302,9 +305,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm
   },
   emptyCard: {
-    backgroundColor: '#181524',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     borderRadius: borderRadius.lg,
     padding: spacing.xl,
     alignItems: 'center'
@@ -312,19 +315,19 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginTop: spacing.sm
   },
   emptySub: {
     fontSize: typography.fontSize.xs,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 4
   },
   serviceAreaCard: {
-    backgroundColor: '#181524',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
     marginBottom: spacing.md
@@ -338,11 +341,11 @@ const styles = StyleSheet.create({
   serviceTitle: {
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   serviceSubtitle: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 2
   },
   statusPill: {
@@ -373,11 +376,11 @@ const styles = StyleSheet.create({
     color: '#F59E0B'
   },
   detailsBox: {
-    backgroundColor: '#100E17',
+    backgroundColor: isDark ? '#100E17' : colors.cardSecondary,
     borderRadius: borderRadius.md,
     padding: spacing.sm,
     borderWidth: 1,
-    borderColor: '#2E2845',
+    borderColor: colors.border,
     marginBottom: spacing.sm
   },
   detailRow: {
@@ -388,7 +391,7 @@ const styles = StyleSheet.create({
   },
   addressText: {
     fontSize: 12,
-    color: '#E2E8F0',
+    color: colors.textPrimary,
     flex: 1
   },
   metaRow: {
@@ -402,13 +405,13 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    backgroundColor: '#1E1B2E',
+    backgroundColor: isDark ? '#1E1B2E' : colors.border,
     borderRadius: 4
   },
   badgePillText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#CBD5E1'
+    color: colors.textPrimary
   },
   warningBox: {
     flexDirection: 'row',
@@ -436,12 +439,12 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md
   },
   actionBtnConfigured: {
-    backgroundColor: '#2E2845',
+    backgroundColor: isDark ? '#2E2845' : colors.cardSecondary,
     borderWidth: 1,
-    borderColor: '#4C426D'
+    borderColor: colors.border
   },
   actionBtnText: {
-    color: '#FFFFFF',
+    color: isDark ? '#FFFFFF' : colors.primary,
     fontSize: 12,
     fontWeight: '700'
   }

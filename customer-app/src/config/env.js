@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 /**
  * Service Provider Marketplace - Customer App Environment Configuration
  *
@@ -8,34 +10,39 @@
 // Production verified backend host (hosted on Render):
 export const PRODUCTION_API_URL = 'https://service-provider-marketplace.onrender.com/api';
 export const DEFAULT_PRODUCTION_API_URL = PRODUCTION_API_URL;
+export const LOCALHOST_API_URL = 'http://localhost:5000/api';
+export const ANDROID_EMULATOR_API_URL = 'http://10.0.2.2:5000/api';
 
 /**
  * Resolves the effective base API URL based on runtime environment.
- * In accordance with release requirements, the application strictly uses the
- * production Render backend and will not fall back to localhost, tunnels, or emulator loopbacks.
+ * In development (__DEV__), local backend is permitted and automatically routes
+ * to localhost on Web and 10.0.2.2 on Android Emulator.
+ * In production release builds, Render backend is enforced as fallback.
  */
 export function getApiBaseUrl() {
   const envUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 
-  // If explicitly configured and valid HTTPS production endpoint:
+  // If explicitly configured:
   if (envUrl && envUrl.length > 0) {
-    const isDisallowed =
-      envUrl.includes('localhost') ||
-      envUrl.includes('127.0.0.1') ||
-      envUrl.includes('10.0.2.2') ||
-      envUrl.includes('trycloudflare') ||
-      envUrl.includes('ngrok');
-
-    if (!isDisallowed) {
-      return envUrl;
+    if (Platform.OS === 'android') {
+      if (envUrl.includes('localhost') || envUrl.includes('127.0.0.1')) {
+        return ANDROID_EMULATOR_API_URL;
+      }
     }
-    if (__DEV__) {
-      console.warn(`[Customer App Config] Disallowed local/tunnel URL detected (${envUrl}). Reverting to Render Production URL.`);
-    }
+    return envUrl;
   }
 
-  // Enforce Render Production backend URL as the absolute fallback across all platforms
-  return PRODUCTION_API_URL;
+  // Release builds fallback when no env variable is provided:
+  if (!__DEV__) {
+    return PRODUCTION_API_URL;
+  }
+
+  // Development defaults:
+  if (Platform.OS === 'android') {
+    return ANDROID_EMULATOR_API_URL;
+  }
+
+  return LOCALHOST_API_URL;
 }
 
 export const API_CONFIG = {

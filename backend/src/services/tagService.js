@@ -6,6 +6,7 @@ const {
   isValidLongitude,
   isValidGeoJsonCoordinates
 } = require('../utils/geoUtils');
+const { buildProviderStandardRateResponse } = require('../utils/pricingUtils');
 
 /**
  * Generate a URL-safe lowercase slug from a string
@@ -785,7 +786,7 @@ const toggleProviderTagStatus = async (userId, tagId, isActive) => {
  * Matches verified, active providers offering the exact tag.
  */
 const getProvidersByCategoryAndTag = async (categoryId, query = {}) => {
-  const { tagId, page = 1, limit = 20, search } = query;
+  const { tagId, serviceId, page = 1, limit = 20, search } = query;
 
   // Resolve Category
   let categoryDoc = null;
@@ -809,6 +810,15 @@ const getProvidersByCategoryAndTag = async (categoryId, query = {}) => {
     };
   }
 
+  const selectedService =
+    serviceId && mongoose.Types.ObjectId.isValid(serviceId)
+      ? await Service.findOne({
+          _id: serviceId,
+          category: categoryDoc._id,
+          isActive: true
+        }).lean()
+      : null;
+
   // Base Verified Provider Filter
   const filter = {
     verificationStatus: 'verified',
@@ -816,10 +826,15 @@ const getProvidersByCategoryAndTag = async (categoryId, query = {}) => {
     isDeleted: { $ne: true }
   };
 
+  if (selectedService?.provider) {
+    filter._id = selectedService.provider;
+  }
+
   let tagDoc = null;
+  let categoryTagIds = [];
 
   // If specific Tag ID is requested
-  if (tagId && String(tagId).trim() && String(tagId).trim() !== 'all') {
+  if (tagId && String(tagId).trim() && String(tagId).trim().toLowerCase() !== 'all') {
     const cleanTagId = String(tagId).trim();
     if (!mongoose.Types.ObjectId.isValid(cleanTagId)) {
       const err = new Error('Invalid service tag ID');
@@ -844,6 +859,7 @@ const getProvidersByCategoryAndTag = async (categoryId, query = {}) => {
         pagination: { total: 0, page: 1, limit: Number(limit), pages: 0 }
       };
     }
+    categoryTagIds = [tagDoc._id];
 
     // Require provider to have this tag approved and active
     filter.serviceTags = {
@@ -856,7 +872,7 @@ const getProvidersByCategoryAndTag = async (categoryId, query = {}) => {
   } else {
     // When "All" is selected in category:
     // Match providers offering this category (via categories array OR having any active approved tag in this category)
-    const categoryTagIds = await ServiceTag.find({
+    categoryTagIds = await ServiceTag.find({
       category: categoryDoc._id,
       isActive: true,
       isCustomerVisible: true,
@@ -865,7 +881,15 @@ const getProvidersByCategoryAndTag = async (categoryId, query = {}) => {
 
     filter.$or = [
       { categories: categoryDoc._id },
-      { 'serviceTags.tag': { $in: categoryTagIds } }
+      {
+        serviceTags: {
+          $elemMatch: {
+            tag: { $in: categoryTagIds },
+            isActive: true,
+            approvalStatus: 'approved'
+          }
+        }
+      }
     ];
   }
 
@@ -926,16 +950,45 @@ const getProvidersByCategoryAndTag = async (categoryId, query = {}) => {
     Provider.countDocuments(filter)
   ]);
 
+  const providerIds = providers.map((provider) => provider._id);
+  const providerServices = await Service.find({
+    provider: { $in: providerIds },
+    category: categoryDoc._id,
+    isActive: true
+  })
+    .select('provider price priceType')
+    .lean();
+  const servicesByProvider = new Map();
+  providerServices.forEach((service) => {
+    const key = String(service.provider);
+    const services = servicesByProvider.get(key) || [];
+    services.push(service);
+    servicesByProvider.set(key, services);
+  });
+
   // Enrich provider response with specific tag price and distance details
   const enrichedProviders = providers
     .filter((p) => p.user && p.user.isActive)
     .map((p) => {
-      let matchedTagConfig = null;
-      if (tagDoc) {
-        matchedTagConfig = p.serviceTags?.find(
-          (st) => String(st.tag?._id || st.tag) === String(tagDoc._id)
-        );
-      }
+      const providerServicesForCategory = servicesByProvider.get(String(p._id)) || [];
+      const rateInfo = buildProviderStandardRateResponse(p, {
+        categoryId: categoryDoc._id,
+        tagId: tagDoc?._id,
+        serviceId: selectedService?._id,
+        eligibleTagIds: categoryTagIds,
+        providerServices: providerServicesForCategory
+      });
+      const {
+        standardRate,
+        rateStatus,
+        amount,
+        pricingType,
+        sourceType,
+        tagId: resolvedTagId,
+        serviceId: resolvedServiceId,
+        servicePrice,
+        pricing
+      } = rateInfo;
 
       // Check service-specific location and radius
       const areaConfig = (p.serviceAreasConfig || []).find(
@@ -971,8 +1024,15 @@ const getProvidersByCategoryAndTag = async (categoryId, query = {}) => {
         bio: p.bio || '',
         isAvailable: p.isAvailable,
         verificationStatus: p.verificationStatus,
-        servicePrice: matchedTagConfig?.basePrice || p.pricing?.basePrice || 0,
-        pricingType: matchedTagConfig?.pricingType || 'fixed',
+        servicePrice,
+        standardRate,
+        pricing,
+        pricingType,
+        rateStatus,
+        amount,
+        sourceType,
+        tagId: resolvedTagId,
+        serviceId: resolvedServiceId,
         serviceArea: areaConfig || null,
         serviceRadiusKm: areaConfig?.radiusKm || null,
         distanceKm,

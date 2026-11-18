@@ -1,7 +1,8 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, borderRadius } from '../../theme';
+import { useTheme } from '../../context/ThemeContext';
+import { spacing, borderRadius } from '../../theme';
 
 export const Button = ({
   title,
@@ -16,31 +17,44 @@ export const Button = ({
   style,
   textStyle
 }) => {
+  const { colors, isDark } = useTheme();
   const isSpinning = Boolean(isLoading || loading);
 
   const getVariantStyle = () => {
     switch (variant) {
       case 'secondary':
-        return styles.btnSecondary;
+        return {
+          backgroundColor: colors.cardSecondary,
+          borderWidth: 1,
+          borderColor: colors.border
+        };
       case 'outline':
-        return styles.btnOutline;
+        return {
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          borderColor: colors.primary
+        };
       case 'danger':
-        return styles.btnDanger;
+        return {
+          backgroundColor: colors.danger
+        };
       default:
-        return styles.btnPrimary;
+        return {
+          backgroundColor: colors.primary
+        };
     }
   };
 
   const getTextStyle = () => {
     switch (variant) {
       case 'secondary':
-        return styles.textSecondary;
+        return { color: colors.textPrimary };
       case 'outline':
-        return styles.textOutline;
+        return { color: colors.primary };
       case 'danger':
-        return styles.textDanger;
+        return { color: '#FFFFFF' };
       default:
-        return styles.textPrimary;
+        return { color: '#FFFFFF' };
     }
   };
 
@@ -62,8 +76,8 @@ export const Button = ({
         variant === 'outline'
           ? colors.primary
           : variant === 'secondary'
-          ? colors.slate800
-          : colors.white;
+          ? colors.textPrimary
+          : '#FFFFFF';
       const iconSize = size === 'sm' ? 16 : size === 'lg' ? 22 : 18;
       return <Ionicons name={icon} size={iconSize} color={iconColor} />;
     }
@@ -86,7 +100,7 @@ export const Button = ({
       {isSpinning ? (
         <ActivityIndicator
           size="small"
-          color={variant === 'outline' ? colors.primary : colors.white}
+          color={variant === 'outline' ? colors.primary : '#FFFFFF'}
         />
       ) : (
         <View style={styles.contentRow}>
@@ -115,20 +129,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
-  btnPrimary: {
-    backgroundColor: colors.primary
-  },
-  btnSecondary: {
-    backgroundColor: colors.slate100
-  },
-  btnOutline: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: colors.primary
-  },
-  btnDanger: {
-    backgroundColor: colors.danger
-  },
   sizeSm: {
     paddingVertical: spacing.xs + 2,
     paddingHorizontal: spacing.md
@@ -147,18 +147,6 @@ const styles = StyleSheet.create({
   text: {
     fontWeight: '600',
     fontSize: 15
-  },
-  textPrimary: {
-    color: colors.white
-  },
-  textSecondary: {
-    color: colors.slate800
-  },
-  textOutline: {
-    color: colors.primary
-  },
-  textDanger: {
-    color: colors.white
   },
   iconLeft: {
     marginRight: spacing.sm

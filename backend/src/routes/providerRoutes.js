@@ -4,6 +4,7 @@ const providerController = require('../controllers/providerController');
 const tagController = require('../controllers/tagController');
 const reviewController = require('../controllers/reviewController');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { enforceTermsAcceptance } = require('../middleware/termsCheck');
 const { uploadSingleAvatar, uploadSingleKYCDocument, uploadSingleCertificationDocument } = require('../middleware/upload');
 const {
   validateObjectId,
@@ -22,6 +23,20 @@ const {
   validateUpdateService,
   validateUpdateServiceStatus
 } = require('../middleware/validation');
+
+// =========================================================
+// 0. PROVIDER TERMS & CONDITIONS ROUTES
+// =========================================================
+router.get('/terms', providerController.getTerms);
+router.post(
+  '/accept-terms',
+  authenticate,
+  requireRole('provider'),
+  providerController.acceptTerms
+);
+
+// Enforce Terms & Conditions acceptance for all provider self-management operations
+router.use('/me', authenticate, requireRole('provider'), enforceTermsAcceptance);
 
 // =========================================================
 // 1. PROVIDER SELF-MANAGEMENT ROUTES (role: provider)
@@ -190,6 +205,13 @@ router.post(
   requireRole('provider'),
   uploadSingleKYCDocument('document'),
   providerController.uploadKYCDocument
+);
+
+router.delete(
+  '/me/kyc/:docType',
+  authenticate,
+  requireRole('provider'),
+  providerController.deleteKYCDocument
 );
 
 router.post(

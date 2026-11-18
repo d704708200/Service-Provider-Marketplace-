@@ -64,7 +64,7 @@ const validateRegisterProvider = (req, res, next) => {
     errors.push('Experience years must be a non-negative number');
   }
 
-  const { categories } = req.body;
+  const { categories, acceptedTerms, termsVersion } = req.body;
   if (!categories || !Array.isArray(categories) || categories.length === 0) {
     errors.push('At least one service category must be selected');
   } else {
@@ -73,6 +73,14 @@ const validateRegisterProvider = (req, res, next) => {
     if (invalidId) {
       errors.push('One or more selected category IDs are invalid');
     }
+  }
+
+  const { CURRENT_TERMS_VERSION } = require('../constants/providerTerms');
+  if (acceptedTerms !== true) {
+    errors.push('You must explicitly accept the MENDROO Service Provider Terms & Conditions');
+  }
+  if (!termsVersion || termsVersion !== CURRENT_TERMS_VERSION) {
+    errors.push(`A valid accepted terms version (${CURRENT_TERMS_VERSION}) is required`);
   }
 
   if (errors.length > 0) {
@@ -501,15 +509,33 @@ const validateUpdateProviderProfile = (req, res, next) => {
   } = req.body;
 
   const errors = [];
+  const protectedKycFields = [
+    'aadhaarFrontImage',
+    'aadhaarFrontImagePublicId',
+    'aadhaarBackImage',
+    'aadhaarBackImagePublicId',
+    'panFrontImage',
+    'panFrontImagePublicId',
+    'panBackImage',
+    'panBackImagePublicId',
+    'kycStatus',
+    'kycSubmittedAt',
+    'kycReviewedAt',
+    'kycReviewedBy',
+    'kycRejectionReason',
+    'documents',
+    'serviceCertification'
+  ];
 
   // Check for forbidden fields
   if (role !== undefined || verificationStatus !== undefined || rating !== undefined ||
     reviewCount !== undefined || completedBookingsCount !== undefined ||
-    rejectionReason !== undefined || verifiedAt !== undefined || isActive !== undefined) {
+    rejectionReason !== undefined || verifiedAt !== undefined || isActive !== undefined ||
+    protectedKycFields.some((field) => Object.prototype.hasOwnProperty.call(req.body, field))) {
     return res.status(403).json({
       success: false,
       error: {
-        message: 'Security violation: Attempted to modify protected profile fields (role, verification status, rating, or account status)',
+        message: 'Security violation: Attempted to modify protected profile or KYC verification fields',
         statusCode: 403,
         timestamp: new Date().toISOString()
       }
@@ -629,12 +655,8 @@ const validateSubmitKYCDocuments = (req, res, next) => {
     errors.push('PAN front photo is required');
   }
 
-  // PAN back photo: required by specification unless configured optional
-  const panBackRequired = process.env.PAN_BACK_IMAGE_OPTIONAL !== 'true';
-  if (panBackRequired) {
-    if (!panBackImage || typeof panBackImage !== 'string' || !panBackImage.trim()) {
-      errors.push('PAN back photo is required');
-    }
+  if (!panBackImage || typeof panBackImage !== 'string' || !panBackImage.trim()) {
+    errors.push('PAN back photo is required');
   }
 
   if (errors.length > 0) {
@@ -652,16 +674,33 @@ const validateSubmitKYCDocuments = (req, res, next) => {
 };
 
 const validateReviewKYC = (req, res, next) => {
-  const { status, rejectionReason } = req.body;
+  const { status, rejectionReason, rejectedDocuments } = req.body;
   const errors = [];
 
-  const validStatuses = ['verified', 'rejected'];
-  if (!status || !validStatuses.includes(status)) {
-    errors.push(`KYC review status must be either 'verified' or 'rejected'`);
+  const normalizedStatus = typeof status === 'string' ? status.toLowerCase() : '';
+  const validStatuses = ['approved', 'verified', 'rejected'];
+  if (!validStatuses.includes(normalizedStatus)) {
+    errors.push(`KYC review status must be 'approved' or 'rejected'`);
   }
 
-  if (status === 'rejected' && (!rejectionReason || typeof rejectionReason !== 'string' || !rejectionReason.trim())) {
+  if (normalizedStatus === 'rejected' && (!rejectionReason || typeof rejectionReason !== 'string' || !rejectionReason.trim())) {
     errors.push('A rejection reason is mandatory when rejecting KYC verification');
+  }
+
+  const validDocumentTypes = ['aadhaar_front', 'aadhaar_back', 'pan_front', 'pan_back'];
+  if (
+    rejectedDocuments !== undefined &&
+    (
+      !Array.isArray(rejectedDocuments) ||
+      rejectedDocuments.length === 0 ||
+      rejectedDocuments.some((type) => !validDocumentTypes.includes(type)) ||
+      new Set(rejectedDocuments).size !== rejectedDocuments.length
+    )
+  ) {
+    errors.push('Select one or more valid KYC documents to reject');
+  }
+  if (normalizedStatus !== 'rejected' && rejectedDocuments !== undefined) {
+    errors.push('Rejected documents can only be specified when rejecting KYC');
   }
 
   if (errors.length > 0) {

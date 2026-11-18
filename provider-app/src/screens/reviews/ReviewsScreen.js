@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { reviewApi } from '../../services/api';
 import { getApiBaseUrl } from '../../config/env';
 import { Header, Card, Badge, EmptyState, ErrorView } from '../../components/common';
-import colors from '../../theme/colors';
+import { useTheme } from '../../context/ThemeContext';
 import { spacing, typography, borderRadius } from '../../theme';
 
 const STAR_FILTERS = [
@@ -29,6 +29,8 @@ const STAR_FILTERS = [
 
 export default function ReviewsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const [reviews, setReviews] = useState([]);
   const [stats, setStats] = useState({
@@ -405,7 +407,7 @@ export default function ReviewsScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background
@@ -415,9 +417,9 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     padding: spacing.lg,
-    backgroundColor: '#161424',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#262238',
+    borderColor: colors.border,
     borderRadius: borderRadius.lg,
     marginBottom: spacing.lg
   },
@@ -434,7 +436,7 @@ const styles = StyleSheet.create({
   bigScoreText: {
     fontSize: 42,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     letterSpacing: -1
   },
   starsRow: {
@@ -445,7 +447,7 @@ const styles = StyleSheet.create({
   },
   totalReviewsText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     textAlign: 'center'
   },
   distributionContainer: {
@@ -461,13 +463,13 @@ const styles = StyleSheet.create({
   distStarLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#CBD5E1',
+    color: colors.textPrimary,
     width: 24
   },
   distBarTrack: {
     flex: 1,
     height: 6,
-    backgroundColor: '#262238',
+    backgroundColor: isDark ? '#262238' : colors.border,
     borderRadius: 3,
     overflow: 'hidden'
   },
@@ -478,7 +480,7 @@ const styles = StyleSheet.create({
   },
   distCountLabel: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     width: 28,
     textAlign: 'right'
   },
@@ -488,7 +490,7 @@ const styles = StyleSheet.create({
   filterSectionTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: spacing.xs
@@ -502,18 +504,18 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 14,
     borderRadius: borderRadius.full,
-    backgroundColor: '#181628',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#28233D'
+    borderColor: colors.border
   },
   filterChipActive: {
-    backgroundColor: '#7C3AED',
-    borderColor: '#9061F9'
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   filterChipText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#9CA3AF'
+    color: colors.textSecondary
   },
   filterChipTextActive: {
     color: '#FFFFFF'
@@ -524,7 +526,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   loadingText: {
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontSize: 14,
     marginTop: spacing.sm
   },
@@ -534,14 +536,14 @@ const styles = StyleSheet.create({
   reviewsListHeading: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     marginBottom: spacing.sm
   },
   reviewCard: {
     padding: spacing.md,
-    backgroundColor: '#161424',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#242036',
+    borderColor: colors.border,
     borderRadius: borderRadius.md,
     marginBottom: spacing.md
   },
@@ -561,22 +563,22 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#262238'
+    backgroundColor: isDark ? '#262238' : colors.cardSecondary
   },
   avatarFallback: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#2D2250',
+    backgroundColor: isDark ? '#2D2250' : colors.cardSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#4C3888'
+    borderColor: colors.border
   },
   avatarInitials: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#DDD6FE'
+    color: colors.primary
   },
   customerMeta: {
     flex: 1
@@ -584,20 +586,20 @@ const styles = StyleSheet.create({
   customerName: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: colors.textPrimary
   },
   reviewDate: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     marginTop: 1
   },
   ratingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#2A1F0D',
+    backgroundColor: isDark ? '#2A1F0D' : '#FEF3C7',
     borderWidth: 1,
-    borderColor: '#78350F',
+    borderColor: isDark ? '#78350F' : '#FCD34D',
     paddingVertical: 3,
     paddingHorizontal: 8,
     borderRadius: borderRadius.full
@@ -605,7 +607,7 @@ const styles = StyleSheet.create({
   ratingBadgeText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#FBBF24'
+    color: isDark ? '#FBBF24' : '#D97706'
   },
   bookingMetaRow: {
     flexDirection: 'row',
@@ -618,7 +620,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#1F1A38',
+    backgroundColor: isDark ? '#1F1A38' : colors.cardSecondary,
     paddingVertical: 3,
     paddingHorizontal: 8,
     borderRadius: 4
@@ -626,26 +628,26 @@ const styles = StyleSheet.create({
   servicePillText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#C4B5FD'
+    color: colors.primary
   },
   bookingRefPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#1F202B',
+    backgroundColor: isDark ? '#1F202B' : colors.cardSecondary,
     paddingVertical: 3,
     paddingHorizontal: 8,
     borderRadius: 4
   },
   bookingRefText: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace'
   },
   reviewComment: {
     fontSize: 13,
     lineHeight: 19,
-    color: '#E2E8F0',
+    color: colors.textPrimary,
     marginTop: 4
   },
   loadMoreBtn: {
@@ -654,17 +656,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: spacing.md,
-    backgroundColor: '#1C1930',
+    backgroundColor: isDark ? '#1C1930' : colors.cardSecondary,
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: '#2F2752',
+    borderColor: colors.border,
     marginTop: spacing.xs,
     marginBottom: spacing.md
   },
   loadMoreText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#A78BFA'
+    color: colors.primary
   }
 });
 

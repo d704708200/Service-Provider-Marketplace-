@@ -314,23 +314,33 @@ const uploadKYCDocument = async (req, res, next) => {
       });
     }
 
-    const { docType } = req.body; // e.g. 'aadhaar_front', 'aadhaar_back', 'pan_front', 'pan_back'
-    const cleanDocType = (docType || 'document').replace(/[^a-zA-Z0-9_-]/g, '');
-
-    const { uploadImage } = require('../config/cloudinary');
-    const uploadResult = await uploadImage(req.file, {
-      folder: 'marketplace/kyc_documents',
-      public_id: `kyc_${req.user._id}_${cleanDocType}_${Date.now()}`
-    });
+    const result = await providerService.uploadKYCDocument(
+      req.user._id,
+      req.body.docType,
+      req.file
+    );
 
     res.status(200).json({
       success: true,
       message: 'Document uploaded successfully',
-      data: {
-        documentUrl: uploadResult.url,
-        docType: cleanDocType,
-        storage: uploadResult.storage
-      }
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/providers/me/kyc/:docType
+ * Authenticated provider removes a draft or rejected KYC document.
+ */
+const deleteKYCDocument = async (req, res, next) => {
+  try {
+    const result = await providerService.deleteKYCDocument(req.user._id, req.params.docType);
+    res.status(200).json({
+      success: true,
+      message: 'KYC document removed successfully',
+      data: result
     });
   } catch (error) {
     next(error);
@@ -346,7 +356,7 @@ const submitKYC = async (req, res, next) => {
     const result = await providerService.submitKYCDocuments(req.user._id, req.body);
     res.status(200).json({
       success: true,
-      message: 'KYC documents submitted successfully. Verification is now under review.',
+      message: 'Documents submitted successfully. Waiting for admin approval.',
       data: result
     });
   } catch (error) {
@@ -526,6 +536,7 @@ const reviewDocument = async (req, res, next) => {
     const updated = await providerService.reviewDocument(
       req.params.id,
       req.params.documentId,
+      req.user._id,
       req.body
     );
     res.status(200).json({
@@ -544,7 +555,11 @@ const reviewDocument = async (req, res, next) => {
  */
 const updateProviderVerification = async (req, res, next) => {
   try {
-    const updated = await providerService.updateProviderVerification(req.params.id, req.body);
+    const updated = await providerService.updateProviderVerification(
+      req.params.id,
+      req.user._id,
+      req.body
+    );
     res.status(200).json({
       success: true,
       message: `Provider verification status updated to '${req.body.status}'`,
@@ -761,7 +776,49 @@ const deleteProviderServiceAreaConfig = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/providers/terms
+ * Public or authenticated retrieval of canonical provider terms and acceptance info
+ */
+const getTerms = async (req, res, next) => {
+  try {
+    const userId = req.user ? req.user._id : null;
+    const result = await providerService.getTerms(userId);
+    res.status(200).json({
+      success: true,
+      message: 'Provider terms and conditions retrieved successfully',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/providers/accept-terms
+ * Authenticated existing provider accepts the current version of Terms
+ */
+const acceptTerms = async (req, res, next) => {
+  try {
+    const { termsVersion, termsHash } = req.body;
+    const result = await providerService.acceptTerms(req.user._id, {
+      termsVersion,
+      termsHash,
+      ipAddress: req.ip || req.connection?.remoteAddress
+    });
+    res.status(200).json({
+      success: true,
+      message: 'MENDROO Service Provider Terms & Conditions accepted successfully',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
+  getTerms,
+  acceptTerms,
   getProviderMe,
   updateProviderMe,
   uploadProviderAvatar,
@@ -782,6 +839,7 @@ module.exports = {
   deleteProviderServiceAreaConfig,
   submitDocument,
   uploadKYCDocument,
+  deleteKYCDocument,
   submitKYC,
   reviewKYC,
   deleteDocument,

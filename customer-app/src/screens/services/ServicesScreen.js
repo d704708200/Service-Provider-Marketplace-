@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { serviceApi, categoryApi } from '../../services/api';
 import { Input, Card, Badge, LoadingScreen, ErrorView, EmptyState } from '../../components/common';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius } from '../../theme';
 import { PRICING_TYPES, PRICING_LABELS } from '../../constants';
 
 export default function ServicesScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const [services, setServices] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -216,13 +218,13 @@ export default function ServicesScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background
   },
   headerSection: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.card,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
@@ -230,7 +232,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     ...typography.titleLarge,
-    color: colors.slate900,
+    color: colors.textPrimary,
     marginBottom: spacing.xs
   },
   searchInputContainer: {
@@ -244,19 +246,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
     borderRadius: borderRadius.full,
-    backgroundColor: colors.slate100,
+    backgroundColor: colors.cardSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
     marginRight: spacing.xs
   },
   activeChip: {
-    backgroundColor: colors.primary
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   chipText: {
     ...typography.caption,
-    color: colors.slate700,
+    color: colors.textSecondary,
     fontWeight: '600'
   },
   activeChipText: {
-    color: colors.white
+    color: '#FFFFFF'
   },
   listContent: {
     padding: spacing.lg,
@@ -277,7 +282,7 @@ const styles = StyleSheet.create({
   },
   serviceName: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: colors.textPrimary,
     marginBottom: 2
   },
   categoryName: {
@@ -287,7 +292,7 @@ const styles = StyleSheet.create({
   },
   desc: {
     ...typography.bodySmall,
-    color: colors.slate600,
+    color: colors.textSecondary,
     marginBottom: spacing.md
   },
   cardFooter: {
@@ -295,7 +300,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: colors.slate100,
+    borderTopColor: colors.border,
     paddingTop: spacing.sm
   },
   priceRow: {
@@ -305,16 +310,16 @@ const styles = StyleSheet.create({
   priceSymbol: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.slate900
+    color: colors.textPrimary
   },
   priceAmount: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: colors.textPrimary,
     fontWeight: '700'
   },
   priceUnit: {
     ...typography.caption,
-    color: colors.slate500,
+    color: colors.textMuted,
     marginLeft: 2
   },
   durationRow: {
@@ -324,6 +329,6 @@ const styles = StyleSheet.create({
   },
   durationText: {
     ...typography.caption,
-    color: colors.slate500
+    color: colors.textSecondary
   }
 });

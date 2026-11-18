@@ -9,9 +9,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocation } from '../../context/LocationContext';
-import colors from '../../theme/colors';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function LocationPermissionModal() {
+  const { colors, isDark } = useTheme();
   const {
     showPermissionModal,
     setShowPermissionModal,
@@ -35,19 +36,36 @@ export default function LocationPermissionModal() {
       onRequestClose={handleClose}
     >
       <Pressable
-        style={styles.overlay}
+        style={[styles.overlay, { backgroundColor: colors.overlay }]}
         onPress={handleClose}
       >
-        <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-          <View style={styles.iconCircle}>
-            <Ionicons name="location-sharp" size={32} color="#A78BFA" />
+        <Pressable
+          style={[
+            styles.modalCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border
+            }
+          ]}
+          onPress={(e) => e.stopPropagation()}
+        >
+          <View
+            style={[
+              styles.iconCircle,
+              {
+                backgroundColor: colors.primarySubtle,
+                borderColor: colors.borderLight
+              }
+            ]}
+          >
+            <Ionicons name="location-sharp" size={32} color={colors.primary} />
           </View>
 
-          <Text style={styles.title}>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
             {isBlocked ? 'Location Permission Required' : 'Enable Device Location'}
           </Text>
 
-          <Text style={styles.description}>
+          <Text style={[styles.description, { color: colors.textSecondary }]}>
             {isBlocked
               ? 'Location access is permanently disabled for this app. Please open App Settings and grant location permission to discover nearby service providers.'
               : 'Enable location to find service providers near you, estimate arrival times, and view accurate local rates.'}
@@ -56,26 +74,26 @@ export default function LocationPermissionModal() {
           <View style={styles.buttonCol}>
             {isBlocked ? (
               <TouchableOpacity
-                style={styles.primaryBtn}
+                style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
                 onPress={() => {
                   openAppSettings();
                   handleClose();
                 }}
                 activeOpacity={0.8}
               >
-                <Ionicons name="settings-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={styles.primaryBtnText}>Open Settings</Text>
+                <Text style={styles.primaryBtnText}>Open App Settings</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={requestPermission}
+                style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+                onPress={async () => {
+                  await requestPermission();
+                }}
                 disabled={isLoading}
                 activeOpacity={0.8}
               >
-                <Ionicons name="navigate-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
                 <Text style={styles.primaryBtnText}>
-                  {isLoading ? 'Fetching Location...' : 'Enable Location'}
+                  {isLoading ? 'Checking...' : 'Allow Location Access'}
                 </Text>
               </TouchableOpacity>
             )}
@@ -85,7 +103,9 @@ export default function LocationPermissionModal() {
               onPress={handleClose}
               activeOpacity={0.7}
             >
-              <Text style={styles.cancelBtnText}>Not Now</Text>
+              <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>
+                Not Now / Enter Manually
+              </Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -97,18 +117,15 @@ export default function LocationPermissionModal() {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24
+    padding: 20
   },
   modalCard: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: '#161420',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#2D2742',
     padding: 24,
     alignItems: 'center'
   },
@@ -116,9 +133,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#261F3D',
     borderWidth: 1,
-    borderColor: '#3D3160',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16
@@ -126,13 +141,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#FFFFFF',
     textAlign: 'center',
     marginBottom: 8
   },
   description: {
     fontSize: 13,
-    color: '#9CA3AF',
     textAlign: 'center',
     lineHeight: 19,
     marginBottom: 20
@@ -143,7 +156,6 @@ const styles = StyleSheet.create({
   },
   primaryBtn: {
     width: '100%',
-    backgroundColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 13,
     flexDirection: 'row',
@@ -163,7 +175,6 @@ const styles = StyleSheet.create({
   },
   cancelBtnText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#71717A'
+    fontWeight: '600'
   }
 });

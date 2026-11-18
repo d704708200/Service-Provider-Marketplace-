@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../context/ThemeContext';
 import { providerApi, reviewApi, serviceApi } from '../../services/api';
 import { Header, Card, Badge, Button, LoadingScreen, ErrorView } from '../../components/common';
 import { formatRating, formatReviewCount, formatExperience } from '../../utils/formatters';
-import colors from '../../theme/colors';
 import { spacing, typography, borderRadius, shadows } from '../../theme';
 
 export default function ProviderDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const {
     providerId,
     selectedServiceId,
@@ -22,7 +24,9 @@ export default function ProviderDetailScreen({ route, navigation }) {
     tagId,
     tagName,
     categoryId,
-    categoryName
+    categoryName,
+    standardRate,
+    rateStatus
   } = route.params || {};
   const targetServiceId = selectedServiceId || serviceId;
 
@@ -291,7 +295,13 @@ export default function ProviderDetailScreen({ route, navigation }) {
                           providerId: provider._id,
                           provider,
                           serviceId: srv._id,
-                          service: srv
+                          service: srv,
+                          tagId: tagId || undefined,
+                          tagName: tagName || undefined,
+                          categoryId: categoryId || undefined,
+                          categoryName: categoryName || undefined,
+                          standardRate,
+                          rateStatus
                         })
                       }
                     />
@@ -413,7 +423,9 @@ export default function ProviderDetailScreen({ route, navigation }) {
               tagId: tagId || undefined,
               tagName: tagName || undefined,
               categoryId: categoryId || undefined,
-              categoryName: categoryName || undefined
+              categoryName: categoryName || undefined,
+              standardRate,
+              rateStatus
             });
           }}
           style={styles.actionBtn}
@@ -424,7 +436,7 @@ export default function ProviderDetailScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background
@@ -448,7 +460,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.primarySubtle,
+    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.20)' : 'rgba(124, 58, 237, 0.10)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.lg
@@ -464,7 +476,7 @@ const styles = StyleSheet.create({
   },
   nameText: {
     ...typography.titleMedium,
-    color: colors.slate900,
+    color: colors.textPrimary,
     flexShrink: 1
   },
   verifiedBadge: {
@@ -478,11 +490,13 @@ const styles = StyleSheet.create({
   },
   locText: {
     ...typography.bodySmall,
-    color: colors.slate500
+    color: colors.textSecondary
   },
   statsRow: {
     flexDirection: 'row',
-    backgroundColor: colors.slate50,
+    backgroundColor: colors.cardSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: borderRadius.md,
     padding: spacing.md,
     alignItems: 'center'
@@ -499,12 +513,12 @@ const styles = StyleSheet.create({
   },
   statValue: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: colors.textPrimary,
     fontWeight: '700'
   },
   statLabel: {
     ...typography.caption,
-    color: colors.slate500
+    color: colors.textSecondary
   },
   statDivider: {
     width: 1,
@@ -516,12 +530,12 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.titleSmall,
-    color: colors.slate900,
+    color: colors.textPrimary,
     marginBottom: spacing.md
   },
   bodyText: {
     ...typography.bodyMedium,
-    color: colors.slate700,
+    color: colors.textSecondary,
     lineHeight: 22
   },
   categoriesWrap: {
@@ -533,8 +547,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs
   },
   trustCard: {
-    backgroundColor: colors.successSubtle,
-    borderColor: '#A7F3D0',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.12)' : colors.successSubtle,
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#A7F3D0',
     marginBottom: spacing.lg
   },
   trustRow: {
@@ -547,12 +561,12 @@ const styles = StyleSheet.create({
   },
   trustTitle: {
     ...typography.titleSmall,
-    color: '#065F46',
+    color: isDark ? '#A7F3D0' : '#065F46',
     marginBottom: 2
   },
   trustDesc: {
     ...typography.bodySmall,
-    color: '#047857',
+    color: isDark ? '#6EE7B7' : '#047857',
     lineHeight: 18
   },
   bottomBar: {
@@ -560,21 +574,21 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: colors.background, // Dark screen background '#0B0B0E'
+    backgroundColor: colors.card,
     borderTopWidth: 1,
-    borderTopColor: colors.border, // Dark card border '#252136'
+    borderTopColor: colors.border,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     ...shadows.elevated
   },
   actionBtn: {
     width: '100%',
-    backgroundColor: colors.primary, // Mendroo purple '#7C3AED'
+    backgroundColor: colors.primary,
     borderRadius: borderRadius.lg,
     paddingVertical: spacing.md + 2
   },
   actionBtnText: {
-    color: colors.white,
+    color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 16
   }

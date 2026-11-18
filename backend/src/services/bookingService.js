@@ -14,6 +14,7 @@ const notificationService = require('./notificationService');
 const serviceRadiusService = require('./serviceRadiusService');
 const { calculateHaversineDistanceKm, isValidGeoJsonCoordinates } = require('../utils/geoUtils');
 const { applyWarrantyContactPolicy, getWarrantyContactStatus } = require('../utils/warrantyUtils');
+const { resolveProviderStandardRate } = require('../utils/pricingUtils');
 
 /**
  * Generate unique, human-readable booking reference (e.g. BK-20261013-A1B2)
@@ -25,24 +26,40 @@ const generateBookingReference = () => {
 };
 
 const getTrustedBookingPricing = (service, provider, resolvedTag) => {
-  let amount = Number(service.price);
-  let pricingType = service.priceType || 'fixed';
+  let amount = Number(service?.price);
+  let pricingType = service?.priceType || 'fixed';
 
-  if (provider && resolvedTag) {
-    const tagConfig = provider.serviceTags?.find(
-      (entry) =>
-        String(entry.tag?._id || entry.tag) === String(resolvedTag._id) &&
-        entry.isActive !== false &&
-        entry.approvalStatus === 'approved'
-    );
-    amount = Number(tagConfig?.basePrice);
-    pricingType = tagConfig?.pricingType || 'fixed';
+  if (provider) {
+    const rateResult = resolveProviderStandardRate(provider, {
+      categoryId: service?.category?._id || service?.category,
+      tagId: resolvedTag?._id || resolvedTag,
+      serviceId: service?._id
+    });
+
+    if (resolvedTag) {
+      if (
+        !rateResult.standardRate ||
+        !Number.isFinite(rateResult.standardRate.amount) ||
+        rateResult.standardRate.amount <= 0
+      ) {
+        const error = new Error('Provider has no valid configured rate for this service tag');
+        error.statusCode = 400;
+        throw error;
+      }
+      amount = rateResult.standardRate.amount;
+      pricingType = rateResult.standardRate.pricingType;
+    } else if (rateResult.standardRate && Number.isFinite(rateResult.standardRate.amount) && rateResult.standardRate.amount > 0) {
+      amount = rateResult.standardRate.amount;
+      pricingType = rateResult.standardRate.pricingType;
+    }
   }
 
   if (!Number.isFinite(amount) || amount <= 0) {
     const err = new Error(
       resolvedTag && provider
         ? 'The selected provider has no valid configured rate for this service tag'
+        : provider
+        ? 'The selected provider has no valid configured rate for this service'
         : 'The selected service has no valid configured price'
     );
     err.statusCode = 400;
