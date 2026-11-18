@@ -372,7 +372,7 @@ export default function SearchScreen({ navigation }) {
                 ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
                 ListEmptyComponent={
                   <View style={styles.emptyContainer}>
-                    <Ionicons name="search-outline" size={40} color="#36314D" />
+                    <Ionicons name="search-outline" size={40} color={colors.borderLight || colors.border} />
                     <Text style={styles.emptyText}>
                       No verified professionals found
                       {selectedCategory ? ` for '${selectedCategory}'` : ''}

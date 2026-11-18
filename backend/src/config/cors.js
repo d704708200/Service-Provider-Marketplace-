@@ -70,31 +70,52 @@ const isOriginAllowed = (origin) => {
   return false;
 };
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (isOriginAllowed(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS blocked for origin: ${origin}`));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'Accept',
-    'Origin',
-    'X-Requested-With',
-    'Access-Control-Request-Method',
-    'Access-Control-Request-Headers'
-  ],
-  exposedHeaders: ['Content-Range', 'X-Content-Range'],
-  maxAge: 86400, // 24 hours preflight cache
-  optionsSuccessStatus: 204
+const defaultAllowedHeaders = [
+  'Content-Type',
+  'Authorization',
+  'Cache-Control',
+  'Pragma',
+  'Expires',
+  'Accept',
+  'Origin',
+  'X-Requested-With',
+  'Access-Control-Request-Method',
+  'Access-Control-Request-Headers',
+  'X-CSRF-Token'
+];
+
+const corsOptionsDelegate = (req, callback) => {
+  const origin = req.header('Origin');
+  if (!isOriginAllowed(origin)) {
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  }
+
+  // Merge default allowed headers with any client-requested headers
+  const requestedHeaders = req.header('Access-Control-Request-Headers');
+  let allowedHeaders = [...defaultAllowedHeaders];
+  if (requestedHeaders) {
+    const parsed = requestedHeaders.split(',').map((h) => h.trim());
+    parsed.forEach((h) => {
+      if (!allowedHeaders.some((existing) => existing.toLowerCase() === h.toLowerCase())) {
+        allowedHeaders.push(h);
+      }
+    });
+  }
+
+  const options = {
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders,
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    maxAge: 86400, // 24 hours preflight cache
+    optionsSuccessStatus: 204
+  };
+
+  callback(null, options);
 };
 
-const corsMiddleware = cors(corsOptions);
+const corsMiddleware = cors(corsOptionsDelegate);
 
 module.exports = corsMiddleware;
 module.exports.corsMiddleware = corsMiddleware;

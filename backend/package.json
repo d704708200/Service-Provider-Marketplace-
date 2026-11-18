@@ -17,6 +17,7 @@
     "test:provider-contact": "node test_provider_contact_visibility.js",
     "test:provider-rates": "node test_provider_standard_rates.js",
     "test:provider-kyc": "node test_provider_kyc_workflow.js",
+    "test:cors": "node test_production_cors_preflight.js",
     "seed:admin": "node src/seeds/provisionAdmin.js",
     "seed:provider": "node src/seeds/provisionProvider.js"
   },

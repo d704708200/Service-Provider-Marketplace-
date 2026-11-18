@@ -231,7 +231,7 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.locationText} numberOfLines={1}>
                 {isLocationLoading ? 'Locating...' : displayLocation}
               </Text>
-              <Ionicons name="chevron-forward" size={11} color="#9CA3AF" />
+              <Ionicons name="chevron-forward" size={11} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
         </View>
@@ -241,8 +241,9 @@ export default function HomeScreen({ navigation }) {
             style={styles.headerIconBtn}
             onPress={() => navigation.navigate('SearchTab')}
             activeOpacity={0.7}
+            accessibilityLabel="Search"
           >
-            <Ionicons name="search-outline" size={18} color="#FFFFFF" />
+            <Ionicons name="search-outline" size={20} color={colors.textPrimary} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerIconBtn}
@@ -250,7 +251,7 @@ export default function HomeScreen({ navigation }) {
             activeOpacity={0.7}
             accessibilityLabel="Notifications"
           >
-            <Ionicons name="notifications-outline" size={18} color="#FFFFFF" />
+            <Ionicons name="notifications-outline" size={20} color={colors.textPrimary} />
             {unreadCount > 0 && (
               <View style={styles.headerBadge}>
                 <Text style={styles.headerBadgeText}>
@@ -429,7 +430,7 @@ export default function HomeScreen({ navigation }) {
                     </View>
                     {provider.pricing?.basePrice ? (
                       <Text style={styles.topRatedPrice}>
-                        From <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>₹{provider.pricing.basePrice}</Text>
+                        From <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>₹{provider.pricing.basePrice}</Text>
                       </Text>
                     ) : null}
                   </View>
@@ -661,9 +662,9 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     gap: 10
   },
   headerIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
@@ -673,8 +674,8 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   },
   headerBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
+    top: -3,
+    right: -3,
     backgroundColor: '#EF4444',
     borderRadius: 9,
     minWidth: 18,
@@ -683,7 +684,8 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
     borderWidth: 1.5,
-    borderColor: colors.card
+    borderColor: colors.card,
+    zIndex: 10
   },
   headerBadgeText: {
     color: '#FFFFFF',

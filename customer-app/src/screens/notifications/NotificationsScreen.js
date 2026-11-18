@@ -186,7 +186,7 @@ export default function NotificationsScreen({ navigation }) {
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons name="notifications-outline" size={48} color="#252136" />
+              <Ionicons name="notifications-outline" size={48} color={colors.borderLight || colors.border} />
               <Text style={styles.emptyText}>No notifications right now</Text>
             </View>
           }

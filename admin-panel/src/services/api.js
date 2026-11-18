@@ -201,15 +201,13 @@ export const providerApi = {
   },
   getPendingVerifications: async (params = {}) => {
     const response = await api.get('/providers/admin/pending', {
-      params: { ...params, _t: Date.now() },
-      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' }
+      params: { ...params, _t: Date.now() }
     });
     return response.data;
   },
   getAdminProviderById: async (id) => {
     const response = await api.get(`/providers/admin/${id}`, {
-      params: { _t: Date.now() },
-      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' }
+      params: { _t: Date.now() }
     });
     return response.data;
   },
