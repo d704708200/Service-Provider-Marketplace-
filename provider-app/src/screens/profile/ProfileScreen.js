@@ -404,12 +404,12 @@ export default function ProfileScreen({ navigation }) {
             activeOpacity={0.7}
           >
             <View style={styles.navLeft}>
-              <View style={[styles.iconCircle, { backgroundColor: '#2E1065' }]}>
-                <Ionicons name="wallet-outline" size={18} color="#C4B5FD" />
+              <View style={[styles.iconCircle, { backgroundColor: isDark ? '#2E1065' : '#EDE9FE' }]}>
+                <Ionicons name="wallet-outline" size={18} color={isDark ? '#C4B5FD' : colors.primary} />
               </View>
-              <View>
-                <Text style={styles.navLabel}>Wallet & Payouts</Text>
-                <Text style={styles.navSub}>Balance, earnings breakdown & withdrawals</Text>
+              <View style={styles.navTextCol}>
+                <Text style={styles.navLabel} numberOfLines={1}>Wallet & Payouts</Text>
+                <Text style={styles.navSub} numberOfLines={1}>Balance, earnings breakdown & withdrawals</Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
@@ -424,11 +424,11 @@ export default function ProfileScreen({ navigation }) {
           >
             <View style={styles.navLeft}>
               <View style={styles.iconCircle}>
-                <Ionicons name="calendar-outline" size={18} color="#A78BFA" />
+                <Ionicons name="calendar-outline" size={18} color={isDark ? '#A78BFA' : colors.primary} />
               </View>
-              <View>
-                <Text style={styles.navLabel}>Weekly Availability Schedule</Text>
-                <Text style={styles.navSub}>Set working hours for each day</Text>
+              <View style={styles.navTextCol}>
+                <Text style={styles.navLabel} numberOfLines={1}>Weekly Availability Schedule</Text>
+                <Text style={styles.navSub} numberOfLines={1}>Set working hours for each day</Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
@@ -443,11 +443,11 @@ export default function ProfileScreen({ navigation }) {
           >
             <View style={styles.navLeft}>
               <View style={styles.iconCircle}>
-                <Ionicons name="map-outline" size={18} color="#A78BFA" />
+                <Ionicons name="map-outline" size={18} color={isDark ? '#A78BFA' : colors.primary} />
               </View>
-              <View>
-                <Text style={styles.navLabel}>Service Areas & Zip Codes</Text>
-                <Text style={styles.navSub}>Manage coverage territories</Text>
+              <View style={styles.navTextCol}>
+                <Text style={styles.navLabel} numberOfLines={1}>Service Areas & Zip Codes</Text>
+                <Text style={styles.navSub} numberOfLines={1}>Manage coverage territories</Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
@@ -461,15 +461,15 @@ export default function ProfileScreen({ navigation }) {
             activeOpacity={0.7}
           >
             <View style={styles.navLeft}>
-              <View style={[styles.iconCircle, { backgroundColor: '#2E1065' }]}>
-                <Ionicons name="shield-checkmark" size={18} color="#C4B5FD" />
+              <View style={[styles.iconCircle, { backgroundColor: isDark ? '#2E1065' : '#EDE9FE' }]}>
+                <Ionicons name="shield-checkmark" size={18} color={isDark ? '#C4B5FD' : colors.primary} />
               </View>
-              <View>
-                <Text style={styles.navLabel}>KYC Verification</Text>
-                <Text style={styles.navSub}>Aadhaar & PAN document compliance</Text>
+              <View style={styles.navTextCol}>
+                <Text style={styles.navLabel} numberOfLines={1}>KYC Verification</Text>
+                <Text style={styles.navSub} numberOfLines={1}>Aadhaar & PAN document compliance</Text>
               </View>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={styles.navRight}>
               <View style={[
                 styles.kycNavBadge,
                 isKycApproved ? styles.kycNavBadgeVerified :
@@ -500,11 +500,11 @@ export default function ProfileScreen({ navigation }) {
           >
             <View style={styles.navLeft}>
               <View style={styles.iconCircle}>
-                <Ionicons name="pricetag-outline" size={18} color="#A78BFA" />
+                <Ionicons name="pricetag-outline" size={18} color={isDark ? '#A78BFA' : colors.primary} />
               </View>
-              <View>
-                <Text style={styles.navLabel}>Services & Pricing Catalog</Text>
-                <Text style={styles.navSub}>Configure service offerings & rates</Text>
+              <View style={styles.navTextCol}>
+                <Text style={styles.navLabel} numberOfLines={1}>Services & Pricing Catalog</Text>
+                <Text style={styles.navSub} numberOfLines={1}>Configure service offerings & rates</Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
@@ -601,15 +601,15 @@ export default function ProfileScreen({ navigation }) {
             activeOpacity={0.7}
           >
             <View style={styles.navLeft}>
-              <View style={[styles.iconCircle, { backgroundColor: '#2E1065' }]}>
-                <Ionicons name="document-text-outline" size={18} color="#C4B5FD" />
+              <View style={[styles.iconCircle, { backgroundColor: isDark ? '#2E1065' : '#EDE9FE' }]}>
+                <Ionicons name="document-text-outline" size={18} color={isDark ? '#C4B5FD' : colors.primary} />
               </View>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={styles.navLabel}>Provider Terms & Conditions</Text>
-                <Text style={styles.navSub}>v{CURRENT_TERMS_VERSION} • Effective: {TERMS_EFFECTIVE_DATE}</Text>
+              <View style={styles.navTextCol}>
+                <Text style={styles.navLabel} numberOfLines={1} ellipsizeMode="tail">Provider Terms & Conditions</Text>
+                <Text style={styles.navSub} numberOfLines={1} ellipsizeMode="tail">v{CURRENT_TERMS_VERSION} • Effective: {TERMS_EFFECTIVE_DATE}</Text>
               </View>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={styles.navRight}>
               <Badge
                 label={profile?.acceptedTermsVersion === CURRENT_TERMS_VERSION ? 'ACCEPTED' : 'PENDING'}
                 variant={profile?.acceptedTermsVersion === CURRENT_TERMS_VERSION ? 'success' : 'warning'}
@@ -641,9 +641,9 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.val}>1.0.0 (Phase 11)</Text>
           </View>
           <View style={styles.divider} />
-          <View style={styles.row}>
-            <Text style={styles.label}>API Endpoint</Text>
-            <Text style={styles.val} numberOfLines={1}>
+          <View style={[styles.row, { alignItems: 'flex-start' }]}>
+            <Text style={[styles.label, { flexShrink: 0, marginRight: spacing.sm, marginTop: 2 }]}>API Endpoint</Text>
+            <Text style={[styles.val, styles.apiVal]} selectable>
               {API_CONFIG.BASE_URL}
             </Text>
           </View>
@@ -858,12 +858,26 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.sm
+    paddingVertical: spacing.sm,
+    width: '100%'
   },
   navLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm
+    gap: spacing.sm,
+    flex: 1,
+    minWidth: 0,
+    marginRight: spacing.xs
+  },
+  navTextCol: {
+    flex: 1,
+    minWidth: 0
+  },
+  navRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0
   },
   iconCircle: {
     width: 36,
@@ -922,7 +936,8 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.xs
+    paddingVertical: spacing.xs,
+    width: '100%'
   },
   label: {
     ...typography.bodySmall,
@@ -932,6 +947,12 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textPrimary,
     fontWeight: '500'
+  },
+  apiVal: {
+    flex: 1,
+    textAlign: 'right',
+    flexWrap: 'wrap',
+    ...(Platform.OS === 'web' ? { wordBreak: 'break-all' } : {})
   },
   divider: {
     height: 1,

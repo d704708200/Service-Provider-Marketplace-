@@ -285,7 +285,7 @@ export default function DashboardScreen({ navigation }) {
             activeOpacity={0.7}
             accessibilityLabel="Notifications"
           >
-            <Ionicons name="notifications-outline" size={18} color="#FFFFFF" />
+            <Ionicons name="notifications-outline" size={20} color={colors.textPrimary} />
             {unreadCount > 0 && (
               <View style={styles.headerBadge}>
                 <Text style={styles.headerBadgeText}>
@@ -355,7 +355,7 @@ export default function DashboardScreen({ navigation }) {
         >
           <View style={styles.walletGlanceLeft}>
             <View style={styles.walletIconCircle}>
-              <Ionicons name="wallet" size={20} color="#C4B5FD" />
+              <Ionicons name="wallet" size={20} color={isDark ? '#C4B5FD' : colors.primary} />
             </View>
             <View>
               <Text style={styles.walletGlanceLabel}>WALLET AVAILABLE BALANCE</Text>
@@ -448,7 +448,7 @@ export default function DashboardScreen({ navigation }) {
               activeOpacity={0.7}
             >
               <View style={styles.quickIconCircle}>
-                <Ionicons name="notifications-outline" size={20} color="#A78BFA" />
+                <Ionicons name="notifications-outline" size={20} color={isDark ? '#A78BFA' : colors.primary} />
               </View>
               <Text style={styles.quickActionTitle}>Incoming</Text>
               <Text style={styles.quickActionSub}>Review requests</Text>
@@ -460,7 +460,7 @@ export default function DashboardScreen({ navigation }) {
               activeOpacity={0.7}
             >
               <View style={styles.quickIconCircle}>
-                <Ionicons name="calendar-outline" size={20} color="#A78BFA" />
+                <Ionicons name="calendar-outline" size={20} color={isDark ? '#A78BFA' : colors.primary} />
               </View>
               <Text style={styles.quickActionTitle}>Bookings</Text>
               <Text style={styles.quickActionSub}>Track active jobs</Text>
@@ -472,7 +472,7 @@ export default function DashboardScreen({ navigation }) {
               activeOpacity={0.7}
             >
               <View style={styles.quickIconCircle}>
-                <Ionicons name="pricetag-outline" size={20} color="#A78BFA" />
+                <Ionicons name="pricetag-outline" size={20} color={isDark ? '#A78BFA' : colors.primary} />
               </View>
               <Text style={styles.quickActionTitle}>My Services</Text>
               <Text style={styles.quickActionSub}>Rates & catalog</Text>
@@ -483,8 +483,8 @@ export default function DashboardScreen({ navigation }) {
               onPress={() => navigation.navigate('Wallet')}
               activeOpacity={0.7}
             >
-              <View style={[styles.quickIconCircle, { backgroundColor: '#2E1065' }]}>
-                <Ionicons name="wallet-outline" size={20} color="#C4B5FD" />
+              <View style={styles.quickIconCircle}>
+                <Ionicons name="wallet-outline" size={20} color={isDark ? '#A78BFA' : colors.primary} />
               </View>
               <Text style={styles.quickActionTitle}>My Wallet</Text>
               <Text style={styles.quickActionSub}>Payout & history</Text>
@@ -496,7 +496,7 @@ export default function DashboardScreen({ navigation }) {
               activeOpacity={0.7}
             >
               <View style={styles.quickIconCircle}>
-                <Ionicons name="time-outline" size={20} color="#A78BFA" />
+                <Ionicons name="time-outline" size={20} color={isDark ? '#A78BFA' : colors.primary} />
               </View>
               <Text style={styles.quickActionTitle}>Schedule</Text>
               <Text style={styles.quickActionSub}>Working hours</Text>
@@ -711,9 +711,9 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     alignItems: 'center'
   },
   headerIconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
@@ -731,7 +731,10 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     height: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: colors.card,
+    zIndex: 10
   },
   headerBadgeText: {
     color: '#FFFFFF',
@@ -777,6 +780,8 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     height: 42,
     borderRadius: 21,
     backgroundColor: isDark ? '#2E1A5A' : '#EDE9FE',
+    borderWidth: 1,
+    borderColor: isDark ? '#432874' : '#DDD6FE',
     justifyContent: 'center',
     alignItems: 'center'
   },
@@ -911,9 +916,9 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: isDark ? '#201A36' : colors.cardSecondary,
+    backgroundColor: isDark ? '#201A36' : '#EDE9FE',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: isDark ? '#362A5A' : '#DDD6FE',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6
