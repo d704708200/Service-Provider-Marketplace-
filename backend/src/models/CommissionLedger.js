@@ -5,7 +5,18 @@ const commissionAuditSchema = new mongoose.Schema(
     action: {
       type: String,
       required: true,
-      enum: ['CREATED', 'DEDUCTED', 'SET_PENDING', 'FAILED', 'REVERSED', 'REFUNDED', 'ADJUSTED', 'WAIVED']
+      enum: [
+        'CREATED',
+        'DEDUCTED',
+        'SET_PENDING',
+        'FAILED',
+        'REVERSED',
+        'REFUNDED',
+        'ADJUSTED',
+        'ADMIN_ADJUSTED',
+        'WAIVED',
+        'RECONCILED'
+      ]
     },
     performedBy: {
       type: mongoose.Schema.Types.ObjectId,

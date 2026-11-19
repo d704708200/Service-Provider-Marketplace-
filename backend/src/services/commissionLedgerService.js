@@ -603,17 +603,35 @@ const adminAdjustCommissionLedger = async (ledgerId, { newStatus, reason, adminU
     throw err;
   }
 
+  // Duplicate adjustment prevention
+  if (entry.status === newStatus) {
+    const err = new Error(`Commission transaction is already in status '${newStatus}'. Duplicate adjustment request rejected.`);
+    err.statusCode = 400;
+    throw err;
+  }
+
   const prev = entry.status;
+  const now = new Date();
   entry.status = newStatus;
-  entry.reversalReason = reason.trim();
+
+  if (newStatus === 'REVERSED') {
+    entry.reversalReason = reason.trim();
+    entry.reversedTimestamp = now;
+    entry.reversalReference = entry.reversalReference || `REV-ADM-${Date.now().toString().slice(-6)}`;
+  } else if (newStatus === 'REFUNDED') {
+    entry.refundReference = entry.refundReference || `REF-ADM-${Date.now().toString().slice(-6)}`;
+  }
+
+  const auditAction = newStatus === 'REVERSED' ? 'REVERSED' : (newStatus === 'REFUNDED' ? 'REFUNDED' : 'ADMIN_ADJUSTED');
+
   entry.auditTrail.push({
-    action: newStatus === 'REVERSED' ? 'REVERSED' : (newStatus === 'REFUNDED' ? 'REFUNDED' : 'ADJUSTED'),
+    action: auditAction,
     performedBy: adminUserId,
     performedByRole: 'admin',
     previousStatus: prev,
     newStatus,
     reason: reason.trim(),
-    timestamp: new Date()
+    timestamp: now
   });
 
   await entry.save();
