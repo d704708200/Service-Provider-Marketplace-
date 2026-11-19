@@ -177,7 +177,59 @@ const bookingSchema = new mongoose.Schema(
         default: 'not_applicable'
       },
       labourCommissionSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
-      providerNetEarning: { type: Number, default: 0, min: 0 }
+      providerNetEarning: { type: Number, default: 0, min: 0 },
+      // Dedicated independent tracking for Service Commission
+      serviceCommission: {
+        eligibleAmount: { type: Number, default: 0, min: 0 },
+        appliedPercentage: { type: Number, default: 15, min: 0 },
+        calculatedAmount: { type: Number, default: 0, min: 0 },
+        deductedAmount: { type: Number, default: 0, min: 0 },
+        status: {
+          type: String,
+          enum: [
+            'NOT_CALCULATED',
+            'CALCULATED',
+            'PENDING',
+            'DEDUCTED',
+            'FAILED',
+            'REVERSED',
+            'REFUNDED',
+            'NOT_APPLICABLE'
+          ],
+          default: 'NOT_CALCULATED'
+        },
+        transactionReference: { type: String, default: null },
+        deductedAt: { type: Date, default: null },
+        failureReason: { type: String, default: null },
+        reversalReference: { type: String, default: null },
+        reversedAt: { type: Date, default: null }
+      },
+      // Dedicated independent tracking for Labour Commission
+      labourCommission: {
+        eligibleAmount: { type: Number, default: 0, min: 0 },
+        appliedPercentage: { type: Number, default: 0, min: 0 },
+        calculatedAmount: { type: Number, default: 0, min: 0 },
+        deductedAmount: { type: Number, default: 0, min: 0 },
+        status: {
+          type: String,
+          enum: [
+            'NOT_CALCULATED',
+            'CALCULATED',
+            'PENDING',
+            'DEDUCTED',
+            'FAILED',
+            'REVERSED',
+            'REFUNDED',
+            'NOT_APPLICABLE'
+          ],
+          default: 'NOT_CALCULATED'
+        },
+        transactionReference: { type: String, default: null },
+        deductedAt: { type: Date, default: null },
+        failureReason: { type: String, default: null },
+        reversalReference: { type: String, default: null },
+        reversedAt: { type: Date, default: null }
+      }
     },
     // Top-level fields for direct access and backward compatibility
     originalServicePrice: { type: Number, default: null },

@@ -30,9 +30,10 @@ import {
   Phone,
   Mail,
   Calendar,
-  Percent
+  Percent,
+  Download
 } from 'lucide-react';
-import { walletApi } from '../../services/api';
+import { walletApi, commissionMonitoringApi } from '../../services/api';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
 
@@ -65,11 +66,44 @@ const WalletsPage = () => {
   const [walletSearch, setWalletSearch] = useState('');
   const [walletPagination, setWalletPagination] = useState({ page: 1, limit: 15, total: 0, pages: 1 });
 
-  // Commissions State
+  // Commissions State & Dual Platform Deduction Monitoring
   const [commissions, setCommissions] = useState([]);
   const [commissionSummary, setCommissionSummary] = useState({ totalOutstandingCommission: 0, providersWithOutstandingCount: 0 });
   const [commissionStatusFilter, setCommissionStatusFilter] = useState('all'); // 'all' | 'outstanding' | 'settled'
   const [commissionPagination, setCommissionPagination] = useState({ page: 1, limit: 15, total: 0, pages: 1 });
+
+  // 7 KPI Cards for Dual Commission Deduction Monitoring
+  const [commissionKpis, setCommissionKpis] = useState({
+    totalServiceCalculated: 0,
+    totalServiceDeducted: 0,
+    totalLabourCalculated: 0,
+    totalLabourDeducted: 0,
+    totalPendingCommission: 0,
+    totalFailedCommission: 0,
+    totalReversedCommission: 0
+  });
+
+  // Commission Sub-Views & Ledger State
+  const [commissionView, setCommissionView] = useState('ledger'); // 'ledger' | 'liabilities'
+  const [ledgerTransactions, setLedgerTransactions] = useState([]);
+  const [ledgerPagination, setLedgerPagination] = useState({ page: 1, limit: 15, total: 0, pages: 1 });
+  const [ledgerFilters, setLedgerFilters] = useState({
+    search: '',
+    commissionType: 'all',
+    status: 'all',
+    paymentMode: 'all',
+    from: '',
+    to: ''
+  });
+  const [selectedLedgerItem, setSelectedLedgerItem] = useState(null);
+  const [auditAdjustModal, setAuditAdjustModal] = useState({
+    isOpen: false,
+    item: null,
+    newStatus: 'REVERSED',
+    reason: '',
+    isSubmitting: false,
+    error: ''
+  });
 
   // Separate Settle & Waive Modals (Strictly full-amount only, zero partial settlement inputs)
   const [settleModal, setSettleModal] = useState({ isOpen: false, item: null, reason: '', isSubmitting: false, error: '' });
@@ -124,11 +158,45 @@ const WalletsPage = () => {
           setStats(wltRes.stats);
         }
       } else if (activeTab === 'commissions') {
-        const commRes = await walletApi.getCommissions({
-          status: commissionStatusFilter,
-          page: commissionPagination.page,
-          limit: 15
-        });
+        const [dashRes, txnRes, commRes] = await Promise.all([
+          commissionMonitoringApi.getDashboard({
+            from: ledgerFilters.from || undefined,
+            to: ledgerFilters.to || undefined,
+            paymentMode: ledgerFilters.paymentMode !== 'all' ? ledgerFilters.paymentMode : undefined
+          }).catch(err => {
+            console.warn('[COMMISSION_DASHBOARD_FETCH_WARN]', err);
+            return null;
+          }),
+          commissionMonitoringApi.getTransactions({
+            search: ledgerFilters.search?.trim() || undefined,
+            commissionType: ledgerFilters.commissionType !== 'all' ? ledgerFilters.commissionType : undefined,
+            status: ledgerFilters.status !== 'all' ? ledgerFilters.status : undefined,
+            paymentMode: ledgerFilters.paymentMode !== 'all' ? ledgerFilters.paymentMode : undefined,
+            from: ledgerFilters.from || undefined,
+            to: ledgerFilters.to || undefined,
+            page: ledgerPagination.page,
+            limit: 15
+          }).catch(err => {
+            console.warn('[COMMISSION_TRANSACTIONS_FETCH_WARN]', err);
+            return null;
+          }),
+          walletApi.getCommissions({
+            status: commissionStatusFilter,
+            page: commissionPagination.page,
+            limit: 15
+          }).catch(err => {
+            console.warn('[COMMISSIONS_WALLETS_FETCH_WARN]', err);
+            return null;
+          })
+        ]);
+
+        if (dashRes?.data?.kpis) {
+          setCommissionKpis(dashRes.data.kpis);
+        }
+        if (txnRes?.data) {
+          setLedgerTransactions(txnRes.data);
+          setLedgerPagination(txnRes.pagination || { page: 1, limit: 15, total: txnRes.data.length, pages: 1 });
+        }
         if (commRes?.data) {
           setCommissions(commRes.data.wallets || commRes.data.commissions || []);
           setCommissionSummary(commRes.data.summary || { totalOutstandingCommission: 0, providersWithOutstandingCount: 0 });
@@ -155,7 +223,7 @@ const WalletsPage = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeTab, withdrawalStatus, withdrawalPagination.page, withdrawalSearch, walletSearch, walletPagination.page, commissionStatusFilter, commissionPagination.page]);
+  }, [activeTab, withdrawalStatus, withdrawalPagination.page, withdrawalSearch, walletSearch, walletPagination.page, commissionStatusFilter, commissionPagination.page, ledgerFilters, ledgerPagination.page]);
 
   useEffect(() => {
     fetchData();
@@ -164,6 +232,43 @@ const WalletsPage = () => {
   const handleRefresh = () => {
     setRefreshing(true);
     fetchData();
+  };
+
+  const handleExportCsv = async () => {
+    try {
+      const csvData = await commissionMonitoringApi.exportCsv(ledgerFilters);
+      const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `mendroo-commission-ledger-${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      showNotification('Commission ledger transactions exported to CSV successfully');
+    } catch (err) {
+      setApiError(err.message || 'Failed to export CSV');
+    }
+  };
+
+  const handleConfirmAuditAdjust = async () => {
+    if (!auditAdjustModal.item) return;
+    if (!auditAdjustModal.reason.trim() || auditAdjustModal.reason.trim().length < 5) {
+      setAuditAdjustModal(p => ({ ...p, error: 'A mandatory audit reason (minimum 5 characters) is required' }));
+      return;
+    }
+    setAuditAdjustModal(p => ({ ...p, isSubmitting: true, error: '' }));
+    try {
+      await commissionMonitoringApi.adjustTransaction(auditAdjustModal.item._id, {
+        newStatus: auditAdjustModal.newStatus,
+        reason: auditAdjustModal.reason.trim()
+      });
+      showNotification(`Commission transaction updated to ${auditAdjustModal.newStatus}`);
+      setAuditAdjustModal({ isOpen: false, item: null, newStatus: 'REVERSED', reason: '', isSubmitting: false, error: '' });
+      fetchData();
+    } catch (err) {
+      setAuditAdjustModal(p => ({ ...p, isSubmitting: false, error: err.message || 'Failed to adjust transaction' }));
+    }
   };
 
   const handleToggleAutoDeduct = async (providerId, currentVal, businessName) => {
@@ -530,16 +635,16 @@ const WalletsPage = () => {
         <button
           onClick={() => setActiveTab('withdrawals')}
           className={`pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2 ${activeTab === 'withdrawals'
-              ? 'text-indigo-600'
-              : 'text-slate-500 hover:text-slate-700'
+            ? 'text-indigo-600'
+            : 'text-slate-500 hover:text-slate-700'
             }`}
         >
           <span>Withdrawal Requests</span>
           {withdrawalPagination.total > 0 && (
             <span
               className={`px-2 py-0.5 rounded-full text-xs font-semibold ${activeTab === 'withdrawals'
-                  ? 'bg-indigo-100 text-indigo-700'
-                  : 'bg-slate-100 text-slate-600'
+                ? 'bg-indigo-100 text-indigo-700'
+                : 'bg-slate-100 text-slate-600'
                 }`}
             >
               {withdrawalPagination.total}
@@ -553,16 +658,16 @@ const WalletsPage = () => {
         <button
           onClick={() => setActiveTab('wallets')}
           className={`pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2 ${activeTab === 'wallets'
-              ? 'text-indigo-600'
-              : 'text-slate-500 hover:text-slate-700'
+            ? 'text-indigo-600'
+            : 'text-slate-500 hover:text-slate-700'
             }`}
         >
           <span>Provider Wallets & Ledgers</span>
           {walletPagination.total > 0 && (
             <span
               className={`px-2 py-0.5 rounded-full text-xs font-semibold ${activeTab === 'wallets'
-                  ? 'bg-indigo-100 text-indigo-700'
-                  : 'bg-slate-100 text-slate-600'
+                ? 'bg-indigo-100 text-indigo-700'
+                : 'bg-slate-100 text-slate-600'
                 }`}
             >
               {walletPagination.total}
@@ -576,8 +681,8 @@ const WalletsPage = () => {
         <button
           onClick={() => setActiveTab('commissions')}
           className={`pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2 ${activeTab === 'commissions'
-              ? 'text-indigo-600'
-              : 'text-slate-500 hover:text-slate-700'
+            ? 'text-indigo-600'
+            : 'text-slate-500 hover:text-slate-700'
             }`}
         >
           <Percent className="h-4 w-4" />
@@ -585,8 +690,8 @@ const WalletsPage = () => {
           {commissionSummary.providersWithOutstandingCount > 0 && (
             <span
               className={`px-2 py-0.5 rounded-full text-xs font-semibold ${activeTab === 'commissions'
-                  ? 'bg-amber-100 text-amber-800'
-                  : 'bg-slate-100 text-slate-600'
+                ? 'bg-amber-100 text-amber-800'
+                : 'bg-slate-100 text-slate-600'
                 }`}
             >
               ₹{commissionSummary.totalOutstandingCommission.toLocaleString('en-IN')}
@@ -623,16 +728,16 @@ const WalletsPage = () => {
                       setWithdrawalPagination((p) => ({ ...p, page: 1 }));
                     }}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${withdrawalStatus === st.key
-                        ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                       }`}
                   >
                     <span>{st.label}</span>
                     {count !== undefined && count !== null && count > 0 && (
                       <span
                         className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${withdrawalStatus === st.key
-                            ? 'bg-indigo-700 text-indigo-100'
-                            : 'bg-slate-100 text-slate-600'
+                          ? 'bg-indigo-700 text-indigo-100'
+                          : 'bg-slate-100 text-slate-600'
                           }`}
                       >
                         {count}
@@ -1134,215 +1239,585 @@ const WalletsPage = () => {
         </div>
       )}
 
-            {/* ========================================================= */}
-      {/* TAB 3: COMMISSION PAYABLE TO MENDROO                      */}
+      {/* ========================================================= */}
+      {/* TAB 3: COMMISSION PAYABLE & DUAL DEDUCTION MONITORING     */}
       {/* ========================================================= */}
       {activeTab === 'commissions' && (
         <div className="space-y-6">
-          {/* Strict Full Settlement Rule Alert */}
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-            <Percent className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
-            <div>
-              <div className="text-sm font-bold text-amber-900">
-                Strict Settlement Rule: Mendroo Platform Commission
-              </div>
-              <div className="text-xs text-amber-800 mt-0.5 leading-relaxed">
-                Platform commission on completed bookings must ALWAYS be settled in full in ONE transaction.
-                Partial payments, installments, and partial adjustments are strictly blocked.
-              </div>
-            </div>
-          </div>
-
-          {/* Metrics summary */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
-              <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Outstanding Due</div>
-              <div className="text-2xl font-bold text-amber-600 mt-1 font-sans">
-                ₹{(commissionSummary.totalOutstandingCommission || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-              </div>
-              <div className="text-xs text-slate-500 mt-1">Owed across all active providers</div>
-            </div>
-            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
-              <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Providers With Due</div>
-              <div className="text-2xl font-bold text-slate-900 mt-1">
-                {commissionSummary.providersWithOutstandingCount || 0}
-              </div>
-              <div className="text-xs text-slate-500 mt-1">Providers with balance &gt; ₹0</div>
-            </div>
-            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
-              <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Standard Commission Rate</div>
-              <div className="text-2xl font-bold text-indigo-600 mt-1">
-                {commissionSummary?.activeCommissionRate || 15}%
-              </div>
-              <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
-                <span>Base service only (Parts @ 0%)</span>
-                <Link to="/settings?tab=commission" className="text-indigo-600 hover:text-indigo-800 font-semibold underline text-[11px]">
-                  Settings &rarr;
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          {/* Critical Business Rule Policy Card */}
-          <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-4 flex items-start gap-3">
-            <ShieldCheck className="w-5 h-5 text-indigo-600 mt-0.5 shrink-0" />
-            <div className="text-xs space-y-1">
-              <p className="font-bold text-indigo-950">
-                Audited Commission Policy: Platform Commission Calculated Strictly on Original Base Service Price
-              </p>
-              <p className="text-indigo-800 leading-relaxed">
-                Platform commission (15%) is assessed <strong>only once</strong> on the original service/base price agreed at booking creation. All spare parts, replacement components, and physical materials supplied by providers are <strong>100% commission-free (Parts Commission = ₹0)</strong>. Net customer parts payments are credited in full to the provider.
-              </p>
-            </div>
-          </div>
-
-          {/* Table */}
-          <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-            <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-slate-50/50">
+          {/* Top Audit Banner */}
+          <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 rounded-2xl p-5 text-white shadow-md flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCommissionStatusFilter('all')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                    commissionStatusFilter === 'all'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  All Providers
-                </button>
-                <button
-                  onClick={() => setCommissionStatusFilter('outstanding')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                    commissionStatusFilter === 'outstanding'
-                      ? 'bg-amber-600 text-white'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  Outstanding Only
-                </button>
+                <ShieldCheck className="h-5 w-5 text-emerald-400" />
+                <h3 className="text-base font-bold tracking-tight">
+                  Dual Platform Commission Deduction Monitoring
+                </h3>
+                <span className="text-[10px] font-bold uppercase bg-emerald-400/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-400/30">
+                  Live Audit
+                </span>
               </div>
-              <div className="text-xs text-slate-500">
-                Total Listed: <strong className="text-slate-800">{commissions.length}</strong>
+              <p className="text-xs text-indigo-200 max-w-2xl leading-relaxed">
+                Super Admin real-time monitoring of Service Commission (Base) and Labour Commission (Approved).
+                Calculated amounts are strictly audited against verified financial ledger deductions. Spare parts and physical materials are 100% commission-exempt.
+              </p>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={handleExportCsv}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xs transition-colors border border-white/10"
+              >
+                <Download className="h-4 w-4 text-emerald-400" />
+                <span>Export CSV</span>
+              </button>
+              <button
+                onClick={handleRefresh}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white text-slate-900 text-xs font-semibold hover:bg-slate-100 transition-colors shadow-xs"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 text-indigo-600 ${refreshing ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 7 KPI CARDS FOR DUAL COMMISSION SYSTEM */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+            {/* KPI 1: Service Commission Calculated */}
+            <div className="bg-white border border-indigo-100 rounded-xl p-3.5 shadow-2xs space-y-1">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate" title="Total Service Commission Calculated">
+                1. Service Calculated
+              </div>
+              <div className="text-lg font-extrabold text-indigo-900 font-sans">
+                ₹{Number(commissionKpis.totalServiceCalculated || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-[10px] text-indigo-600 font-medium">Original Base (15%)</div>
+            </div>
+
+            {/* KPI 2: Service Commission Deducted */}
+            <div className="bg-white border border-emerald-100 rounded-xl p-3.5 shadow-2xs space-y-1 bg-gradient-to-b from-white to-emerald-50/30">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate" title="Total Service Commission Deducted">
+                2. Service Deducted
+              </div>
+              <div className="text-lg font-extrabold text-emerald-700 font-sans">
+                ₹{Number(commissionKpis.totalServiceDeducted || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" /> Confirmed
               </div>
             </div>
 
-            {loading ? (
-              <div className="py-20 flex justify-center">
-                <LoadingSpinner size="lg" />
+            {/* KPI 3: Labour Commission Calculated */}
+            <div className="bg-white border border-amber-100 rounded-xl p-3.5 shadow-2xs space-y-1">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate" title="Total Labour Commission Calculated">
+                3. Labour Calculated
               </div>
-            ) : commissions.length === 0 ? (
-              <div className="p-8">
-                <EmptyState
-                  icon={Percent}
-                  title="No Commission Records"
-                  description="No providers found matching your filter criteria."
-                />
+              <div className="text-lg font-extrabold text-amber-900 font-sans">
+                ₹{Number(commissionKpis.totalLabourCalculated || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/80">
-                      <th className="py-3 px-4">Provider</th>
-                      <th className="py-3 px-4">Available Balance</th>
-                      <th className="py-3 px-4">Commission Payable to Mendroo</th>
-                      <th className="py-3 px-4">Auto Deduct from Wallet</th>
-                      <th className="py-3 px-4">Last Auto-Deduction</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-sm">
-                    {commissions.map((c) => (
-                      <tr key={c.walletId} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3.5 px-4 min-w-[200px]">
-                          <div className="font-semibold text-slate-900">{c.businessName}</div>
-                          <div className="text-xs text-slate-500 mt-0.5">{c.providerPhone}</div>
-                        </td>
-                        <td className="py-3.5 px-4 font-bold text-emerald-700 font-sans">
-                          ₹{(c.availableBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-3.5 px-4 font-bold font-sans">
-                          {c.commissionDue > 0 ? (
-                            <div>
-                              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                                ₹{(c.commissionDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                              </span>
-                              {(c.serviceCommissionDue > 0 || c.labourCommissionDue > 0) && (
-                                <div className="text-[10px] text-slate-500 font-normal mt-1 flex flex-col gap-0.5">
-                                  <span>Service: ₹{(c.serviceCommissionDue || 0).toFixed(2)}</span>
-                                  <span>Labour: ₹{(c.labourCommissionDue || 0).toFixed(2)}</span>
+              <div className="text-[10px] text-amber-600 font-medium">Approved Labour</div>
+            </div>
+
+            {/* KPI 4: Labour Commission Deducted */}
+            <div className="bg-white border border-teal-100 rounded-xl p-3.5 shadow-2xs space-y-1 bg-gradient-to-b from-white to-teal-50/30">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate" title="Total Labour Commission Deducted">
+                4. Labour Deducted
+              </div>
+              <div className="text-lg font-extrabold text-teal-700 font-sans">
+                ₹{Number(commissionKpis.totalLabourDeducted || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-[10px] text-teal-600 font-medium flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" /> Confirmed
+              </div>
+            </div>
+
+            {/* KPI 5: Total Pending Commission */}
+            <div className="bg-white border border-amber-200 rounded-xl p-3.5 shadow-2xs space-y-1 bg-gradient-to-b from-white to-amber-50/40">
+              <div className="text-[10px] font-bold text-amber-700 uppercase tracking-wider truncate" title="Total Pending Commission (Liabilities)">
+                5. Total Pending
+              </div>
+              <div className="text-lg font-extrabold text-amber-800 font-sans">
+                ₹{Number(commissionKpis.totalPendingCommission || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-[10px] text-amber-700 font-medium flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Cash Due / Unsettled
+              </div>
+            </div>
+
+            {/* KPI 6: Total Failed Commission */}
+            <div className="bg-white border border-rose-100 rounded-xl p-3.5 shadow-2xs space-y-1 bg-gradient-to-b from-white to-rose-50/30">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate" title="Total Failed Commission Deductions">
+                6. Total Failed
+              </div>
+              <div className="text-lg font-extrabold text-rose-700 font-sans">
+                ₹{Number(commissionKpis.totalFailedCommission || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-[10px] text-rose-600 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" /> Action Required
+              </div>
+            </div>
+
+            {/* KPI 7: Total Reversed / Refunded */}
+            <div className="bg-white border border-purple-100 rounded-xl p-3.5 shadow-2xs space-y-1 bg-gradient-to-b from-white to-purple-50/30">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate" title="Total Reversed or Refunded Commission">
+                7. Reversed/Refunded
+              </div>
+              <div className="text-lg font-extrabold text-purple-800 font-sans">
+                ₹{Number(commissionKpis.totalReversedCommission || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-[10px] text-purple-600 font-medium flex items-center gap-1">
+                <RefreshCw className="w-3 h-3" /> Audited
+              </div>
+            </div>
+          </div>
+
+          {/* Sub-View Navigation Tabs */}
+          <div className="flex items-center justify-between border-b border-slate-200">
+            <div className="flex gap-4">
+              <button
+                onClick={() => setCommissionView('ledger')}
+                className={`pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2 ${commissionView === 'ledger'
+                    ? 'text-indigo-600'
+                    : 'text-slate-500 hover:text-slate-700'
+                  }`}
+              >
+                <FileText className="h-4 w-4" />
+                <span>Commission Transactions Ledger</span>
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  {ledgerPagination.total || ledgerTransactions.length}
+                </span>
+                {commissionView === 'ledger' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
+                )}
+              </button>
+              <button
+                onClick={() => setCommissionView('liabilities')}
+                className={`pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2 ${commissionView === 'liabilities'
+                    ? 'text-indigo-600'
+                    : 'text-slate-500 hover:text-slate-700'
+                  }`}
+              >
+                <DollarSign className="h-4 w-4" />
+                <span>Provider Outstanding Liabilities</span>
+                {commissionSummary.providersWithOutstandingCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                    ₹{Number(commissionSummary.totalOutstandingCommission || 0).toLocaleString('en-IN')}
+                  </span>
+                )}
+                {commissionView === 'liabilities' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* SUB-VIEW 1: COMMISSION TRANSACTIONS LEDGER */}
+          {commissionView === 'ledger' && (
+            <div className="space-y-4">
+              {/* Multi-Facet Filter Bar */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {/* Search */}
+                  <div className="lg:col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Search Reference / Provider
+                    </label>
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={ledgerFilters.search}
+                        onChange={(e) => setLedgerFilters(p => ({ ...p, search: e.target.value }))}
+                        placeholder="Booking #, Provider, Txn Ref..."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Commission Type */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Commission Type
+                    </label>
+                    <select
+                      value={ledgerFilters.commissionType}
+                      onChange={(e) => setLedgerFilters(p => ({ ...p, commissionType: e.target.value }))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    >
+                      <option value="all">All Types</option>
+                      <option value="service">Service Commission</option>
+                      <option value="labour">Labour Commission</option>
+                    </select>
+                  </div>
+
+                  {/* Deduction Status */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Deduction Status
+                    </label>
+                    <select
+                      value={ledgerFilters.status}
+                      onChange={(e) => setLedgerFilters(p => ({ ...p, status: e.target.value }))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="DEDUCTED">DEDUCTED (Confirmed)</option>
+                      <option value="PENDING">PENDING (Liability)</option>
+                      <option value="CALCULATED">CALCULATED</option>
+                      <option value="FAILED">FAILED</option>
+                      <option value="REVERSED">REVERSED</option>
+                      <option value="REFUNDED">REFUNDED</option>
+                      <option value="NOT_APPLICABLE">NOT APPLICABLE</option>
+                    </select>
+                  </div>
+
+                  {/* Payment Mode */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Payment Mode
+                    </label>
+                    <select
+                      value={ledgerFilters.paymentMode}
+                      onChange={(e) => setLedgerFilters(p => ({ ...p, paymentMode: e.target.value }))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    >
+                      <option value="all">All Modes</option>
+                      <option value="online">Online (Retained at source)</option>
+                      <option value="cash">Cash (Direct Provider Collection)</option>
+                    </select>
+                  </div>
+
+                  {/* Clear Filters */}
+                  <div className="flex items-end">
+                    <button
+                      onClick={() => setLedgerFilters({ search: '', commissionType: 'all', status: 'all', paymentMode: 'all', from: '', to: '' })}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold transition-colors"
+                    >
+                      Reset Filters
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Transactions Ledger Table */}
+              <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+                {loading ? (
+                  <div className="py-20 flex justify-center">
+                    <LoadingSpinner size="lg" />
+                  </div>
+                ) : ledgerTransactions.length === 0 ? (
+                  <div className="p-8">
+                    <EmptyState
+                      icon={Percent}
+                      title="No Commission Transactions"
+                      description="No commission ledger entries found matching your selected filters."
+                    />
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/80">
+                          <th className="py-3 px-4">Txn Ref / Date</th>
+                          <th className="py-3 px-4">Booking Ref</th>
+                          <th className="py-3 px-4">Provider</th>
+                          <th className="py-3 px-4">Type</th>
+                          <th className="py-3 px-4">Eligible Base</th>
+                          <th className="py-3 px-4">Rate</th>
+                          <th className="py-3 px-4">Calculated</th>
+                          <th className="py-3 px-4">Deducted</th>
+                          <th className="py-3 px-4">Deduction Status</th>
+                          <th className="py-3 px-4">Payment</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-sm">
+                        {ledgerTransactions.map((t) => {
+                          const isDeducted = t.status === 'DEDUCTED';
+                          const isPending = t.status === 'PENDING';
+                          const isFailed = t.status === 'FAILED';
+                          const isReversed = t.status === 'REVERSED' || t.status === 'REFUNDED';
+
+                          let badgeClass = 'bg-slate-100 text-slate-700 border-slate-200';
+                          if (isDeducted) badgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+                          else if (isPending) badgeClass = 'bg-amber-100 text-amber-800 border-amber-300';
+                          else if (isFailed) badgeClass = 'bg-rose-100 text-rose-800 border-rose-300';
+                          else if (isReversed) badgeClass = 'bg-purple-100 text-purple-800 border-purple-300';
+
+                          return (
+                            <tr key={t._id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3.5 px-4 font-mono text-xs">
+                                <div className="font-semibold text-slate-900">{t.transactionReference || 'N/A'}</div>
+                                <div className="text-[11px] text-slate-400 mt-0.5">
+                                  {new Date(t.createdAt).toLocaleDateString('en-IN', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    year: 'numeric'
+                                  })}
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4 font-mono text-xs font-semibold text-indigo-700">
+                                {t.bookingReference}
+                              </td>
+                              <td className="py-3.5 px-4 text-xs">
+                                <div className="font-semibold text-slate-900">{t.providerName || t.provider?.businessName || 'Provider'}</div>
+                                <div className="text-slate-400 text-[11px]">{t.provider?.phone || ''}</div>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold uppercase ${t.commissionType === 'service'
+                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  }`}>
+                                  {t.commissionType}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 font-sans text-xs text-slate-800 font-semibold">
+                                ₹{Number(t.eligibleAmount || 0).toFixed(2)}
+                              </td>
+                              <td className="py-3.5 px-4 text-xs font-semibold text-slate-700">
+                                {t.appliedPercentage}%
+                              </td>
+                              <td className="py-3.5 px-4 font-sans text-xs font-bold text-slate-900">
+                                ₹{Number(t.calculatedAmount || 0).toFixed(2)}
+                              </td>
+                              <td className="py-3.5 px-4 font-sans text-xs font-bold">
+                                <span className={t.deductedAmount > 0 ? 'text-emerald-700' : 'text-slate-400'}>
+                                  ₹{Number(t.deductedAmount || 0).toFixed(2)}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${badgeClass}`}>
+                                  {isDeducted && <CheckCircle className="w-3 h-3 text-emerald-600" />}
+                                  {isPending && <Clock className="w-3 h-3 text-amber-600" />}
+                                  {isFailed && <AlertCircle className="w-3 h-3 text-rose-600" />}
+                                  {isReversed && <RefreshCw className="w-3 h-3 text-purple-600" />}
+                                  <span>{t.status}</span>
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span className="capitalize text-xs font-medium text-slate-600">
+                                  {t.paymentMode || 'cash'}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-right whitespace-nowrap space-x-1.5">
+                                <button
+                                  onClick={() => setSelectedLedgerItem(t)}
+                                  className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition-colors"
+                                  title="View audit trail and immutable snapshots"
+                                >
+                                  Audit Details
+                                </button>
+                                {isPending && (
+                                  <button
+                                    onClick={() => setAuditAdjustModal({ isOpen: true, item: t, newStatus: 'REVERSED', reason: '', isSubmitting: false, error: '' })}
+                                    className="px-2 py-1 rounded bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-800 text-xs font-medium transition-colors"
+                                    title="Record auditable adjustment / reversal"
+                                  >
+                                    Adjust
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Ledger Pagination */}
+                {ledgerPagination.pages > 1 && (
+                  <div className="flex items-center justify-between px-5 py-3.5 border-t border-slate-200 bg-slate-50/50">
+                    <span className="text-xs text-slate-500">
+                      Showing page <strong className="text-slate-700">{ledgerPagination.page}</strong> of{' '}
+                      <strong className="text-slate-700">{ledgerPagination.pages}</strong> ({ledgerPagination.total} total transactions)
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        disabled={ledgerPagination.page <= 1}
+                        onClick={() => setLedgerPagination((p) => ({ ...p, page: p.page - 1 }))}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors shadow-2xs"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5 inline mr-1" />
+                        Previous
+                      </button>
+                      <button
+                        disabled={ledgerPagination.page >= ledgerPagination.pages}
+                        onClick={() => setLedgerPagination((p) => ({ ...p, page: p.page + 1 }))}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors shadow-2xs"
+                      >
+                        Next
+                        <ChevronRight className="h-3.5 w-3.5 inline ml-1" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SUB-VIEW 2: PROVIDER OUTSTANDING LIABILITIES */}
+          {commissionView === 'liabilities' && (
+            <div className="space-y-4">
+              {/* Strict Full Settlement Rule Alert */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                <Percent className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                <div>
+                  <div className="text-sm font-bold text-amber-900">
+                    Strict Settlement Rule: Mendroo Platform Commission
+                  </div>
+                  <div className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                    Platform commission on cash bookings must ALWAYS be settled in full in ONE transaction.
+                    Partial payments, installments, and partial adjustments are strictly blocked.
+                  </div>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+                <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-slate-50/50">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCommissionStatusFilter('all')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${commissionStatusFilter === 'all'
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                        }`}
+                    >
+                      All Providers
+                    </button>
+                    <button
+                      onClick={() => setCommissionStatusFilter('outstanding')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${commissionStatusFilter === 'outstanding'
+                          ? 'bg-amber-600 text-white'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                        }`}
+                    >
+                      Outstanding Only
+                    </button>
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Total Listed: <strong className="text-slate-800">{commissions.length}</strong>
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div className="py-20 flex justify-center">
+                    <LoadingSpinner size="lg" />
+                  </div>
+                ) : commissions.length === 0 ? (
+                  <div className="p-8">
+                    <EmptyState
+                      icon={Percent}
+                      title="No Commission Records"
+                      description="No providers found matching your filter criteria."
+                    />
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/80">
+                          <th className="py-3 px-4">Provider</th>
+                          <th className="py-3 px-4">Available Balance</th>
+                          <th className="py-3 px-4">Commission Payable to Mendroo</th>
+                          <th className="py-3 px-4">Auto Deduct from Wallet</th>
+                          <th className="py-3 px-4">Last Auto-Deduction</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-sm">
+                        {commissions.map((c) => (
+                          <tr key={c.walletId || c._id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3.5 px-4 min-w-[200px]">
+                              <div className="font-semibold text-slate-900">{c.businessName}</div>
+                              <div className="text-xs text-slate-500 mt-0.5">{c.providerPhone}</div>
+                            </td>
+                            <td className="py-3.5 px-4 font-bold text-emerald-700 font-sans">
+                              ₹{(c.availableBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-3.5 px-4 font-bold font-sans">
+                              {c.commissionDue > 0 ? (
+                                <div>
+                                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                    ₹{(c.commissionDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                  </span>
+                                  {(c.serviceCommissionDue > 0 || c.labourCommissionDue > 0) && (
+                                    <div className="text-[10px] text-slate-500 font-normal mt-1 flex flex-col gap-0.5">
+                                      <span>Service: ₹{(c.serviceCommissionDue || 0).toFixed(2)}</span>
+                                      <span>Labour: ₹{(c.labourCommissionDue || 0).toFixed(2)}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 font-normal">₹0.00 (Settled)</span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              {c.autoDeductCommissionFromWallet || c.autoCommissionAdjustment ? (
+                                <button
+                                  onClick={() => handleToggleAutoDeduct(c.providerId, true, c.businessName)}
+                                  title="Click to disable automatic deduction for this provider"
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                                >
+                                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                                  <span>Active (Provider Opted-In)</span>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleToggleAutoDeduct(c.providerId, false, c.businessName)}
+                                  title="Admin cannot enable automatic deduction. Provider consent is required from the Provider App."
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200 transition-colors cursor-pointer"
+                                >
+                                  <Lock className="h-3 w-3 text-slate-400" />
+                                  <span>Disabled</span>
+                                </button>
+                              )}
+                              {c.reconciliationFlagged && (
+                                <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                  <AlertCircle className="h-3 w-3 text-amber-600" />
+                                  <span>Reconciliation Flagged</span>
                                 </div>
                               )}
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 font-normal">₹0.00 (Settled)</span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          {c.autoDeductCommissionFromWallet || c.autoCommissionAdjustment ? (
-                            <button
-                              onClick={() => handleToggleAutoDeduct(c.providerId, true, c.businessName)}
-                              title="Click to disable automatic deduction for this provider"
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 cursor-pointer"
-                            >
-                              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                              <span>Active (Provider Opted-In)</span>
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleToggleAutoDeduct(c.providerId, false, c.businessName)}
-                              title="Admin cannot enable automatic deduction. Provider consent is required from the Provider App."
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200 transition-colors cursor-pointer"
-                            >
-                              <Lock className="h-3 w-3 text-slate-400" />
-                              <span>Disabled</span>
-                            </button>
-                          )}
-                          {c.reconciliationFlagged && (
-                            <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                              <AlertCircle className="h-3 w-3 text-amber-600" />
-                              <span>Reconciliation Flagged</span>
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 text-xs text-slate-500">
-                          {c.lastAutoDeductionAt
-                            ? new Date(c.lastAutoDeductionAt).toLocaleDateString('en-IN', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })
-                            : 'Never'}
-                        </td>
-                        <td className="py-3.5 px-4 text-right whitespace-nowrap space-x-2">
-                          {c.commissionDue > 0 ? (
-                            <>
-                              <button
-                                onClick={() => setSettleModal({ isOpen: true, item: c, reason: 'Offline bank transfer collected & verified by admin', isSubmitting: false, error: '' })}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold transition-colors"
-                              >
-                                Settle Full (₹{c.commissionDue})
-                              </button>
-                              <button
-                                onClick={() => setWaiveModal({ isOpen: true, item: c, reason: '', isSubmitting: false, error: '' })}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 text-xs font-semibold transition-colors"
-                              >
-                                Waive Full
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-xs text-slate-400 italic">No Due</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                            </td>
+                            <td className="py-3.5 px-4 text-xs text-slate-500">
+                              {c.lastAutoDeductionAt
+                                ? new Date(c.lastAutoDeductionAt).toLocaleDateString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                                : 'Never'}
+                            </td>
+                            <td className="py-3.5 px-4 text-right whitespace-nowrap space-x-2">
+                              {c.commissionDue > 0 ? (
+                                <>
+                                  <button
+                                    onClick={() => setSettleModal({ isOpen: true, item: c, reason: 'Offline bank transfer collected & verified by admin', isSubmitting: false, error: '' })}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold transition-colors"
+                                  >
+                                    Settle Full (₹{c.commissionDue})
+                                  </button>
+                                  <button
+                                    onClick={() => setWaiveModal({ isOpen: true, item: c, reason: '', isSubmitting: false, error: '' })}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 text-xs font-semibold transition-colors"
+                                  >
+                                    Waive Full
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-xs text-slate-400 italic">No Due</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1804,10 +2279,10 @@ const WalletsPage = () => {
                   <div className="flex items-start gap-3">
                     <div
                       className={`p-1 rounded-full mt-0.5 ${viewModal.item.status === 'requested'
-                          ? 'bg-amber-100 text-amber-700'
-                          : viewModal.item.status === 'rejected'
-                            ? 'bg-rose-100 text-rose-700'
-                            : 'bg-emerald-100 text-emerald-700'
+                        ? 'bg-amber-100 text-amber-700'
+                        : viewModal.item.status === 'rejected'
+                          ? 'bg-rose-100 text-rose-700'
+                          : 'bg-emerald-100 text-emerald-700'
                         }`}
                     >
                       {viewModal.item.status === 'requested' ? (
@@ -1841,8 +2316,8 @@ const WalletsPage = () => {
                   <div className="flex items-start gap-3">
                     <div
                       className={`p-1 rounded-full mt-0.5 ${viewModal.item.status === 'paid'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-slate-100 text-slate-400'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-slate-100 text-slate-400'
                         }`}
                     >
                       {viewModal.item.status === 'paid' ? (
@@ -2202,8 +2677,8 @@ const WalletsPage = () => {
                     type="button"
                     onClick={() => setAdjustModal((p) => ({ ...p, type: 'credit' }))}
                     className={`py-2 text-xs font-bold rounded-lg border transition-colors ${adjustModal.type === 'credit'
-                        ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
-                        : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                      ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                      : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
                       }`}
                   >
                     + Credit Balance
@@ -2212,8 +2687,8 @@ const WalletsPage = () => {
                     type="button"
                     onClick={() => setAdjustModal((p) => ({ ...p, type: 'debit' }))}
                     className={`py-2 text-xs font-bold rounded-lg border transition-colors ${adjustModal.type === 'debit'
-                        ? 'bg-rose-50 border-rose-500 text-rose-700'
-                        : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                      ? 'bg-rose-50 border-rose-500 text-rose-700'
+                      : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
                       }`}
                   >
                     - Debit Balance
@@ -2258,6 +2733,176 @@ const WalletsPage = () => {
               >
                 {adjustModal.isSubmitting && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
                 Apply Adjustment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* COMMISSION LEDGER DETAILS & AUDIT TRAIL MODAL */}
+      {selectedLedgerItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-indigo-600" />
+                <h3 className="text-base font-bold text-slate-900">
+                  Commission Deduction Audit Details
+                </h3>
+              </div>
+              <button
+                onClick={() => setSelectedLedgerItem(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-slate-500 text-[11px] block">Booking Reference</span>
+                <span className="font-mono font-bold text-slate-900">{selectedLedgerItem.bookingReference}</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-slate-500 text-[11px] block">Transaction Reference</span>
+                <span className="font-mono font-semibold text-slate-900 truncate block" title={selectedLedgerItem.transactionReference}>
+                  {selectedLedgerItem.transactionReference || 'N/A'}
+                </span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-slate-500 text-[11px] block">Commission Type</span>
+                <span className="font-bold text-indigo-700 uppercase">{selectedLedgerItem.commissionType} Commission</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-slate-500 text-[11px] block">Eligible Base Amount</span>
+                <span className="font-bold text-slate-900 text-sm">₹{Number(selectedLedgerItem.eligibleAmount || 0).toFixed(2)}</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-slate-500 text-[11px] block">Applied Percentage</span>
+                <span className="font-bold text-slate-900 text-sm">{selectedLedgerItem.appliedPercentage}%</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-slate-500 text-[11px] block">Calculated Commission</span>
+                <span className="font-bold text-slate-900 text-sm">₹{Number(selectedLedgerItem.calculatedAmount || 0).toFixed(2)}</span>
+              </div>
+              <div className="p-3 bg-emerald-50/80 rounded-xl border border-emerald-200">
+                <span className="text-emerald-700 text-[11px] block font-medium">Actual Deducted Amount</span>
+                <span className="font-bold text-emerald-900 text-sm">₹{Number(selectedLedgerItem.deductedAmount || 0).toFixed(2)}</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-slate-500 text-[11px] block">Deduction Status</span>
+                <span className="font-bold text-slate-900 uppercase">{selectedLedgerItem.status}</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-slate-500 text-[11px] block">Deduction Timestamp</span>
+                <span className="text-slate-700 text-[11px]">
+                  {selectedLedgerItem.deductionTimestamp ? new Date(selectedLedgerItem.deductionTimestamp).toLocaleString('en-IN') : 'Pending deduction'}
+                </span>
+              </div>
+            </div>
+
+            {/* Audit Trail History */}
+            <div className="space-y-2 pt-2 border-t border-slate-200">
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Immutable Ledger Audit Trail ({selectedLedgerItem.auditTrail?.length || 0} events)
+              </h4>
+              {(!selectedLedgerItem.auditTrail || selectedLedgerItem.auditTrail.length === 0) ? (
+                <p className="text-xs text-slate-400 italic">No historical audit modifications recorded.</p>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-y-auto">
+                  {selectedLedgerItem.auditTrail.map((ev, idx) => (
+                    <div key={idx} className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-indigo-700 uppercase">{ev.action}</span>
+                        <span className="text-[11px] text-slate-400">{new Date(ev.timestamp).toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="text-slate-600">
+                        Status transition: <strong className="text-slate-800">{ev.previousStatus || 'N/A'}</strong> &rarr; <strong className="text-indigo-900">{ev.newStatus}</strong> (by <span className="font-mono text-slate-500">{ev.performedByRole}</span>)
+                      </div>
+                      {ev.reason && (
+                        <div className="text-[11px] text-slate-500 italic bg-white p-1.5 rounded border border-slate-100">
+                          &ldquo;{ev.reason}&rdquo;
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-slate-100">
+              <button
+                onClick={() => setSelectedLedgerItem(null)}
+                className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AUDITED MANUAL ADJUSTMENT MODAL */}
+      {auditAdjustModal.isOpen && auditAdjustModal.item && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 space-y-4">
+            <h3 className="text-base font-bold text-slate-900">
+              Audited Commission Adjustment / Reversal
+            </h3>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs space-y-1">
+              <div>Booking: <strong>{auditAdjustModal.item.bookingReference}</strong></div>
+              <div>Commission Type: <strong className="uppercase">{auditAdjustModal.item.commissionType}</strong></div>
+              <div>Current Status: <strong className="text-amber-800">{auditAdjustModal.item.status}</strong></div>
+              <div className="text-[11px] text-amber-800 leading-relaxed pt-1">
+                Notice: Manual adjustments require an authorized Admin and an immutable audit reason. Strict rules prohibit manually bypassing financial ledger verification to mark DEDUCTED.
+              </div>
+            </div>
+
+            {auditAdjustModal.error && (
+              <div className="text-xs text-rose-600 bg-rose-50 p-2.5 rounded-lg border border-rose-200 font-medium">
+                {auditAdjustModal.error}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Target Adjustment Status *</label>
+              <select
+                value={auditAdjustModal.newStatus}
+                onChange={(e) => setAuditAdjustModal(p => ({ ...p, newStatus: e.target.value }))}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 font-medium focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="REVERSED">REVERSED (Booking cancelled / error)</option>
+                <option value="REFUNDED">REFUNDED (Customer refunded)</option>
+                <option value="NOT_APPLICABLE">NOT_APPLICABLE (Exempt / waived)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Mandatory Audit Reason (min 5 characters) *</label>
+              <textarea
+                rows={3}
+                value={auditAdjustModal.reason}
+                onChange={(e) => setAuditAdjustModal(p => ({ ...p, reason: e.target.value }))}
+                placeholder="e.g. Customer dispute resolution authorized by Super Admin"
+                className="w-full bg-white border border-slate-300 rounded-lg p-3 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <button
+                onClick={() => setAuditAdjustModal({ isOpen: false, item: null, newStatus: 'REVERSED', reason: '', isSubmitting: false, error: '' })}
+                className="px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmAuditAdjust}
+                disabled={auditAdjustModal.isSubmitting}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors shadow-2xs flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {auditAdjustModal.isSubmitting && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                Confirm Audited Adjustment
               </button>
             </div>
           </div>

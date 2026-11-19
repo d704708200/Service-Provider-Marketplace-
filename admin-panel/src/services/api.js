@@ -599,5 +599,29 @@ export const serviceRadiusApi = {
   }
 };
 
+// Dual Platform Commission Deduction Monitoring APIs
+export const commissionMonitoringApi = {
+  getDashboard: async (params = {}) => {
+    const response = await api.get('/admin/commissions/dashboard', { params });
+    return response.data;
+  },
+  getTransactions: async (params = {}) => {
+    const response = await api.get('/admin/commissions/transactions', { params });
+    return response.data;
+  },
+  exportCsv: async (params = {}) => {
+    const response = await api.get('/admin/commissions/export', { params, responseType: 'blob' });
+    return response.data;
+  },
+  getBookingBreakdown: async (bookingId) => {
+    const response = await api.get(`/admin/commissions/booking/${bookingId}`);
+    return response.data;
+  },
+  adjustTransaction: async (id, data) => {
+    const response = await api.post(`/admin/commissions/transactions/${id}/adjust`, data);
+    return response.data;
+  }
+};
+
 export default api;
 

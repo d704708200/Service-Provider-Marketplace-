@@ -67,6 +67,57 @@ const getWalletSummary = async (providerId) => {
     status: { $in: ['requested', 'approved', 'processing'] }
   });
 
+  // Aggregate provider financial consistency metrics from CommissionLedger
+  let grossServiceEarnings = 0;
+  let grossLabourEarnings = 0;
+  let serviceCommissionDeducted = 0;
+  let labourCommissionDeducted = 0;
+
+  try {
+    const { CommissionLedger } = require('../models');
+    const cStats = await CommissionLedger.aggregate([
+      { $match: { provider: new mongoose.Types.ObjectId(providerId) } },
+      {
+        $group: {
+          _id: null,
+          grossServiceEarnings: {
+            $sum: { $cond: [{ $eq: ['$commissionType', 'service'] }, '$eligibleAmount', 0] }
+          },
+          grossLabourEarnings: {
+            $sum: { $cond: [{ $eq: ['$commissionType', 'labour'] }, '$eligibleAmount', 0] }
+          },
+          serviceCommissionDeducted: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ['$commissionType', 'service'] }, { $eq: ['$status', 'DEDUCTED'] }] },
+                '$deductedAmount',
+                0
+              ]
+            }
+          },
+          labourCommissionDeducted: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ['$commissionType', 'labour'] }, { $eq: ['$status', 'DEDUCTED'] }] },
+                '$deductedAmount',
+                0
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
+    if (cStats[0]) {
+      grossServiceEarnings = Math.round((cStats[0].grossServiceEarnings || 0) * 100) / 100;
+      grossLabourEarnings = Math.round((cStats[0].grossLabourEarnings || 0) * 100) / 100;
+      serviceCommissionDeducted = Math.round((cStats[0].serviceCommissionDeducted || 0) * 100) / 100;
+      labourCommissionDeducted = Math.round((cStats[0].labourCommissionDeducted || 0) * 100) / 100;
+    }
+  } catch (aggErr) {
+    console.warn('[WALLET_SUMMARY_COMMISSION_STATS_WARN]', aggErr.message);
+  }
+
   return {
     walletId: wallet._id,
     availableBalance: wallet.availableBalance,
@@ -75,6 +126,15 @@ const getWalletSummary = async (providerId) => {
     totalEarnings: wallet.totalEarnings,
     totalWithdrawn: wallet.totalWithdrawn,
     commissionDue: wallet.commissionDue || 0,
+    financials: {
+      grossServiceEarnings,
+      grossLabourEarnings,
+      serviceCommissionDeducted,
+      labourCommissionDeducted,
+      netEarnings: wallet.totalEarnings,
+      pendingCommissionLiability: wallet.commissionDue || 0,
+      withdrawableBalance: wallet.availableBalance
+    },
     autoDeductCommissionFromWallet: Boolean(wallet.autoDeductCommissionFromWallet),
     autoCommissionAdjustment: Boolean(wallet.autoDeductCommissionFromWallet || wallet.autoCommissionAdjustment),
     lastAutoDeductionAt: wallet.lastAutoDeductionAt || null,
@@ -596,6 +656,18 @@ const tryAutoDeductCommissionFromWallet = async (providerId, options = {}) => {
 
   const transaction = await WalletTransaction.create(txnData);
 
+  // Apply recovery to pending commission ledger entries
+  try {
+    const commissionLedgerService = require('./commissionLedgerService');
+    await commissionLedgerService.applyCashCommissionRecovery(providerId, deductionAmount, {
+      transactionReference: txnRef,
+      role: 'system',
+      reason: 'Automatic full platform commission deduction from available wallet balance'
+    });
+  } catch (commErr) {
+    console.warn('[AUTO_DEDUCT_COMMISSION_LEDGER_RECOVERY_WARN]', commErr.message);
+  }
+
   // 8. Send Notification to Provider
   try {
     const { sendNotification } = require('./notificationService');
@@ -802,6 +874,14 @@ const creditBookingEarnings = async (bookingId) => {
       throw createErr;
     }
 
+    // Confirm actual deduction of Service and Labour commissions in the independent ledger
+    try {
+      const commissionLedgerService = require('./commissionLedgerService');
+      await commissionLedgerService.confirmOnlineCommissionDeduction(booking, transaction);
+    } catch (commErr) {
+      console.warn('[ONLINE_COMMISSION_LEDGER_CONFIRM_WARN]', commErr.message);
+    }
+
     // 2. Only the winning thread updates wallet balance atomically
     let updatedWallet = await ProviderWallet.findByIdAndUpdate(
       wallet._id,
@@ -909,6 +989,14 @@ const creditBookingEarnings = async (bookingId) => {
         return { success: true, message: 'Cash booking commission already recorded', transaction: existing };
       }
       throw createErr;
+    }
+
+    // Record cash commission liability as PENDING in the independent ledger
+    try {
+      const commissionLedgerService = require('./commissionLedgerService');
+      await commissionLedgerService.recordCashCommissionLiability(booking, transaction);
+    } catch (commErr) {
+      console.warn('[CASH_COMMISSION_LEDGER_LIABILITY_WARN]', commErr.message);
     }
 
     let updatedWallet = await ProviderWallet.findByIdAndUpdate(
@@ -1971,6 +2059,18 @@ const verifyAndSettleCommissionPayment = async (providerId, payload = {}) => {
     throw createErr;
   }
 
+  // Apply recovery to pending commission ledger entries
+  try {
+    const commissionLedgerService = require('./commissionLedgerService');
+    await commissionLedgerService.applyCashCommissionRecovery(providerId, amountToSettle, {
+      transactionReference: txnRef,
+      role: 'provider',
+      reason: 'Direct Razorpay commission payment settlement'
+    });
+  } catch (commErr) {
+    console.warn('[PAY_COMMISSION_LEDGER_RECOVERY_WARN]', commErr.message);
+  }
+
   // Notify Provider
   try {
     const { sendNotification } = require('./notificationService');
@@ -2330,6 +2430,18 @@ const adminSettleFullCommission = async (providerId, { reason, adminId, amount }
       timestamp: new Date()
     }
   });
+
+  // Apply recovery to pending commission ledger entries
+  try {
+    const commissionLedgerService = require('./commissionLedgerService');
+    await commissionLedgerService.applyCashCommissionRecovery(providerId, settledAmount, {
+      transactionReference: txnRef,
+      role: 'admin',
+      reason: `Admin full settlement of commission payable: ${reason.trim()}`
+    });
+  } catch (commErr) {
+    console.warn('[ADMIN_SETTLE_COMMISSION_LEDGER_RECOVERY_WARN]', commErr.message);
+  }
 
   return {
     success: true,

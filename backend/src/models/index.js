@@ -19,6 +19,7 @@ const ServiceTag = require('./ServiceTag');
 const SystemSetting = require('./SystemSetting');
 const ProviderSlotReservation = require('./ProviderSlotReservation');
 const ServiceRadiusConfig = require('./ServiceRadiusConfig');
+const CommissionLedger = require('./CommissionLedger');
 
 module.exports = {
   User,
@@ -41,5 +42,6 @@ module.exports = {
   WithdrawalRequest,
   SystemSetting,
   ProviderSlotReservation,
-  ServiceRadiusConfig
+  ServiceRadiusConfig,
+  CommissionLedger
 };

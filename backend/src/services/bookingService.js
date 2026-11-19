@@ -659,6 +659,16 @@ const createBooking = async (userId, bookingData) => {
     `[BOOKING_CREATED] Reference: ${createdDoc.bookingReference} | Mode: ${createdDoc.bookingMode} | Customer: ${createdDoc.customer?._id} | AssignedProvider: ${createdDoc.provider?._id || 'none'} | Candidates: ${candidateProviders.length}`
   );
 
+  // Initialize independent commission ledger records
+  try {
+    if (createdDoc.provider) {
+      const commissionLedgerService = require('./commissionLedgerService');
+      await commissionLedgerService.recordBookingCommissions(createdDoc);
+    }
+  } catch (commErr) {
+    console.warn('[BOOKING_CREATE_COMMISSION_LEDGER_WARN]', commErr.message);
+  }
+
   return createdDoc;
 };
 
@@ -823,6 +833,18 @@ const cancelBookingByCustomer = async (userId, bookingId, cancellationReason) =>
   booking.cancellationReason = (cancellationReason || 'Customer requested cancellation').trim();
   booking.statusTimestamps.cancelledAt = new Date();
   await booking.save();
+
+  // Reverse commissions in independent ledger
+  try {
+    const commissionLedgerService = require('./commissionLedgerService');
+    await commissionLedgerService.reverseOrRefundBookingCommissions(booking._id, {
+      reason: booking.cancellationReason,
+      isRefund: false,
+      role: 'customer'
+    });
+  } catch (commErr) {
+    console.warn('[CUSTOMER_CANCEL_COMMISSION_REVERSE_WARN]', commErr.message);
+  }
 
   // Safe notification to assigned provider that customer cancelled
   try {
@@ -1729,6 +1751,18 @@ const cancelBookingByAdmin = async (bookingId, cancellationReason) => {
   booking.statusTimestamps.cancelledAt = new Date();
   await booking.save();
 
+  // Reverse commissions in independent ledger
+  try {
+    const commissionLedgerService = require('./commissionLedgerService');
+    await commissionLedgerService.reverseOrRefundBookingCommissions(booking._id, {
+      reason: booking.cancellationReason,
+      isRefund: false,
+      role: 'admin'
+    });
+  } catch (commErr) {
+    console.warn('[ADMIN_CANCEL_COMMISSION_REVERSE_WARN]', commErr.message);
+  }
+
   // Safe notification to customer and provider
   try {
     const custDoc = await Customer.findById(booking.customer).select('user');
@@ -2203,6 +2237,14 @@ const reviewSpareParts = async (userId, bookingId, { action, rejectionReason }) 
   }
 
   await booking.save();
+
+  // Re-synchronize independent commission ledger after customer parts/labour decision
+  try {
+    const commissionLedgerService = require('./commissionLedgerService');
+    await commissionLedgerService.recordBookingCommissions(booking);
+  } catch (commErr) {
+    console.warn('[PARTS_REVIEW_COMMISSION_LEDGER_WARN]', commErr.message);
+  }
 
   // Safe notification to provider on customer decision
   try {

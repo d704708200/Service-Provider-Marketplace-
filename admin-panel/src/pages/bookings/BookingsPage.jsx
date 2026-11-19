@@ -297,9 +297,8 @@ const BookingsPage = () => {
             {item.paymentMethod || 'CASH'}
           </span>
           <span
-            className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border mt-0.5 ${
-              PAYMENT_BADGES[item.paymentStatus] || 'bg-slate-50 text-slate-700 border-slate-200'
-            }`}
+            className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border mt-0.5 ${PAYMENT_BADGES[item.paymentStatus] || 'bg-slate-50 text-slate-700 border-slate-200'
+              }`}
           >
             {item.paymentStatus?.toUpperCase() || 'PENDING'}
           </span>
@@ -311,9 +310,8 @@ const BookingsPage = () => {
       key: 'status',
       render: (item) => (
         <span
-          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-            STATUS_BADGES[item.status] || 'bg-slate-50 text-slate-600 border-slate-200'
-          }`}
+          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${STATUS_BADGES[item.status] || 'bg-slate-50 text-slate-600 border-slate-200'
+            }`}
         >
           {item.status.toUpperCase()}
         </span>
@@ -626,9 +624,8 @@ const BookingsPage = () => {
               <div className="flex items-center gap-3">
                 <span className="text-xs font-semibold text-slate-500">Booking Status:</span>
                 <span
-                  className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                    STATUS_BADGES[selectedBooking.status]
-                  }`}
+                  className={`px-3 py-1 rounded-full text-xs font-bold border ${STATUS_BADGES[selectedBooking.status]
+                    }`}
                 >
                   {selectedBooking.status.toUpperCase()}
                 </span>
@@ -644,9 +641,8 @@ const BookingsPage = () => {
               <div className="flex items-center gap-3">
                 <span className="text-xs font-semibold text-slate-500">Payment Status:</span>
                 <span
-                  className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                    PAYMENT_BADGES[selectedBooking.paymentStatus]
-                  }`}
+                  className={`px-3 py-1 rounded-full text-xs font-bold border ${PAYMENT_BADGES[selectedBooking.paymentStatus]
+                    }`}
                 >
                   {selectedBooking.paymentStatus.toUpperCase()}
                 </span>
@@ -891,94 +887,199 @@ const BookingsPage = () => {
                 (Math.round((totalCustomerPayable - totalPlatformCommission) * 100) / 100)
               );
 
+              // Independent Commission Deduction Audit
+              const serviceComm = selectedBooking.accounting?.serviceCommission || {};
+              const labourComm = selectedBooking.accounting?.labourCommission || {};
+
+              // Determine accurate deduction status
+              let sStatus = serviceComm.status || 'CALCULATED';
+              let lStatus = labourComm.status || (approvedLabourCharge > 0 ? 'CALCULATED' : 'NOT_APPLICABLE');
+
+              // Fallback deduction resolution based on confirmed booking payment
+              if (!serviceComm.status) {
+                if (selectedBooking.status === 'completed') {
+                  if (selectedBooking.paymentMethod === 'online' && selectedBooking.paymentStatus === 'paid') {
+                    sStatus = 'DEDUCTED';
+                    if (approvedLabourCharge > 0) lStatus = 'DEDUCTED';
+                  } else if (selectedBooking.paymentMethod === 'cash') {
+                    sStatus = 'PENDING';
+                    if (approvedLabourCharge > 0) lStatus = 'PENDING';
+                  }
+                } else if (selectedBooking.status === 'cancelled') {
+                  sStatus = 'REVERSED';
+                  if (approvedLabourCharge > 0) lStatus = 'REVERSED';
+                }
+              }
+
+              const sDeductedAmount = serviceComm.deductedAmount !== undefined
+                ? Number(serviceComm.deductedAmount)
+                : (sStatus === 'DEDUCTED' ? serviceCommissionAmount : 0);
+
+              const lDeductedAmount = labourComm.deductedAmount !== undefined
+                ? Number(labourComm.deductedAmount)
+                : (lStatus === 'DEDUCTED' ? labourCommissionAmount : 0);
+
+              const sTxnRef = serviceComm.transactionReference || (sStatus === 'DEDUCTED' ? selectedBooking.paymentDetails?.razorpayPaymentId || 'WALLET_RETAINED' : 'N/A');
+              const lTxnRef = labourComm.transactionReference || (lStatus === 'DEDUCTED' ? selectedBooking.paymentDetails?.razorpayPaymentId || 'WALLET_RETAINED' : 'N/A');
+              const sDeductedDate = serviceComm.deductedAt || (sStatus === 'DEDUCTED' ? selectedBooking.paymentDetails?.paidAt || selectedBooking.statusTimestamps?.completedAt : null);
+              const lDeductedDate = labourComm.deductedAt || (lStatus === 'DEDUCTED' ? selectedBooking.paymentDetails?.paidAt || selectedBooking.statusTimestamps?.completedAt : null);
+
+              const outstandingCommission = (sStatus === 'PENDING' ? (serviceCommissionAmount - sDeductedAmount) : 0) +
+                (lStatus === 'PENDING' ? (labourCommissionAmount - lDeductedAmount) : 0);
+
+              const getBadge = (st) => {
+                switch (st) {
+                  case 'DEDUCTED':
+                    return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300"><CheckCircle className="w-3 h-3" /> DEDUCTED</span>;
+                  case 'PENDING':
+                    return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300"><Clock className="w-3 h-3" /> PENDING</span>;
+                  case 'CALCULATED':
+                    return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-300">CALCULATED</span>;
+                  case 'FAILED':
+                    return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300"><AlertCircle className="w-3 h-3" /> FAILED</span>;
+                  case 'REVERSED':
+                    return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-300"><RefreshCw className="w-3 h-3" /> REVERSED</span>;
+                  case 'REFUNDED':
+                    return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-300">REFUNDED</span>;
+                  case 'NOT_APPLICABLE':
+                  default:
+                    return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">NOT APPLICABLE</span>;
+                }
+              };
+
               return (
-                <div className="p-4 bg-gradient-to-br from-indigo-50/70 via-slate-50 to-emerald-50/40 rounded-xl border border-indigo-100 space-y-3">
-                  <div className="flex items-center justify-between">
+                <div className="p-4 bg-gradient-to-br from-indigo-50/70 via-slate-50 to-emerald-50/40 rounded-xl border border-indigo-100 space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
-                      <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        Dual Platform Commission & Financial Audit
+                      <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                          Platform Commission Breakdown
+                        </h4>
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          Booking: {selectedBooking.bookingReference}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/80 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                        Spare Parts: 100% Commission-Free
                       </span>
                     </div>
-                    <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/80 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                      Parts Excluded (0%)
-                    </span>
                   </div>
 
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Independent dual commission system: <strong className="text-slate-700">Service Commission</strong> applies only to base service price ({commissionRate}%). <strong className="text-slate-700">Labour Commission</strong> applies only to customer-approved additional labour ({labourRate}%). Physical spare parts/materials are <strong className="text-slate-700">100% commission-free</strong>.
-                  </p>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-1">
-                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                      <span className="text-slate-500 block text-[11px]">Original Service Price</span>
-                      <span className="font-bold text-slate-900 text-sm mt-0.5 block">
-                        ₹{originalServicePrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
-                      <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">Comm: ₹{serviceCommissionAmount.toFixed(2)} ({commissionRate}%)</span>
+                  {/* Independent Commission Cards (Service vs Labour) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {/* Service Commission Card */}
+                    <div className="p-3.5 bg-white rounded-xl border border-indigo-200 shadow-sm space-y-2.5">
+                      <div className="flex items-center justify-between pb-2 border-b border-indigo-100">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+                          <span className="text-xs font-bold text-indigo-900 uppercase">Service Commission</span>
+                        </div>
+                        {getBadge(sStatus)}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-[11px] text-slate-500 block">Eligible Service Base</span>
+                          <span className="font-semibold text-slate-900">₹{originalServicePrice.toFixed(2)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-slate-500 block">Commission Rate</span>
+                          <span className="font-semibold text-indigo-700">{commissionRate}%</span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-slate-500 block">Calculated Amount</span>
+                          <span className="font-bold text-indigo-900">₹{serviceCommissionAmount.toFixed(2)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-slate-500 block">Actual Deducted</span>
+                          <span className={`font-bold ${sDeductedAmount > 0 ? 'text-emerald-700' : 'text-slate-600'}`}>
+                            ₹{sDeductedAmount.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500 space-y-0.5 font-mono">
+                        <div className="truncate"><span className="text-slate-400">Txn Ref:</span> {sTxnRef}</div>
+                        <div><span className="text-slate-400">Deduction Date:</span> {sDeductedDate ? new Date(sDeductedDate).toLocaleString('en-IN') : 'Pending confirmation'}</div>
+                      </div>
                     </div>
 
-                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                      <span className="text-slate-500 block text-[11px]">Approved Labour Charge</span>
-                      <span className="font-bold text-slate-900 text-sm mt-0.5 block">
-                        ₹{approvedLabourCharge.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
-                      <span className="text-[10px] text-amber-600 block mt-0.5 font-medium">Comm: ₹{labourCommissionAmount.toFixed(2)} ({labourRate}%)</span>
+                    {/* Labour Commission Card */}
+                    <div className="p-3.5 bg-white rounded-xl border border-amber-200 shadow-sm space-y-2.5">
+                      <div className="flex items-center justify-between pb-2 border-b border-amber-100">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-amber-600"></span>
+                          <span className="text-xs font-bold text-amber-900 uppercase">Labour Commission</span>
+                        </div>
+                        {getBadge(lStatus)}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-[11px] text-slate-500 block">Eligible Labour Base</span>
+                          <span className="font-semibold text-slate-900">₹{approvedLabourCharge.toFixed(2)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-slate-500 block">Commission Rate</span>
+                          <span className="font-semibold text-amber-700">{labourRate}%</span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-slate-500 block">Calculated Amount</span>
+                          <span className="font-bold text-amber-900">₹{labourCommissionAmount.toFixed(2)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-slate-500 block">Actual Deducted</span>
+                          <span className={`font-bold ${lDeductedAmount > 0 ? 'text-emerald-700' : 'text-slate-600'}`}>
+                            ₹{lDeductedAmount.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500 space-y-0.5 font-mono">
+                        <div className="truncate"><span className="text-slate-400">Txn Ref:</span> {lTxnRef}</div>
+                        <div><span className="text-slate-400">Deduction Date:</span> {lDeductedDate ? new Date(lDeductedDate).toLocaleString('en-IN') : (approvedLabourCharge > 0 ? 'Pending confirmation' : 'N/A (0% Labour)')}</div>
+                      </div>
                     </div>
+                  </div>
 
-                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                      <span className="text-slate-500 block text-[11px]">Additional Parts Amount</span>
-                      <span className="font-bold text-slate-900 text-sm mt-0.5 block">
-                        ₹{customerApprovedPartsAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
-                      <span className="text-[10px] text-emerald-600 block mt-0.5 font-medium">Parts Comm: ₹0 (0% Exempt)</span>
-                    </div>
-
-                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                      <span className="text-slate-500 block text-[11px]">Total Customer Payable</span>
-                      <span className="font-bold text-indigo-900 text-sm mt-0.5 block">
-                        ₹{totalCustomerPayable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">Service + Labour + Parts</span>
-                    </div>
-
-                    <div className="p-2.5 bg-indigo-50/80 rounded-lg border border-indigo-200">
-                      <span className="text-indigo-700 block text-[11px] font-medium">Service Commission</span>
-                      <span className="font-bold text-indigo-900 text-sm mt-0.5 block">
-                        ₹{serviceCommissionAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
-                      <span className="text-[10px] text-indigo-700 block mt-0.5 font-sans">
-                        ₹{originalServicePrice} × {commissionRate}%
-                      </span>
-                    </div>
-
-                    <div className="p-2.5 bg-amber-50/80 rounded-lg border border-amber-200">
-                      <span className="text-amber-700 block text-[11px] font-medium">Labour Commission</span>
-                      <span className="font-bold text-amber-900 text-sm mt-0.5 block">
-                        ₹{labourCommissionAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
-                      <span className="text-[10px] text-amber-700 block mt-0.5 font-sans">
-                        ₹{approvedLabourCharge} × {labourRate}%
-                      </span>
-                    </div>
-
+                  {/* Financial Settlement & Net Payable Summary Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs pt-1">
                     <div className="p-2.5 bg-purple-50/80 rounded-lg border border-purple-200">
                       <span className="text-purple-700 block text-[11px] font-medium">Total Platform Commission</span>
                       <span className="font-bold text-purple-900 text-sm mt-0.5 block">
                         ₹{totalPlatformCommission.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </span>
-                      <span className="text-[10px] text-purple-700 block mt-0.5 font-sans">
+                      <span className="text-[10px] text-purple-600 block mt-0.5">
                         Service ₹{serviceCommissionAmount.toFixed(2)} + Labour ₹{labourCommissionAmount.toFixed(2)}
                       </span>
                     </div>
 
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px]">Provider Gross Earnings</span>
+                      <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+                        ₹{totalCustomerPayable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">Total Customer Payable</span>
+                    </div>
+
                     <div className="p-2.5 bg-emerald-50/80 rounded-lg border border-emerald-200">
-                      <span className="text-emerald-700 block text-[11px] font-medium">Provider Net Earning</span>
+                      <span className="text-emerald-700 block text-[11px] font-medium">Provider Net Payable</span>
                       <span className="font-bold text-emerald-900 text-sm mt-0.5 block">
                         ₹{providerNetEarning.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </span>
-                      <span className="text-[10px] text-emerald-700 block mt-0.5">
-                        Total ₹{totalCustomerPayable.toFixed(2)} - Comm ₹{totalPlatformCommission.toFixed(2)}
+                      <span className="text-[10px] text-emerald-600 block mt-0.5">
+                        Gross ₹{totalCustomerPayable.toFixed(2)} - Comm ₹{totalPlatformCommission.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className={`p-2.5 rounded-lg border ${outstandingCommission > 0 ? 'bg-amber-50/80 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+                      <span className={`block text-[11px] font-medium ${outstandingCommission > 0 ? 'text-amber-800' : 'text-slate-500'}`}>
+                        Outstanding Commission
+                      </span>
+                      <span className={`font-bold text-sm mt-0.5 block ${outstandingCommission > 0 ? 'text-amber-900' : 'text-slate-700'}`}>
+                        ₹{outstandingCommission.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">
+                        {outstandingCommission > 0 ? 'Pending provider settlement' : 'Fully settled / None due'}
                       </span>
                     </div>
                   </div>
