@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "provider-app",
+    "name": "MENDROO Provider",
     "slug": "provider-app",
     "version": "1.2.1",
     "orientation": "portrait",
@@ -24,7 +24,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#020a25"
       },
-      "usesCleartextTraffic": true,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",

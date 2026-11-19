@@ -376,3 +376,4 @@ const createStyles = (colors, isDark) =>
       textAlign: 'center'
     }
   });
+

@@ -38,6 +38,7 @@ router.delete(
 router.get('/me', authenticate, requireRole('customer'), customerController.getCustomerMe);
 router.put('/me', authenticate, requireRole('customer'), validateUpdateCustomerProfile, customerController.updateCustomerMe);
 router.post('/me/avatar', authenticate, requireRole('customer'), uploadSingleAvatar('avatar'), customerController.uploadCustomerAvatar);
+router.delete('/me', authenticate, requireRole('customer'), customerController.deleteCustomerMe);
 
 /**
  * Saved Addresses Management

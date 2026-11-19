@@ -24,7 +24,13 @@ const serviceRadiusRoutes = require('./routes/serviceRadiusRoutes');
 const settingRoutes = require('./routes/settingRoutes');
 const { initializeFirebase, isFirebaseConfigured, getFirebaseProjectId } = require('./config/firebase');
 const emailService = require('./services/emailService');
-const { renderPrivacyPage, renderTermsPage, renderSupportPage } = require('./controllers/legalController');
+const {
+  renderPrivacyPage,
+  renderTermsPage,
+  renderSupportPage,
+  renderAccountDeletionPage,
+  handleWebAccountDeletionRequest
+} = require('./controllers/legalController');
 const authController = require('./controllers/authController');
 const { validateResetPassword } = require('./middleware/validation');
 
@@ -108,7 +114,8 @@ app.get('/', (req, res) => {
     health: '/api/health',
     privacy: '/privacy',
     terms: '/terms',
-    support: '/support'
+    support: '/support',
+    deleteAccount: '/delete-account'
   });
 });
 
@@ -116,6 +123,9 @@ app.get('/', (req, res) => {
 app.get('/privacy', renderPrivacyPage);
 app.get('/terms', renderTermsPage);
 app.get('/support', renderSupportPage);
+app.get('/delete-account', renderAccountDeletionPage);
+app.get('/privacy/delete-account', renderAccountDeletionPage);
+app.post('/delete-account', handleWebAccountDeletionRequest);
 
 // Clean Password Reset Web Pages
 app.get('/reset-password', authController.renderResetPasswordPage);

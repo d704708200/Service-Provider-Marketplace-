@@ -816,6 +816,22 @@ const acceptTerms = async (req, res, next) => {
   }
 };
 
+/**
+ * DELETE /api/providers/me
+ * Self-service provider account deletion
+ */
+const deleteProviderMe = async (req, res, next) => {
+  try {
+    const result = await providerService.deleteProviderSelf(req.user._id, req.body?.password);
+    res.status(200).json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getTerms,
   acceptTerms,
@@ -857,5 +873,6 @@ module.exports = {
   updateProviderVerification,
   updateProviderAccountStatus,
   updateTopRatedStatus,
-  deleteProviderByAdmin
+  deleteProviderByAdmin,
+  deleteProviderMe
 };

@@ -694,6 +694,43 @@ const sendTestEmail = async (req, res, next) => {
   }
 };
 
+/**
+ * DELETE /api/auth/delete-account
+ * Self-service account deletion for authenticated user (customer or provider)
+ */
+const deleteMyAccount = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+    const role = req.user.role;
+    const password = req.body?.password;
+
+    if (role === 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Administrator accounts cannot be self-deleted.'
+      });
+    }
+
+    let result;
+    if (role === 'customer') {
+      const customerService = require('../services/customerService');
+      result = await customerService.deleteCustomerSelf(userId, password);
+    } else if (role === 'provider') {
+      const providerService = require('../services/providerService');
+      result = await providerService.deleteProviderSelf(userId, password);
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Unsupported user role for account deletion.'
+      });
+    }
+
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   registerCustomer,
   loginCustomer,
@@ -705,5 +742,6 @@ module.exports = {
   resetPassword,
   renderResetPasswordPage,
   verifySmtp,
-  sendTestEmail
+  sendTestEmail,
+  deleteMyAccount
 };

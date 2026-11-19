@@ -217,6 +217,10 @@ export const providerApi = {
   acceptTerms: async (data = {}) => {
     const response = await api.post('/providers/accept-terms', data);
     return response.data;
+  },
+  deleteAccount: async (password) => {
+    const response = await api.delete('/providers/me', { data: { password } });
+    return response.data;
   }
 };
 

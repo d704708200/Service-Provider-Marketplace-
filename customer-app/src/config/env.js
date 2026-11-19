@@ -22,7 +22,23 @@ export const ANDROID_EMULATOR_API_URL = 'http://10.0.2.2:5000/api';
 export function getApiBaseUrl() {
   const envUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 
-  // If explicitly configured:
+  // In production release builds, disallow localhost/tunnels and enforce production HTTPS
+  if (!__DEV__) {
+    if (envUrl && envUrl.length > 0) {
+      const isDisallowed =
+        envUrl.includes('localhost') ||
+        envUrl.includes('127.0.0.1') ||
+        envUrl.includes('10.0.2.2') ||
+        envUrl.includes('trycloudflare') ||
+        envUrl.includes('ngrok');
+      if (!isDisallowed) {
+        return envUrl;
+      }
+    }
+    return PRODUCTION_API_URL;
+  }
+
+  // In development (__DEV__):
   if (envUrl && envUrl.length > 0) {
     if (Platform.OS === 'android') {
       if (envUrl.includes('localhost') || envUrl.includes('127.0.0.1')) {
@@ -30,11 +46,6 @@ export function getApiBaseUrl() {
       }
     }
     return envUrl;
-  }
-
-  // Release builds fallback when no env variable is provided:
-  if (!__DEV__) {
-    return PRODUCTION_API_URL;
   }
 
   // Development defaults:

@@ -3022,6 +3022,112 @@ const acceptTerms = async (userId, { termsVersion, termsHash, ipAddress = null }
   };
 };
 
+/**
+ * Self-Service Provider Account Deletion (Google Play Compliance)
+ * - Validates authentication & optional password confirmation
+ * - Prevents deletion if provider has active ongoing jobs
+ * - Cancels pending / accepted jobs
+ * - Deactivates custom offered services
+ * - Permanently anonymizes personal PII and suspends verification
+ * - Removes device push notification tokens
+ */
+const deleteProviderSelf = async (userId, password) => {
+  const user = await User.findById(userId);
+  if (!user || user.role !== 'provider') {
+    const err = new Error('Provider account not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (user.isDeleted) {
+    return {
+      success: true,
+      message: 'Account is already deleted.'
+    };
+  }
+
+  if (password) {
+    const bcrypt = require('bcryptjs');
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      const err = new Error('Invalid password confirmation. Account deletion cancelled.');
+      err.statusCode = 401;
+      throw err;
+    }
+  }
+
+  const provider = await Provider.findOne({ user: user._id });
+
+  // Guard: Check for ongoing/in-progress bookings
+  if (provider) {
+    const Booking = require('../models/Booking');
+    const Service = require('../models/Service');
+    const activeBooking = await Booking.findOne({
+      provider: provider._id,
+      status: 'in_progress'
+    });
+    if (activeBooking) {
+      const err = new Error(
+        'Cannot delete provider account while a service job is in progress. Please complete or resolve active jobs first.'
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Cancel pending and accepted bookings
+    await Booking.updateMany(
+      { provider: provider._id, status: { $in: ['pending', 'accepted'] } },
+      {
+        $set: {
+          status: 'cancelled',
+          cancelledBy: 'provider',
+          cancellationReason: 'Provider closed account'
+        }
+      }
+    );
+
+    // Deactivate custom services
+    await Service.updateMany({ provider: provider._id }, { $set: { isActive: false } });
+  }
+
+  // Anonymize personal data & mark deleted
+  const now = new Date();
+  const anonId = user._id.toString();
+  user.isActive = false;
+  user.isDeleted = true;
+  user.deletedAt = now;
+  user.name = 'Deleted Provider';
+  user.email = `deleted_${anonId}@deleted.mendroo.com`;
+  user.phone = `deleted_${anonId}`;
+  user.avatar = null;
+  await user.save();
+
+  if (provider) {
+    provider.isAvailable = false;
+    provider.isDeleted = true;
+    provider.deletedAt = now;
+    provider.verificationStatus = 'suspended';
+    provider.showInTopRated = false;
+    provider.avatar = null;
+    await provider.save();
+  }
+
+  // Remove push notification tokens
+  try {
+    const DeviceToken = require('../models/DeviceToken');
+    await DeviceToken.deleteMany({ user: user._id });
+  } catch (_) {
+    // Ignore if device tokens don't exist
+  }
+
+  console.log(`[USER DELETE] Provider self-deleted: ${anonId} at ${now.toISOString()}`);
+
+  return {
+    success: true,
+    message: 'Your MENDROO provider account and personal data have been permanently deleted in accordance with our data retention policy.'
+  };
+};
+
 module.exports = {
   getTerms,
   acceptTerms,
@@ -3061,5 +3167,6 @@ module.exports = {
   updateProviderVerification,
   updateProviderAccountStatus,
   updateTopRatedStatus,
-  deleteProviderByAdmin
+  deleteProviderByAdmin,
+  deleteProviderSelf
 };

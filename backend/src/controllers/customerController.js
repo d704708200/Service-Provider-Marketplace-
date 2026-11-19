@@ -199,6 +199,22 @@ const deleteCustomerByAdmin = async (req, res, next) => {
   }
 };
 
+/**
+ * DELETE /api/customers/me
+ * Self-service customer account deletion
+ */
+const deleteCustomerMe = async (req, res, next) => {
+  try {
+    const result = await customerService.deleteCustomerSelf(req.user._id, req.body?.password);
+    res.status(200).json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getCustomerMe,
   updateCustomerMe,
@@ -209,5 +225,6 @@ module.exports = {
   deleteCustomerAddress,
   setDefaultCustomerAddress,
   getAdminCustomers,
-  deleteCustomerByAdmin
+  deleteCustomerByAdmin,
+  deleteCustomerMe
 };

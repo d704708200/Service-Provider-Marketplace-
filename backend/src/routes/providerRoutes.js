@@ -71,6 +71,13 @@ router.post(
   providerController.uploadProviderAvatar
 );
 
+router.delete(
+  '/me',
+  authenticate,
+  requireRole('provider'),
+  providerController.deleteProviderMe
+);
+
 router.get(
   '/me/services',
   authenticate,

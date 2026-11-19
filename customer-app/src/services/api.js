@@ -306,6 +306,10 @@ export const customerApi = {
   setDefaultAddress: async (addressId) => {
     const response = await api.patch(`/customers/me/addresses/${addressId}/default`);
     return response.data;
+  },
+  deleteAccount: async (password) => {
+    const response = await api.delete('/customers/me', { data: { password } });
+    return response.data;
   }
 };
 

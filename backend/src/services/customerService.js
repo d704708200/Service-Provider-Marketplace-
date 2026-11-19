@@ -448,6 +448,106 @@ const deleteCustomerByAdmin = async (identifier, adminUserId) => {
   };
 };
 
+/**
+ * Self-Service Customer Account Deletion (Google Play Compliance)
+ * - Validates authentication & optional password confirmation
+ * - Prevents deletion if customer has active ongoing bookings
+ * - Cancels pending / accepted bookings with clear audit note
+ * - Permanently anonymizes personal PII while preserving legal financial audit trails
+ * - Unregisters device push notification tokens
+ */
+const deleteCustomerSelf = async (userId, password) => {
+  const user = await User.findById(userId);
+  if (!user || user.role !== 'customer') {
+    const err = new Error('Customer account not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (user.isDeleted) {
+    return {
+      success: true,
+      message: 'Account is already deleted.'
+    };
+  }
+
+  // If password provided, verify it
+  if (password) {
+    const bcrypt = require('bcryptjs');
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      const err = new Error('Invalid password confirmation. Account deletion cancelled.');
+      err.statusCode = 401;
+      throw err;
+    }
+  }
+
+  const customer = await Customer.findOne({ user: user._id });
+
+  // Guard: Check for ongoing/in-progress bookings
+  const Booking = require('../models/Booking');
+  if (customer) {
+    const activeBooking = await Booking.findOne({
+      customer: customer._id,
+      status: 'in_progress'
+    });
+    if (activeBooking) {
+      const err = new Error(
+        'Cannot delete account while a service booking is currently in progress. Please wait until the service is completed or cancelled.'
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Cancel pending and accepted bookings
+    await Booking.updateMany(
+      { customer: customer._id, status: { $in: ['pending', 'accepted'] } },
+      {
+        $set: {
+          status: 'cancelled',
+          cancelledBy: 'customer',
+          cancellationReason: 'Customer requested account deletion'
+        }
+      }
+    );
+  }
+
+  // Anonymize personal data & mark deleted
+  const now = new Date();
+  const anonId = user._id.toString();
+  user.isActive = false;
+  user.isDeleted = true;
+  user.deletedAt = now;
+  user.name = 'Deleted Customer';
+  user.email = `deleted_${anonId}@deleted.mendroo.com`;
+  user.phone = `deleted_${anonId}`;
+  user.avatar = null;
+  await user.save();
+
+  if (customer) {
+    customer.isDeleted = true;
+    customer.deletedAt = now;
+    customer.addresses = [];
+    customer.emergencyContact = undefined;
+    await customer.save();
+  }
+
+  // Remove push notification tokens
+  try {
+    const DeviceToken = require('../models/DeviceToken');
+    await DeviceToken.deleteMany({ user: user._id });
+  } catch (_) {
+    // Ignore if device tokens don't exist
+  }
+
+  console.log(`[USER DELETE] Customer self-deleted: ${anonId} at ${now.toISOString()}`);
+
+  return {
+    success: true,
+    message: 'Your MENDROO customer account and personal data have been permanently deleted in accordance with our data retention policy.'
+  };
+};
+
 module.exports = {
   getCustomerProfileByUserId,
   updateCustomerProfileByUserId,
@@ -457,5 +557,6 @@ module.exports = {
   deleteCustomerAddressByUserId,
   setDefaultCustomerAddressByUserId,
   getAdminCustomers,
-  deleteCustomerByAdmin
+  deleteCustomerByAdmin,
+  deleteCustomerSelf
 };

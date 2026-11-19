@@ -77,4 +77,7 @@ router.post('/email-test', emailTestLimiter, requireAdminOrSecret, authControlle
 // Current Authenticated User Profile
 router.get('/me', authenticate, authController.getMe);
 
+// Self-Service Account Deletion (Google Play Compliance)
+router.delete('/delete-account', authenticate, authController.deleteMyAccount);
+
 module.exports = router;

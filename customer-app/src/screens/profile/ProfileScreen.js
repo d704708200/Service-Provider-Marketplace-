@@ -11,7 +11,8 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
-  Image
+  Image,
+  Linking
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,6 +30,9 @@ export default function ProfileScreen({ navigation }) {
   const { user, logout, checkAuthSession } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   // Profile data from /api/customers/me
   const [customerData, setCustomerData] = useState(null);
@@ -364,6 +368,27 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
 
+  const handleDeleteAccount = async () => {
+    try {
+      setDeletingAccount(true);
+      await customerApi.deleteAccount(deletePassword || undefined);
+      setDeletingAccount(false);
+      setIsDeleteModalOpen(false);
+      setDeletePassword('');
+      Alert.alert(
+        'Account Deleted',
+        'Your MENDROO customer account and personal data have been permanently deleted in accordance with data retention standards.',
+        [{ text: 'OK', onPress: () => logout() }]
+      );
+    } catch (err) {
+      setDeletingAccount(false);
+      Alert.alert(
+        'Deletion Failed',
+        err?.response?.data?.message || err?.message || 'Could not delete account. Please try again.'
+      );
+    }
+  };
+
   const memberSince = (customerData?.user?.createdAt || user?.createdAt)
     ? new Date(customerData?.user?.createdAt || user?.createdAt).toLocaleDateString('en-US', {
         month: 'short',
@@ -612,6 +637,51 @@ export default function ProfileScreen({ navigation }) {
           <AppearanceSettings />
         </Card>
 
+        {/* Legal & Compliance Policies */}
+        <Card style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Legal & Privacy Policies</Text>
+
+          <TouchableOpacity
+            style={styles.legalNavRow}
+            onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/privacy')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.legalNavLeft}>
+              <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} style={{ marginRight: 10 }} />
+              <Text style={styles.legalNavText}>Privacy Policy</Text>
+            </View>
+            <Ionicons name="open-outline" size={16} color={colors.textSecondary || '#9CA3AF'} />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.legalNavRow}
+            onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/terms')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.legalNavLeft}>
+              <Ionicons name="document-text-outline" size={18} color={colors.primary} style={{ marginRight: 10 }} />
+              <Text style={styles.legalNavText}>Terms of Service</Text>
+            </View>
+            <Ionicons name="open-outline" size={16} color={colors.textSecondary || '#9CA3AF'} />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.legalNavRow}
+            onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/delete-account')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.legalNavLeft}>
+              <Ionicons name="trash-outline" size={18} color="#EF4444" style={{ marginRight: 10 }} />
+              <Text style={[styles.legalNavText, { color: '#EF4444' }]}>Account Deletion Policy & Web Request</Text>
+            </View>
+            <Ionicons name="open-outline" size={16} color="#EF4444" />
+          </TouchableOpacity>
+        </Card>
+
         {/* Application Information */}
         <Card style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Application Information</Text>
@@ -637,6 +707,16 @@ export default function ProfileScreen({ navigation }) {
           disabled={loggingOut}
           style={styles.logoutBtn}
         />
+
+        {/* Account Deletion Trigger */}
+        <TouchableOpacity
+          style={styles.deleteAccountTrigger}
+          onPress={() => setIsDeleteModalOpen(true)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="trash-outline" size={16} color="#EF4444" style={{ marginRight: 6 }} />
+          <Text style={styles.deleteAccountTriggerText}>Delete MENDROO Account</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Edit Profile Modal */}
@@ -837,6 +917,67 @@ export default function ProfileScreen({ navigation }) {
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* Permanent Account Deletion Confirmation Modal */}
+      <Modal
+        visible={isDeleteModalOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => !deletingAccount && setIsDeleteModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={styles.deleteAccountModalScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.deleteAccountModalContent}>
+              <View style={styles.deleteAccountIconCircle}>
+                <Ionicons name="warning-outline" size={32} color="#EF4444" />
+              </View>
+              <Text style={styles.deleteAccountTitle}>Permanent Account Deletion</Text>
+              <Text style={styles.deleteAccountSubtitle}>
+                Google Play Store User Data Compliance
+              </Text>
+
+              <View style={styles.disclosureCard}>
+                <Text style={styles.disclosureHeading}>Data that will be permanently erased:</Text>
+                <Text style={styles.disclosureText}>• Your full profile, name, phone number, and email address</Text>
+                <Text style={styles.disclosureText}>• All saved delivery/service addresses</Text>
+                <Text style={styles.disclosureText}>• Push notification tokens and login credentials</Text>
+              </View>
+
+              <View style={[styles.disclosureCard, { borderColor: 'rgba(239, 68, 68, 0.3)' }]}>
+                <Text style={[styles.disclosureHeading, { color: '#F87171' }]}>Data legally retained:</Text>
+                <Text style={styles.disclosureText}>• In accordance with Indian tax laws (GST) and accounting regulations, historical payment receipts and invoice ledgers are retained in an anonymized format.</Text>
+              </View>
+
+              <Input
+                label="Confirm with Password (Optional)"
+                value={deletePassword}
+                onChangeText={setDeletePassword}
+                placeholder="Enter password to verify"
+                secureTextEntry
+                containerStyle={{ width: '100%', marginTop: spacing.sm, marginBottom: spacing.md }}
+              />
+
+              <View style={styles.deleteAccountBtnRow}>
+                <Button
+                  title="Cancel"
+                  onPress={() => setIsDeleteModalOpen(false)}
+                  disabled={deletingAccount}
+                  variant="secondary"
+                  style={{ flex: 1, marginRight: spacing.sm }}
+                />
+                <Button
+                  title={deletingAccount ? "Deleting..." : "Delete Account"}
+                  onPress={handleDeleteAccount}
+                  loading={deletingAccount}
+                  disabled={deletingAccount}
+                  variant="danger"
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -1269,5 +1410,98 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     ...typography.bodyMedium,
     color: '#FFFFFF',
     fontWeight: '700'
+  },
+  legalNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm
+  },
+  legalNavLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1
+  },
+  legalNavText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textPrimary || '#FFFFFF'
+  },
+  deleteAccountTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.md,
+    marginBottom: spacing.xxl,
+    paddingVertical: 12
+  },
+  deleteAccountTriggerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#EF4444'
+  },
+  deleteAccountModalScroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg
+  },
+  deleteAccountModalContent: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+    padding: spacing.xl,
+    alignItems: 'center'
+  },
+  deleteAccountIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md
+  },
+  deleteAccountTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 4
+  },
+  deleteAccountSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary || '#9CA3AF',
+    textAlign: 'center',
+    marginBottom: spacing.lg
+  },
+  disclosureCard: {
+    width: '100%',
+    backgroundColor: isDark ? '#1C1929' : '#F9FAFB',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.sm
+  },
+  disclosureHeading: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+    marginBottom: 4
+  },
+  disclosureText: {
+    fontSize: 11,
+    color: colors.textSecondary || '#9CA3AF',
+    lineHeight: 16,
+    marginBottom: 2
+  },
+  deleteAccountBtnRow: {
+    flexDirection: 'row',
+    width: '100%',
+    marginTop: spacing.sm
   }
 });
