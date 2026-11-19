@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { providerApi } from '../../services/api';
-import { Header, Card, Badge, Button, Input, AppearanceSettings } from '../../components/common';
+import { Header, Card, Badge, Button, Input, AppearanceSettings, SupportContactCard } from '../../components/common';
 import { getApiBaseUrl, API_CONFIG } from '../../config/env';
 import { CURRENT_TERMS_VERSION, TERMS_EFFECTIVE_DATE, PLATFORM_NAME } from '../../constants/providerTerms';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -584,6 +584,30 @@ export default function ProfileScreen({ navigation }) {
               size="sm"
             />
           </View>
+        </Card>
+
+        {/* MENDROO Provider Support Helpline Card */}
+        <SupportContactCard />
+
+        {/* Support & Complaints Navigation */}
+        <Card style={styles.card}>
+          <Text style={styles.sectionTitle}>Help & Support</Text>
+          <TouchableOpacity
+            style={styles.navRow}
+            onPress={() => navigation.navigate('Support')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.navLeft}>
+              <View style={[styles.iconCircle, { backgroundColor: isDark ? '#2E1065' : '#EDE9FE' }]}>
+                <Ionicons name="chatbox-ellipses-outline" size={18} color={isDark ? '#C4B5FD' : colors.primary} />
+              </View>
+              <View style={styles.navTextCol}>
+                <Text style={styles.navLabel} numberOfLines={1} ellipsizeMode="tail">Support & Complaints</Text>
+                <Text style={styles.navSub} numberOfLines={1} ellipsizeMode="tail">Dispute resolution, partner care & FAQs</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
         </Card>
 
         {/* Appearance & Theme Settings */}

@@ -21,3 +21,5 @@ export const VERIFICATION_STATUS = {
   REJECTED: 'rejected',
   SUSPENDED: 'suspended'
 };
+
+export { SUPPORT_CONFIG } from './support';

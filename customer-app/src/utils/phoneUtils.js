@@ -68,9 +68,17 @@ export const callPhoneNumber = async (phoneNumber, recipientName = 'Service Prov
 
     if (!canOpen && Platform.OS !== 'android' && Platform.OS !== 'ios') {
       // In web browser preview where native dialer is absent
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+        try {
+          window.location.href = url;
+          return true;
+        } catch (_) {
+          // Fallback to alert below
+        }
+      }
       Alert.alert(
         'Call Provider',
-        `Provider: ${recipientName}\nPhone: ${normalized}\n(Voice dialing is not supported in this browser window)`
+        `Contact: ${recipientName}\nPhone: ${phoneNumber}\nDialer: ${url}\n(Voice dialing is not supported in this browser window)`
       );
       return true;
     }

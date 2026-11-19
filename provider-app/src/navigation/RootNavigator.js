@@ -15,6 +15,7 @@ import WithdrawScreen from '../screens/wallet/WithdrawScreen';
 import ReviewsScreen from '../screens/reviews/ReviewsScreen';
 import ProviderTermsScreen from '../screens/legal/ProviderTermsScreen';
 import TermsAcceptanceScreen from '../screens/legal/TermsAcceptanceScreen';
+import SupportScreen from '../screens/support/SupportScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -33,6 +34,7 @@ export default function RootNavigator() {
         <>
           <Stack.Screen name="TermsAcceptance" component={TermsAcceptanceScreen} />
           <Stack.Screen name="ProviderTerms" component={ProviderTermsScreen} />
+          <Stack.Screen name="Support" component={SupportScreen} />
         </>
       ) : (
         <>
@@ -47,6 +49,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Withdraw" component={WithdrawScreen} />
           <Stack.Screen name="Reviews" component={ReviewsScreen} />
           <Stack.Screen name="ProviderTerms" component={ProviderTermsScreen} />
+          <Stack.Screen name="Support" component={SupportScreen} />
         </>
       )}
     </Stack.Navigator>

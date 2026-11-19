@@ -9,3 +9,4 @@ export { default as ErrorView } from './ErrorView';
 export { default as LocationPermissionModal } from './LocationPermissionModal';
 export { default as SelectLocationModal } from './SelectLocationModal';
 export { default as AppearanceSettings } from './AppearanceSettings';
+export { default as SupportContactCard } from './SupportContactCard';

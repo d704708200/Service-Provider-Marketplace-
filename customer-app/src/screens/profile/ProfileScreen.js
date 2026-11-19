@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { customerApi } from '../../services/api';
-import { Header, Card, Badge, Button, Input, AppearanceSettings } from '../../components/common';
+import { Header, Card, Badge, Button, Input, AppearanceSettings, SupportContactCard } from '../../components/common';
 import { spacing, typography, borderRadius } from '../../theme';
 
 export default function ProfileScreen({ navigation }) {
@@ -581,6 +581,32 @@ export default function ProfileScreen({ navigation }) {
           )}
         </Card>
 
+        {/* MENDROO Customer Support Helpline Card */}
+        <SupportContactCard />
+
+        {/* Support & Complaints Navigation */}
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Help & Support Center</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.supportNavRow}
+            onPress={() => navigation.navigate('Support')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.supportNavLeft}>
+              <View style={[styles.supportNavIconBox, { backgroundColor: isDark ? '#2E1065' : '#EDE9FE' }]}>
+                <Ionicons name="chatbox-ellipses-outline" size={20} color={isDark ? '#C4B5FD' : colors.primary} />
+              </View>
+              <View style={styles.supportNavTextCol}>
+                <Text style={styles.supportNavTitle}>Support & Complaints</Text>
+                <Text style={styles.supportNavSub}>File a dispute, report an issue, or read FAQs</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary || '#9CA3AF'} />
+          </TouchableOpacity>
+        </Card>
+
         {/* Appearance & Theme Settings */}
         <Card style={styles.sectionCard}>
           <AppearanceSettings />
@@ -939,6 +965,39 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   sectionTitle: {
     ...typography.titleSmall,
     color: colors.textPrimary
+  },
+  supportNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs
+  },
+  supportNavLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: spacing.sm
+  },
+  supportNavIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md
+  },
+  supportNavTextCol: {
+    flex: 1
+  },
+  supportNavTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary || '#FFFFFF'
+  },
+  supportNavSub: {
+    fontSize: 12,
+    color: colors.textSecondary || '#9CA3AF',
+    marginTop: 2
   },
   addAddressBtn: {
     flexDirection: 'row',

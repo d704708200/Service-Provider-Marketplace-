@@ -11,6 +11,7 @@ import ProviderDetailScreen from '../screens/providers/ProviderDetailScreen';
 import RequestServiceScreen from '../screens/booking/RequestServiceScreen';
 import BookingDetailScreen from '../screens/booking/BookingDetailScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
+import SupportScreen from '../screens/support/SupportScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -35,6 +36,7 @@ export default function RootNavigator() {
           <Stack.Screen name="RequestService" component={RequestServiceScreen} />
           <Stack.Screen name="BookingDetail" component={BookingDetailScreen} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
+          <Stack.Screen name="Support" component={SupportScreen} />
         </>
       )}
     </Stack.Navigator>
