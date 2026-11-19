@@ -2529,6 +2529,18 @@ const adminWaiveFullCommission = async (providerId, { reason, adminId, amount } 
     }
   });
 
+  // Keep CommissionLedger synchronized: transition pending commission entries to REVERSED
+  try {
+    const { reverseProviderPendingCommissions } = require('./commissionLedgerService');
+    await reverseProviderPendingCommissions(providerId, {
+      reason: `Admin waiver: ${reason.trim()}`,
+      transactionReference: txnRef,
+      adminUserId
+    });
+  } catch (commErr) {
+    logger.warn(`[COMMISSION_LEDGER_WAIVER_SYNC_WARN] ${commErr.message}`);
+  }
+
   return {
     success: true,
     message: `Commission of ₹${waivedAmount} waived in full`,

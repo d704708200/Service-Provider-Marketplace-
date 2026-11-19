@@ -620,6 +620,10 @@ export const commissionMonitoringApi = {
   adjustTransaction: async (id, data) => {
     const response = await api.post(`/admin/commissions/transactions/${id}/adjust`, data);
     return response.data;
+  },
+  reconcileHistorical: async () => {
+    const response = await api.post('/admin/commissions/reconcile');
+    return response.data;
   }
 };
 

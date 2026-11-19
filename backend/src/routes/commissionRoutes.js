@@ -22,5 +22,8 @@ router.get('/booking/:bookingId', commissionController.getBookingBreakdown);
 // Audited manual adjustment or reversal
 router.post('/transactions/:id/adjust', commissionController.adjustTransaction);
 
+// Idempotent historical reconciliation
+router.post('/reconcile', commissionController.reconcileLedger);
+
 module.exports = router;
 

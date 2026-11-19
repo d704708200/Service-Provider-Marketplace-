@@ -90,11 +90,29 @@ const adjustTransaction = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/admin/commissions/reconcile
+ * Idempotent historical commission reconciliation
+ */
+const reconcileLedger = async (req, res, next) => {
+  try {
+    const result = await commissionLedgerService.reconcileHistoricalCommissions();
+    res.status(200).json({
+      success: true,
+      message: 'Historical commission ledger reconciliation completed successfully',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getDashboard,
   getTransactions,
   exportCsv,
   getBookingBreakdown,
-  adjustTransaction
+  adjustTransaction,
+  reconcileLedger
 };
 

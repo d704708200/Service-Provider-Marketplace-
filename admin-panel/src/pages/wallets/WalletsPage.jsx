@@ -104,6 +104,7 @@ const WalletsPage = () => {
     isSubmitting: false,
     error: ''
   });
+  const [isReconciling, setIsReconciling] = useState(false);
 
   // Separate Settle & Waive Modals (Strictly full-amount only, zero partial settlement inputs)
   const [settleModal, setSettleModal] = useState({ isOpen: false, item: null, reason: '', isSubmitting: false, error: '' });
@@ -248,6 +249,19 @@ const WalletsPage = () => {
       showNotification('Commission ledger transactions exported to CSV successfully');
     } catch (err) {
       setApiError(err.message || 'Failed to export CSV');
+    }
+  };
+
+  const handleReconcileHistorical = async () => {
+    try {
+      setIsReconciling(true);
+      const res = await commissionMonitoringApi.reconcileHistorical();
+      showNotification(res?.message || 'Historical commission ledger reconciled successfully');
+      await fetchData();
+    } catch (err) {
+      setApiError(err.message || 'Failed to reconcile historical commission ledger');
+    } finally {
+      setIsReconciling(false);
     }
   };
 
@@ -1263,6 +1277,15 @@ const WalletsPage = () => {
             </div>
             <div className="flex items-center gap-2.5">
               <button
+                onClick={handleReconcileHistorical}
+                disabled={isReconciling}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xs transition-colors border border-white/10 disabled:opacity-50"
+                title="Safely reconcile historical completed bookings into the Commission Ledger"
+              >
+                <CheckCircle className={`h-4 w-4 text-sky-400 ${isReconciling ? 'animate-spin' : ''}`} />
+                <span>{isReconciling ? 'Reconciling...' : 'Reconcile'}</span>
+              </button>
+              <button
                 onClick={handleExportCsv}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xs transition-colors border border-white/10"
               >
@@ -1375,8 +1398,8 @@ const WalletsPage = () => {
               <button
                 onClick={() => setCommissionView('ledger')}
                 className={`pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2 ${commissionView === 'ledger'
-                    ? 'text-indigo-600'
-                    : 'text-slate-500 hover:text-slate-700'
+                  ? 'text-indigo-600'
+                  : 'text-slate-500 hover:text-slate-700'
                   }`}
               >
                 <FileText className="h-4 w-4" />
@@ -1391,8 +1414,8 @@ const WalletsPage = () => {
               <button
                 onClick={() => setCommissionView('liabilities')}
                 className={`pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2 ${commissionView === 'liabilities'
-                    ? 'text-indigo-600'
-                    : 'text-slate-500 hover:text-slate-700'
+                  ? 'text-indigo-600'
+                  : 'text-slate-500 hover:text-slate-700'
                   }`}
               >
                 <DollarSign className="h-4 w-4" />
@@ -1563,8 +1586,8 @@ const WalletsPage = () => {
                               </td>
                               <td className="py-3.5 px-4">
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold uppercase ${t.commissionType === 'service'
-                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
                                   }`}>
                                   {t.commissionType}
                                 </span>
@@ -1678,8 +1701,8 @@ const WalletsPage = () => {
                     <button
                       onClick={() => setCommissionStatusFilter('all')}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${commissionStatusFilter === 'all'
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
                         }`}
                     >
                       All Providers
@@ -1687,8 +1710,8 @@ const WalletsPage = () => {
                     <button
                       onClick={() => setCommissionStatusFilter('outstanding')}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${commissionStatusFilter === 'outstanding'
-                          ? 'bg-amber-600 text-white'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                        ? 'bg-amber-600 text-white'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
                         }`}
                     >
                       Outstanding Only

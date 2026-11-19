@@ -12,6 +12,19 @@ const startServer = async () => {
   // Connect to MongoDB if MONGODB_URI is provided
   await connectDB();
 
+  // Bootstrap commission ledger if empty
+  try {
+    const CommissionLedger = require('./src/models/CommissionLedger');
+    const count = await CommissionLedger.countDocuments();
+    if (count === 0) {
+      const { reconcileHistoricalCommissions } = require('./src/services/commissionLedgerService');
+      console.log('Commission ledger empty; running automatic historical reconciliation...');
+      await reconcileHistoricalCommissions();
+    }
+  } catch (initErr) {
+    console.warn(`[COMMISSION_BOOTSTRAP_WARN] ${initErr.message}`);
+  }
+
   server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
     console.log(`Health check available at: http://localhost:${PORT}/api/health`);
