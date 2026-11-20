@@ -2,7 +2,7 @@
   "expo": {
     "name": "MENDROO Customer",
     "slug": "customer-app",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.serviceprovider.customerapp",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#020a25"
@@ -33,6 +33,9 @@
       ],
       "googleServicesFile": "./google-services.json"
     },
+    "plugins": [
+      "./plugins/withAndroidPortraitFeature"
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }
