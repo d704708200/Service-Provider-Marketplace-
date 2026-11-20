@@ -265,7 +265,10 @@ export default function HomeScreen({ navigation }) {
 
       <ScrollView showsHorizontalScrollIndicator={false}
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom, 16) + 56 }
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7C3AED']} />

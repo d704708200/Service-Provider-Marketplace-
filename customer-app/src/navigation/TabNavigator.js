@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Platform, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import HomeScreen from '../screens/home/HomeScreen';
 import SearchScreen from '../screens/search/SearchScreen';
@@ -13,8 +14,17 @@ import { useTheme } from '../context/ThemeContext';
 const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
+  const insets = useSafeAreaInsets();
   const { unreadCount } = useNotifications();
   const { colors, isDark } = useTheme();
+
+  // Dynamically compute bottom padding and total height to support:
+  // 1. Android 3-button navigation (insets.bottom ~48dp)
+  // 2. Android gesture navigation pill (insets.bottom ~16-24dp)
+  // 3. Android zero-inset legacy navigation (fallback 8dp)
+  // 4. iOS Home Indicator (insets.bottom ~34dp)
+  const bottomPadding = Math.max(insets.bottom, Platform.OS === 'ios' ? 24 : 8);
+  const tabBarHeight = 56 + bottomPadding;
 
   return (
     <Tab.Navigator
@@ -27,7 +37,10 @@ export default function TabNavigator() {
           styles.tabBar,
           {
             backgroundColor: isDark ? '#0F0E16' : colors.card,
-            borderTopColor: isDark ? '#1F1C2B' : colors.border
+            borderTopColor: isDark ? '#1F1C2B' : colors.border,
+            height: tabBarHeight,
+            paddingBottom: bottomPadding,
+            paddingTop: 6
           }
         ],
         tabBarLabelStyle: styles.tabBarLabel,
@@ -103,12 +116,7 @@ export default function TabNavigator() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: '#0F0E16',
     borderTopWidth: 1,
-    borderTopColor: '#1F1C2B',
-    height: Platform.OS === 'ios' ? 84 : 64,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 8,
-    paddingTop: 8,
     elevation: 0
   },
   tabBarItem: {

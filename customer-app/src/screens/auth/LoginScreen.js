@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
+  TouchableWithoutFeedback,
+  Keyboard,
   Image
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,10 +24,33 @@ export default function LoginScreen({ navigation }) {
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { login, error: authError, clearError } = useAuth();
 
+  const scrollViewRef = useRef(null);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+
+  useEffect(() => {
+    const showListener = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideListener = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showListener, () => setIsKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideListener, () => setIsKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const handlePasswordFocus = () => {
+    // When password is focused, scroll slightly to ensure Login button is comfortably accessible above keyboard
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 150);
+  };
 
   const validate = () => {
     const errors = {};
@@ -42,6 +67,7 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleLogin = async () => {
+    Keyboard.dismiss();
     clearError();
     if (!validate()) return;
 
@@ -66,95 +92,109 @@ export default function LoginScreen({ navigation }) {
     <KeyboardAvoidingView
       style={styles.keyboardContainer}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
-      <ScrollView showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.xl }
-        ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Brand Header */}
-        <View style={styles.header}>
-          <Image
-            source={require('../../../assets/mendroo-logo.png')}
-            style={styles.logoImage}
-            resizeMode="contain"
-          />
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to your customer account to book local services</Text>
-        </View>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingTop: insets.top + (isKeyboardVisible ? spacing.sm : spacing.xl),
+              paddingBottom: insets.bottom + (isKeyboardVisible ? 140 : spacing.xl)
+            },
+            isKeyboardVisible && styles.scrollContentKeyboard
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Brand Header */}
+          <View style={[styles.header, isKeyboardVisible && styles.headerKeyboard]}>
+            <Image
+              source={require('../../../assets/mendroo-logo.png')}
+              style={[styles.logoImage, isKeyboardVisible && styles.logoImageKeyboard]}
+              resizeMode="contain"
+            />
+            <Text style={styles.title}>Welcome Back</Text>
+            {!isKeyboardVisible && (
+              <Text style={styles.subtitle}>Sign in to your customer account to book local services</Text>
+            )}
+          </View>
 
-        {/* Form Card */}
-        <Card style={styles.formCard}>
-          {authError ? (
-            <View style={styles.errorBanner}>
-              <Ionicons name="alert-circle" size={20} color={colors.danger} />
-              <Text style={styles.errorBannerText}>{authError}</Text>
-            </View>
-          ) : null}
+          {/* Form Card */}
+          <Card style={styles.formCard}>
+            {authError ? (
+              <View style={styles.errorBanner}>
+                <Ionicons name="alert-circle" size={20} color={colors.danger} />
+                <Text style={styles.errorBannerText}>{authError}</Text>
+              </View>
+            ) : null}
 
-          <Input
-            label="Email Address"
-            placeholder="e.g. customer@example.com"
-            value={identifier}
-            onChangeText={(text) => {
-              setIdentifier(text);
-              if (formErrors.identifier) setFormErrors({ ...formErrors, identifier: null });
-            }}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            leftIcon={<Ionicons name="mail-outline" size={20} color={colors.slate400} />}
-            error={formErrors.identifier}
-          />
+            <Input
+              label="Email Address"
+              placeholder="e.g. customer@example.com"
+              value={identifier}
+              onChangeText={(text) => {
+                setIdentifier(text);
+                if (formErrors.identifier) setFormErrors({ ...formErrors, identifier: null });
+              }}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              leftIcon={<Ionicons name="mail-outline" size={20} color={colors.slate400} />}
+              error={formErrors.identifier}
+            />
 
-          <Input
-            label="Password"
-            placeholder="Enter your password"
-            value={password}
-            onChangeText={(text) => {
-              setPassword(text);
-              if (formErrors.password) setFormErrors({ ...formErrors, password: null });
-            }}
-            secureTextEntry
-            leftIcon={<Ionicons name="lock-closed-outline" size={20} color={colors.slate400} />}
-            error={formErrors.password}
-          />
+            <Input
+              label="Password"
+              placeholder="Enter your password"
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (formErrors.password) setFormErrors({ ...formErrors, password: null });
+              }}
+              onFocus={handlePasswordFocus}
+              secureTextEntry
+              leftIcon={<Ionicons name="lock-closed-outline" size={20} color={colors.slate400} />}
+              error={formErrors.password}
+            />
 
-          <TouchableOpacity
-            style={styles.forgotPasswordContainer}
-            onPress={() => {
-              clearError();
-              navigation.navigate('ForgotPassword');
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.forgotPasswordLink}>Forgot Password?</Text>
-          </TouchableOpacity>
-
-          <Button
-            title="Sign In"
-            onPress={handleLogin}
-            loading={loading}
-            disabled={loading}
-            style={styles.submitBtn}
-          />
-
-          <View style={styles.registerRow}>
-            <Text style={styles.registerPrompt}>Don't have an account? </Text>
             <TouchableOpacity
+              style={styles.forgotPasswordContainer}
               onPress={() => {
+                Keyboard.dismiss();
                 clearError();
-                navigation.navigate('Register');
+                navigation.navigate('ForgotPassword');
               }}
               activeOpacity={0.7}
             >
-              <Text style={styles.registerLink}>Sign Up</Text>
+              <Text style={styles.forgotPasswordLink}>Forgot Password?</Text>
             </TouchableOpacity>
-          </View>
-        </Card>
-      </ScrollView>
+
+            <Button
+              title="Sign In"
+              onPress={handleLogin}
+              loading={loading}
+              disabled={loading}
+              style={styles.submitBtn}
+            />
+
+            <View style={styles.registerRow}>
+              <Text style={styles.registerPrompt}>Don't have an account? </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  Keyboard.dismiss();
+                  clearError();
+                  navigation.navigate('Register');
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.registerLink}>Sign Up</Text>
+              </TouchableOpacity>
+            </View>
+          </Card>
+        </ScrollView>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
@@ -169,15 +209,27 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center'
   },
+  scrollContentKeyboard: {
+    justifyContent: 'flex-start'
+  },
   header: {
     alignItems: 'center',
     marginBottom: spacing.xxl
+  },
+  headerKeyboard: {
+    marginBottom: spacing.md
   },
   logoImage: {
     width: 88,
     height: 88,
     borderRadius: 20,
     marginBottom: spacing.md
+  },
+  logoImageKeyboard: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    marginBottom: spacing.xs
   },
   title: {
     ...typography.titleLarge,
