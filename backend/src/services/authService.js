@@ -329,10 +329,25 @@ const registerProvider = async ({ name, email, phone, password, businessName, bi
 
 /**
  * Customer Login:
- * Authenticates user, checks password, role === 'customer', returns token and profile.
+ * Authenticates user by email or mobile number, checks password, role === 'customer', returns token and profile.
  */
-const loginCustomer = async ({ email, password }) => {
-  const user = await User.findOne({ email: email.trim().toLowerCase() });
+const loginCustomer = async ({ email, password, phone, identifier }) => {
+  const loginInput = (email || phone || identifier || '').trim();
+  if (!loginInput) {
+    const err = new Error('Please enter your email or mobile number');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const digitsOnly = loginInput.replace(/\D/g, '');
+  const user = await User.findOne({
+    $or: [
+      { email: loginInput.toLowerCase() },
+      { phone: loginInput },
+      ...(digitsOnly.length >= 10 ? [{ phone: { $regex: digitsOnly.slice(-10) + '$' } }] : [])
+    ]
+  });
+
   if (!user) {
     const err = new Error('Invalid email or password');
     err.statusCode = 401;
@@ -373,10 +388,25 @@ const loginCustomer = async ({ email, password }) => {
 
 /**
  * Provider Login:
- * Authenticates user, checks password, role === 'provider', returns token and profile.
+ * Authenticates user by email or mobile number, checks password, role === 'provider', returns token and profile.
  */
-const loginProvider = async ({ email, password }) => {
-  const user = await User.findOne({ email: email.trim().toLowerCase() });
+const loginProvider = async ({ email, password, phone, identifier }) => {
+  const loginInput = (email || phone || identifier || '').trim();
+  if (!loginInput) {
+    const err = new Error('Please enter your email or mobile number');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const digitsOnly = loginInput.replace(/\D/g, '');
+  const user = await User.findOne({
+    $or: [
+      { email: loginInput.toLowerCase() },
+      { phone: loginInput },
+      ...(digitsOnly.length >= 10 ? [{ phone: { $regex: digitsOnly.slice(-10) + '$' } }] : [])
+    ]
+  });
+
   if (!user) {
     const err = new Error('Invalid email or password');
     err.statusCode = 401;

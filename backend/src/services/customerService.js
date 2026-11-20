@@ -385,6 +385,13 @@ const deleteCustomerByAdmin = async (identifier, adminUserId) => {
     throw err;
   }
 
+  // Guard: Protect review demo account
+  if (user.email === 'customer.demo@gmail.com') {
+    const err = new Error('Demo review accounts are permanent and cannot be deleted.');
+    err.statusCode = 403;
+    throw err;
+  }
+
   // Guard: Cannot delete administrator
   if (user.role === 'admin') {
     const err = new Error('Cannot delete an administrator account');
@@ -462,6 +469,14 @@ const deleteCustomerSelf = async (userId, password) => {
     const err = new Error('Customer account not found');
     err.statusCode = 404;
     throw err;
+  }
+
+  // Guard: Protect review demo account
+  if (user.email === 'customer.demo@gmail.com') {
+    return {
+      success: true,
+      message: 'Demo customer account deletion simulated successfully. This review account is permanent.'
+    };
   }
 
   if (user.isDeleted) {

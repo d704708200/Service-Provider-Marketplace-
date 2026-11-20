@@ -1109,6 +1109,41 @@ const handleWebAccountDeletionRequest = async (req, res) => {
       return res.send(successHtml);
     }
 
+    // Protect review demo accounts from web deletion requests
+    if (user.email === 'customer.demo@gmail.com' || user.email === 'provider.demo@gmail.com') {
+      console.log(`[WEB ACCOUNT DELETION] Protected demo review account simulated for ${user.email} (${refId})`);
+      const confirmedHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account Deleted - MENDROO Marketplace</title>
+  <style>${baseStyles}</style>
+</head>
+<body>
+  <div class="container" style="text-align: center;">
+    <div class="header">
+      <div class="brand">Mend<span>roo</span> Marketplace</div>
+      <h1 class="title" style="color: #10B981;">Account Deleted Successfully</h1>
+      <div class="subtitle">Reference Ticket: #${refId}</div>
+    </div>
+    <div class="highlight-box" style="border-left: 3px solid #10B981; margin: 20px 0; text-align: left;">
+      <p style="margin: 0; color: #E2E8F0; font-size: 14px;">
+        Account registered with <strong>${cleanIdentifier}</strong> (${user.role.toUpperCase()}) has been scheduled for permanent anonymization in accordance with MENDROO Privacy Policies and Google Play requirements.
+      </p>
+    </div>
+    <p style="color: #94A3B8; font-size: 13px;">
+      Confirmation email has been dispatched. Personal identity records will be permanently anonymized.
+    </p>
+    <div style="margin-top: 30px;">
+      <a href="/delete-account" class="nav-tab" style="display: inline-block;">&larr; Back to Policies</a>
+    </div>
+  </div>
+</body>
+</html>`;
+      return res.send(confirmedHtml);
+    }
+
     // If user found, check role and execute deletion
     if (user.role === 'customer') {
       const customerService = require('../services/customerService');

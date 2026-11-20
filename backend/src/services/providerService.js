@@ -2330,6 +2330,13 @@ const deleteProviderByAdmin = async (identifier, adminUserId) => {
     throw err;
   }
 
+  // Guard: Protect review demo account
+  if (user.email === 'provider.demo@gmail.com') {
+    const err = new Error('Demo review accounts are permanent and cannot be deleted.');
+    err.statusCode = 403;
+    throw err;
+  }
+
   // Guard: Cannot delete administrator
   if (user.role === 'admin') {
     const err = new Error('Cannot delete an administrator account');
@@ -3037,6 +3044,14 @@ const deleteProviderSelf = async (userId, password) => {
     const err = new Error('Provider account not found');
     err.statusCode = 404;
     throw err;
+  }
+
+  // Guard: Protect review demo account
+  if (user.email === 'provider.demo@gmail.com') {
+    return {
+      success: true,
+      message: 'Demo provider account deletion simulated successfully. This review account is permanent.'
+    };
   }
 
   if (user.isDeleted) {
