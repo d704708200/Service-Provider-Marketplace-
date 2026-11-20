@@ -114,7 +114,7 @@ android {
         applicationId 'com.serviceprovider.customerapp'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
+        versionCode 8
         versionName "1.2.4"
     }
     def releaseSigningPropertiesFile = rootProject.file('release-signing.properties')
