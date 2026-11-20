@@ -685,7 +685,7 @@ export default function ProfileScreen({ navigation }) {
 
           <TouchableOpacity
             style={styles.navRow}
-            onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/privacy')}
+            onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/privacy/provider')}
             activeOpacity={0.7}
           >
             <View style={styles.navLeft}>
@@ -693,7 +693,7 @@ export default function ProfileScreen({ navigation }) {
                 <Ionicons name="shield-checkmark-outline" size={18} color={isDark ? '#C4B5FD' : colors.primary} />
               </View>
               <View style={styles.navTextCol}>
-                <Text style={styles.navLabel} numberOfLines={1} ellipsizeMode="tail">Privacy Policy</Text>
+                <Text style={styles.navLabel} numberOfLines={1} ellipsizeMode="tail">Provider Privacy Policy</Text>
                 <Text style={styles.navSub} numberOfLines={1} ellipsizeMode="tail">Data collection, security & transparency</Text>
               </View>
             </View>
@@ -704,7 +704,7 @@ export default function ProfileScreen({ navigation }) {
 
           <TouchableOpacity
             style={styles.navRow}
-            onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/delete-account')}
+            onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/delete-account/provider')}
             activeOpacity={0.7}
           >
             <View style={styles.navLeft}>

@@ -26,11 +26,15 @@ const commissionRoutes = require('./routes/commissionRoutes');
 const { initializeFirebase, isFirebaseConfigured, getFirebaseProjectId } = require('./config/firebase');
 const emailService = require('./services/emailService');
 const {
-  renderPrivacyPage,
-  renderTermsPage,
-  renderSupportPage,
+  renderCustomerPrivacyPage,
+  renderProviderPrivacyPage,
+  renderPrivacyHubPage,
+  renderCustomerDeletionPage,
+  renderProviderDeletionPage,
   renderAccountDeletionPage,
-  handleWebAccountDeletionRequest
+  handleWebAccountDeletionRequest,
+  renderTermsPage,
+  renderSupportPage
 } = require('./controllers/legalController');
 const authController = require('./controllers/authController');
 const { validateResetPassword } = require('./middleware/validation');
@@ -120,12 +124,22 @@ app.get('/', (req, res) => {
   });
 });
 
-// Transparency & Legal Documentation Pages
-app.get('/privacy', renderPrivacyPage);
+// Transparency & Legal Documentation Pages (Google Play Store Compliance - Public & Open Access)
+app.get('/privacy', renderPrivacyHubPage);
+app.get('/privacy/customer', renderCustomerPrivacyPage);
+app.get('/privacy-customer', renderCustomerPrivacyPage);
+app.get('/privacy/provider', renderProviderPrivacyPage);
+app.get('/privacy-provider', renderProviderPrivacyPage);
+
 app.get('/terms', renderTermsPage);
 app.get('/support', renderSupportPage);
+
 app.get('/delete-account', renderAccountDeletionPage);
 app.get('/privacy/delete-account', renderAccountDeletionPage);
+app.get('/delete-account/customer', renderCustomerDeletionPage);
+app.get('/delete-account-customer', renderCustomerDeletionPage);
+app.get('/delete-account/provider', renderProviderDeletionPage);
+app.get('/delete-account-provider', renderProviderDeletionPage);
 app.post('/delete-account', handleWebAccountDeletionRequest);
 
 // Clean Password Reset Web Pages

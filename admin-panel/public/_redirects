@@ -1,1 +1,11 @@
+/privacy-customer /privacy-customer.html 200
+/privacy/customer /privacy-customer.html 200
+/privacy-provider /privacy-provider.html 200
+/privacy/provider /privacy-provider.html 200
+/privacy /privacy.html 200
+/delete-account-customer /delete-account-customer.html 200
+/delete-account/customer /delete-account-customer.html 200
+/delete-account-provider /delete-account-provider.html 200
+/delete-account/provider /delete-account-provider.html 200
+/delete-account /delete-account.html 200
 /* /index.html 200

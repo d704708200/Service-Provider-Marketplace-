@@ -11,7 +11,8 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  Linking
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -441,6 +442,16 @@ export default function RegisterScreen({ navigation }) {
                 <Ionicons name="document-text-outline" size={14} color="#C4B5FD" />
                 <Text style={styles.readFullTermsText}>Read Full Terms & Conditions</Text>
                 <Ionicons name="chevron-forward" size={14} color="#C4B5FD" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/privacy/provider')}
+                style={[styles.readFullTermsLink, { marginTop: 6 }]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="shield-checkmark-outline" size={14} color="#6EE7B7" />
+                <Text style={[styles.readFullTermsText, { color: '#6EE7B7' }]}>Read Provider Privacy Policy</Text>
+                <Ionicons name="open-outline" size={14} color="#6EE7B7" />
               </TouchableOpacity>
             </View>
 

@@ -7,7 +7,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
-  Image
+  Image,
+  Linking
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -212,6 +213,17 @@ export default function RegisterScreen({ navigation }) {
             style={styles.submitBtn}
           />
 
+          <View style={styles.legalNoticeRow}>
+            <Text style={styles.legalNoticeText}>By registering, you agree to our </Text>
+            <TouchableOpacity onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/privacy/customer')}>
+              <Text style={styles.legalNoticeLink}>Privacy Policy</Text>
+            </TouchableOpacity>
+            <Text style={styles.legalNoticeText}> and </Text>
+            <TouchableOpacity onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/terms')}>
+              <Text style={styles.legalNoticeLink}>Terms</Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.loginRow}>
             <Text style={styles.loginPrompt}>Already have an account? </Text>
             <TouchableOpacity
@@ -293,6 +305,25 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   submitBtn: {
     marginTop: spacing.sm,
     backgroundColor: colors.primary
+  },
+  legalNoticeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.xs
+  },
+  legalNoticeText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 11
+  },
+  legalNoticeLink: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 11
   },
   loginRow: {
     flexDirection: 'row',

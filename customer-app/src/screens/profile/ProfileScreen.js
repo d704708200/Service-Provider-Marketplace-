@@ -643,7 +643,7 @@ export default function ProfileScreen({ navigation }) {
 
           <TouchableOpacity
             style={styles.legalNavRow}
-            onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/privacy')}
+            onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/privacy/customer')}
             activeOpacity={0.7}
           >
             <View style={styles.legalNavLeft}>
@@ -671,7 +671,7 @@ export default function ProfileScreen({ navigation }) {
 
           <TouchableOpacity
             style={styles.legalNavRow}
-            onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/delete-account')}
+            onPress={() => Linking.openURL('https://service-provider-marketplace.onrender.com/delete-account/customer')}
             activeOpacity={0.7}
           >
             <View style={styles.legalNavLeft}>
