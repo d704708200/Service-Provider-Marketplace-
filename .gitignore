@@ -16,3 +16,10 @@ cloudflared.exe
 release-apks/
 .build-temp/
 **/.build-temp/
+*.keystore
+!**/debug.keystore
+*.jks
+*.der
+*.pem
+release-signing.properties
+signing.properties
