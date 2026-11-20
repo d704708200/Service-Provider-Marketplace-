@@ -60,17 +60,7 @@ export default function ProfileScreen({ navigation }) {
     if (uploadingPhoto) return;
 
     try {
-      // 1. Request photo library permission
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permissionResult.granted) {
-        Alert.alert(
-          'Permission Required',
-          'Photo library access is required to update your profile photo. Please enable it in system settings.'
-        );
-        return;
-      }
-
-      // 2. Open Image Picker
+      // 1. Open System Photo Picker (privacy-preserving Android Photo Picker, zero broad media permissions required)
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
