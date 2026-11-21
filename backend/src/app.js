@@ -23,6 +23,7 @@ const providerMyServicesRoutes = require('./routes/providerMyServicesRoutes');
 const serviceRadiusRoutes = require('./routes/serviceRadiusRoutes');
 const settingRoutes = require('./routes/settingRoutes');
 const commissionRoutes = require('./routes/commissionRoutes');
+const cityAnalyticsRoutes = require('./routes/cityAnalyticsRoutes');
 const { initializeFirebase, isFirebaseConfigured, getFirebaseProjectId } = require('./config/firebase');
 const emailService = require('./services/emailService');
 const {
@@ -177,6 +178,7 @@ app.use('/api/admin/service-radii', serviceRadiusRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/admin/settings', settingRoutes);
 app.use('/api/admin/commissions', commissionRoutes);
+app.use('/api/admin/analytics', cityAnalyticsRoutes);
 
 // 404 Handler
 app.use(notFoundHandler);

@@ -18,7 +18,8 @@ import {
   X,
   Shield,
   SlidersHorizontal,
-  Wallet
+  Wallet,
+  Building2
 } from 'lucide-react';
 
 const navItems = [
@@ -31,6 +32,7 @@ const navItems = [
   { name: 'Service Tags', path: '/tags', icon: Tag },
   { name: 'Home Screen Banners', path: '/home-banners', icon: SlidersHorizontal },
   { name: 'Booking Management', path: '/bookings', icon: Calendar },
+  { name: 'City-wise Bookings', path: '/city-bookings', icon: Building2 },
   { name: 'Service Requests', path: '/requests', icon: CalendarCheck },
   { name: 'Reviews', path: '/reviews', icon: Star },
   { name: 'Service Areas', path: '/locations', icon: MapPin },

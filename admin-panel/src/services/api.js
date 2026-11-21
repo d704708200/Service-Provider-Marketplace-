@@ -627,5 +627,25 @@ export const commissionMonitoringApi = {
   }
 };
 
+// City-wise Booking Analytics APIs
+export const cityAnalyticsApi = {
+  getCities: async (params = {}) => {
+    const response = await api.get('/admin/analytics/cities', { params });
+    return response.data;
+  },
+  getCityBookings: async (city, params = {}) => {
+    const response = await api.get(`/admin/analytics/cities/${encodeURIComponent(city)}/bookings`, { params });
+    return response.data;
+  },
+  getCitySummary: async (city, params = {}) => {
+    const response = await api.get(`/admin/analytics/cities/${encodeURIComponent(city)}/summary`, { params });
+    return response.data;
+  },
+  exportCSV: async (params = {}) => {
+    const response = await api.get('/admin/analytics/cities/export', { params, responseType: 'blob' });
+    return response.data;
+  }
+};
+
 export default api;
 

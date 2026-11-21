@@ -16,6 +16,8 @@ import ServicesPage from './pages/services/ServicesPage';
 import ServiceTagsPage from './pages/tags/ServiceTagsPage';
 import HomeBannersPage from './pages/banners/HomeBannersPage';
 import BookingsPage from './pages/bookings/BookingsPage';
+import CityBookingsPage from './pages/cityBookings/CityBookingsPage';
+import CityDetailPage from './pages/cityBookings/CityDetailPage';
 import RequestsPage from './pages/requests/RequestsPage';
 import ReviewsPage from './pages/reviews/ReviewsPage';
 import LocationsPage from './pages/locations/LocationsPage';
@@ -48,6 +50,8 @@ function App() {
               <Route path="/tags" element={<ServiceTagsPage />} />
               <Route path="/home-banners" element={<HomeBannersPage />} />
               <Route path="/bookings" element={<BookingsPage />} />
+              <Route path="/city-bookings" element={<CityBookingsPage />} />
+              <Route path="/city-bookings/:city" element={<CityDetailPage />} />
               <Route path="/requests" element={<RequestsPage />} />
               <Route path="/reviews" element={<ReviewsPage />} />
               <Route path="/locations" element={<LocationsPage />} />

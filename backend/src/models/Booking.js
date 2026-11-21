@@ -433,6 +433,9 @@ bookingSchema.index({ status: 1, bookingMode: 1 });
 bookingSchema.index({ category: 1, tag: 1 });
 bookingSchema.index({ scheduledDate: 1 });
 bookingSchema.index({ 'address.location': '2dsphere' });
+bookingSchema.index({ 'address.city': 1, status: 1 });
+bookingSchema.index({ 'address.city': 1, paymentStatus: 1 });
+bookingSchema.index({ 'address.city': 1, createdAt: -1 });
 
 /**
  * Pre-save middleware to keep accounting breakdown and originalServicePrice synchronized.
