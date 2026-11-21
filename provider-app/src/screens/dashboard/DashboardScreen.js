@@ -65,15 +65,7 @@ export default function DashboardScreen({ navigation }) {
     if (uploadingPhoto) return;
 
     try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permissionResult.granted) {
-        Alert.alert(
-          'Permission Required',
-          'Photo library access is required to update your profile photo. Please enable it in system settings.'
-        );
-        return;
-      }
-
+      // Android Photo Picker does not require broad media library permissions
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,

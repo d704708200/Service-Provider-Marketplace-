@@ -6,6 +6,17 @@
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
+  <!-- Google Play Photo & Video Permissions Compliance: Remove broad storage and media permissions -->
+  <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove"/>
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove"/>
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove"/>
+
+  <!-- Google Play Hardware Feature Declaration: make portrait orientation optional so devices (tablets/foldables/Chromebooks) are not filtered out -->
+  <uses-feature
+      android:name="android.hardware.screen.portrait"
+      android:required="false" />
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>

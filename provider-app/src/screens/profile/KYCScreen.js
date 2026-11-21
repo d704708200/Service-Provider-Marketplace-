@@ -206,11 +206,7 @@ export default function KYCScreen({ navigation, route }) {
           quality: 0.8
         });
       } else {
-        const libPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!libPerm.granted) {
-          Alert.alert('Permission Denied', 'Media library permission is required to select your document.');
-          return;
-        }
+        // Android Photo Picker does not require broad media library permissions
         result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           allowsEditing: true,
@@ -413,11 +409,7 @@ export default function KYCScreen({ navigation, route }) {
           quality: 0.8
         });
       } else {
-        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!perm.granted) {
-          Alert.alert('Permission Required', 'Media library permission is required to select your certificate.');
-          return;
-        }
+        // Android Photo Picker does not require broad media library permissions
         imgRes = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           allowsEditing: true,

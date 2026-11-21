@@ -67,17 +67,7 @@ export default function ProfileScreen({ navigation }) {
     if (uploadingPhoto) return;
 
     try {
-      // 1. Request photo library permission
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permissionResult.granted) {
-        Alert.alert(
-          'Permission Required',
-          'Photo library access is required to update your business profile photo. Please enable it in system settings.'
-        );
-        return;
-      }
-
-      // 2. Open Image Picker
+      // Android Photo Picker does not require broad media library permissions
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,

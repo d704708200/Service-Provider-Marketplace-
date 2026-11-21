@@ -103,6 +103,19 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
  */
 def jscFlavor = 'org.webkit:android-jsc:+'
 
+def releaseSigningPropertiesFile = rootProject.file('release-signing.properties')
+if (!releaseSigningPropertiesFile.exists()) {
+    releaseSigningPropertiesFile = file('release-signing.properties')
+}
+def releaseSigningProperties = new Properties()
+if (releaseSigningPropertiesFile.exists()) {
+    releaseSigningProperties.load(new FileInputStream(releaseSigningPropertiesFile))
+}
+
+def getSigningProperty = { String propName ->
+    return releaseSigningProperties.getProperty(propName) ?: (findProperty(propName) ?: System.getenv(propName))
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -114,8 +127,8 @@ android {
         applicationId 'com.mendroo.provider'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
-        versionName "1.2.2"
+        versionCode 6
+        versionName "1.2.4"
     }
     signingConfigs {
         debug {
@@ -124,15 +137,22 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            def storePath = getSigningProperty('MYAPP_UPLOAD_STORE_FILE')
+            if (storePath) {
+                storeFile file(storePath)
+                storePassword getSigningProperty('MYAPP_UPLOAD_STORE_PASSWORD')
+                keyAlias getSigningProperty('MYAPP_UPLOAD_KEY_ALIAS')
+                keyPassword getSigningProperty('MYAPP_UPLOAD_KEY_PASSWORD')
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig (getSigningProperty('MYAPP_UPLOAD_STORE_FILE') ? signingConfigs.release : signingConfigs.debug)
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
@@ -162,6 +182,68 @@ android {
         // Ex: android.packagingOptions.pickFirsts += '**/SCCS/**'
         options.each {
             android.packagingOptions[prop] += it
+        }
+    }
+}
+
+tasks.whenTaskAdded { task ->
+    // Hook 1: Patch ELF PT_LOAD alignment from 4KB to 16KB on merged native libraries
+    if (task.name.startsWith('merge') && task.name.endsWith('NativeLibs')) {
+        task.doLast {
+            def raw = task.name.substring('merge'.length(), task.name.length() - 'NativeLibs'.length())
+            def variant = raw.substring(0, 1).toLowerCase() + raw.substring(1)
+
+            def mergedDir = new File(buildDir, "intermediates/merged_native_libs/${variant}/${task.name}/out/lib")
+            if (!mergedDir.exists()) {
+                mergedDir = new File(buildDir, "intermediates/merged_native_libs/${variant}/out/lib")
+            }
+
+            if (mergedDir.exists()) {
+                println "16KB ELF patch: scanning ${mergedDir}"
+                exec {
+                    commandLine 'python',
+                        "${rootProject.projectDir}/../scripts/patch_and_align_16kb.py",
+                        '--dir',
+                        mergedDir.absolutePath
+                }
+            }
+        }
+    }
+
+    // Hook 2: Ensure AAB has 16KB BundleConfig.pb and all .so files aligned + re-sign
+    if (task.name == 'bundleRelease') {
+        task.doLast {
+            def bundleDir = new File(buildDir, "outputs/bundle/release")
+            def aabFile = new File(bundleDir, "app-release.aab")
+
+            if (aabFile.exists()) {
+                def patchScript = "${rootProject.projectDir}/../scripts/patch_and_align_16kb.py"
+                def storePath = getSigningProperty('MYAPP_UPLOAD_STORE_FILE')
+                def keystoreFile = storePath ? file(storePath) : null
+                def storePass = getSigningProperty('MYAPP_UPLOAD_STORE_PASSWORD')
+                def keyAlias = getSigningProperty('MYAPP_UPLOAD_KEY_ALIAS')
+                def keyPass = getSigningProperty('MYAPP_UPLOAD_KEY_PASSWORD')
+
+                if (keystoreFile != null && keystoreFile.exists() && storePass && keyAlias) {
+                    println "16KB AAB: patching bundle config, aligning .so libraries and re-signing..."
+                    exec {
+                        commandLine 'python',
+                            patchScript,
+                            '--aab', aabFile.absolutePath,
+                            '--keystore', keystoreFile.absolutePath,
+                            '--storepass', storePass,
+                            '--alias', keyAlias,
+                            '--keypass', keyPass
+                    }
+                } else {
+                    println "16KB AAB: patching without re-signing (no release signing configured)"
+                    exec {
+                        commandLine 'python',
+                            patchScript,
+                            '--aab', aabFile.absolutePath
+                    }
+                }
+            }
         }
     }
 }
