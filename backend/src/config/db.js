@@ -1,9 +1,12 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 let isConnected = false;
 
 const connectDB = async () => {
-  const uri = process.env.MONGODB_URI;
+  const isTestEnv = process.env.NODE_ENV === 'test';
+  const uri = isTestEnv
+    ? (process.env.TEST_MONGODB_URI || process.env.MONGODB_URI)
+    : process.env.MONGODB_URI;
 
   if (!uri) {
     console.warn('MONGODB_URI is not defined in environment variables. Database connection skipped.');
@@ -15,13 +18,20 @@ const connectDB = async () => {
   }
 
   try {
-    const conn = await mongoose.connect(uri, {
+    const connectOptions = {
       autoIndex: process.env.NODE_ENV !== 'production',
       serverSelectionTimeoutMS: 5000,
-    });
+    };
+
+    // Isolate test/staging runs from production database when TEST_MONGODB_URI is not explicitly set
+    if (isTestEnv && !process.env.TEST_MONGODB_URI) {
+      connectOptions.dbName = process.env.TEST_DB_NAME || 'service_marketplace_staging';
+    }
+
+    const conn = await mongoose.connect(uri, connectOptions);
 
     isConnected = conn.connections[0].readyState === 1;
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    console.log(`MongoDB Connected: ${conn.connection.host} (db: ${conn.connection.name})`);
     return true;
   } catch (error) {
     console.error(`MongoDB Connection Error: ${error.message}`);

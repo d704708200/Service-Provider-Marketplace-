@@ -2,6 +2,7 @@ const http = require('http');
 const dotenv = require('dotenv');
 const mongoose = require('mongoose');
 const path = require('path');
+process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = require('./src/app');
