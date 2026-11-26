@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
-  TouchableOpacity
+  TouchableOpacity,
+  Keyboard
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +28,34 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const scrollViewRef = useRef(null);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setIsKeyboardVisible(true);
+      setKeyboardHeight(e?.endCoordinates?.height || 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setIsKeyboardVisible(false);
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const handleFieldFocus = () => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 150);
+  };
 
   const validate = () => {
     const errs = {};
@@ -48,8 +77,9 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleLogin = async () => {
+    Keyboard.dismiss();
     clearError();
-    if (!validate()) return;
+    if (loading || !validate()) return;
 
     setLoading(true);
     try {
@@ -66,23 +96,35 @@ export default function LoginScreen({ navigation }) {
       style={styles.keyboardContainer}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView showsHorizontalScrollIndicator={false}
+      <ScrollView
+        ref={scrollViewRef}
+        showsHorizontalScrollIndicator={false}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.xl }
+          {
+            paddingTop: insets.top + (isKeyboardVisible ? spacing.sm : spacing.xl),
+            paddingBottom: Math.max(
+              insets.bottom + spacing.xl,
+              isKeyboardVisible ? keyboardHeight + spacing.xl : 0
+            )
+          },
+          isKeyboardVisible && styles.scrollContentKeyboard
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         {/* Brand Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, isKeyboardVisible && styles.headerKeyboard]}>
           <Image
             source={require('../../../assets/mendroo-logo.png')}
-            style={styles.logoImage}
+            style={[styles.logoImage, isKeyboardVisible && styles.logoImageKeyboard]}
             resizeMode="contain"
           />
           <Text style={styles.title}>Provider Portal</Text>
-          <Text style={styles.subtitle}>Sign in to manage service bookings, incoming requests, and dispatching</Text>
+          {!isKeyboardVisible && (
+            <Text style={styles.subtitle}>Sign in to manage service bookings, incoming requests, and dispatching</Text>
+          )}
         </View>
 
         {/* Form Card */}
@@ -105,6 +147,7 @@ export default function LoginScreen({ navigation }) {
             keyboardType="email-address"
             autoCapitalize="none"
             leftIcon="mail-outline"
+            onFocus={handleFieldFocus}
             error={errors.email}
           />
 
@@ -118,6 +161,7 @@ export default function LoginScreen({ navigation }) {
             }}
             secureTextEntry
             leftIcon="lock-closed-outline"
+            onFocus={handleFieldFocus}
             error={errors.password}
           />
 
@@ -177,15 +221,27 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center'
   },
+  scrollContentKeyboard: {
+    justifyContent: 'flex-start'
+  },
   header: {
     alignItems: 'center',
     marginBottom: spacing.xxl
+  },
+  headerKeyboard: {
+    marginBottom: spacing.md
   },
   logoImage: {
     width: 88,
     height: 88,
     borderRadius: 20,
     marginBottom: spacing.md
+  },
+  logoImageKeyboard: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    marginBottom: spacing.xs
   },
   title: {
     ...typography.titleLarge,

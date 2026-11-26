@@ -22,6 +22,8 @@ export const Input = ({
   editable = true,
   style,
   inputStyle,
+  onFocus: onFocusProp,
+  onBlur: onBlurProp,
   ...props
 }) => {
   const { colors, isDark } = useTheme();
@@ -125,8 +127,14 @@ export const Input = ({
           multiline={multiline}
           numberOfLines={numberOfLines}
           editable={editable}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          onFocus={(e) => {
+            setIsFocused(true);
+            onFocusProp?.(e);
+          }}
+          onBlur={(e) => {
+            setIsFocused(false);
+            onBlurProp?.(e);
+          }}
           style={[
             styles.input,
             { color: colors.textPrimary },

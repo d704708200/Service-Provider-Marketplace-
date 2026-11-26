@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
-import { Appearance, useColorScheme } from 'react-native';
+import { Appearance, useColorScheme, Platform, NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { darkColors, lightColors, getThemeColors } from '../theme/colors';
 import { getTheme } from '../theme';
@@ -68,6 +68,15 @@ export const ThemeProvider = ({ children }) => {
   const colors = useMemo(() => getThemeColors(isDark), [isDark]);
   const theme = useMemo(() => getTheme(isDark), [isDark]);
   const statusBarStyle = isDark ? 'light' : 'dark';
+
+  // Sync Android system navigation bar color and icon contrast with active theme
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      const navColor = isDark ? '#0F0E16' : (colors.card || '#FFFFFF');
+      const isDarkIcons = !isDark;
+      NativeModules.SystemNavBar?.setNavigationBarStyle(navColor, isDarkIcons);
+    }
+  }, [isDark, colors.card]);
 
   const navigationTheme = useMemo(() => ({
     dark: isDark,

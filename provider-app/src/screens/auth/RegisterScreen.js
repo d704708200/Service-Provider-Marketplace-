@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,8 @@ import {
   Modal,
   TextInput,
   TouchableWithoutFeedback,
-  Linking
+  Linking,
+  Keyboard
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,6 +40,34 @@ export default function RegisterScreen({ navigation }) {
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+  const scrollViewRef = useRef(null);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setIsKeyboardVisible(true);
+      setKeyboardHeight(e?.endCoordinates?.height || 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setIsKeyboardVisible(false);
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const handleLowerFieldFocus = () => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 150);
+  };
 
   // Dynamic Categories state
   const [categoriesList, setCategoriesList] = useState([]);
@@ -166,8 +195,9 @@ export default function RegisterScreen({ navigation }) {
   };
 
   const handleRegister = async () => {
+    Keyboard.dismiss();
     clearError();
-    if (!validate()) return;
+    if (loading || !validate()) return;
 
     setLoading(true);
     try {
@@ -198,12 +228,21 @@ export default function RegisterScreen({ navigation }) {
       style={styles.keyboardContainer}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView showsHorizontalScrollIndicator={false}
+      <ScrollView
+        ref={scrollViewRef}
+        showsHorizontalScrollIndicator={false}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xl }
+          {
+            paddingTop: insets.top + spacing.lg,
+            paddingBottom: Math.max(
+              insets.bottom + spacing.xl,
+              isKeyboardVisible ? keyboardHeight + spacing.xxl : 0
+            )
+          }
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         {/* Brand Header & Back Option */}
@@ -407,6 +446,7 @@ export default function RegisterScreen({ navigation }) {
             }}
             secureTextEntry
             leftIcon="lock-closed-outline"
+            onFocus={handleLowerFieldFocus}
             error={formErrors.password}
           />
 
@@ -420,6 +460,7 @@ export default function RegisterScreen({ navigation }) {
             }}
             secureTextEntry
             leftIcon="shield-checkmark-outline"
+            onFocus={handleLowerFieldFocus}
             error={formErrors.confirmPassword}
           />
 

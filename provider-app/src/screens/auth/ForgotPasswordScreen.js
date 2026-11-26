@@ -89,9 +89,10 @@ export default function ForgotPasswordScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.xl }
+          { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + 140 }
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         {/* Brand Header */}
