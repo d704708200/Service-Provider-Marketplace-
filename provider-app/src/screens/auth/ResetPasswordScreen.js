@@ -83,7 +83,7 @@ export default function ResetPasswordScreen({ route, navigation }) {
         {/* Brand Header */}
         <View style={styles.header}>
           <Image
-            source={require('../../../assets/icon.png')}
+            source={require('../../../assets/branding/provider-icon-512.png')}
             style={styles.logoImage}
             resizeMode="contain"
           />

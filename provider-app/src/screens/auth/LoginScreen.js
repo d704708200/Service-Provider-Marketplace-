@@ -117,7 +117,7 @@ export default function LoginScreen({ navigation }) {
         {/* Brand Header */}
         <View style={[styles.header, isKeyboardVisible && styles.headerKeyboard]}>
           <Image
-            source={require('../../../assets/mendroo-logo.png')}
+            source={require('../../../assets/branding/provider-icon-512.png')}
             style={[styles.logoImage, isKeyboardVisible && styles.logoImageKeyboard]}
             resizeMode="contain"
           />

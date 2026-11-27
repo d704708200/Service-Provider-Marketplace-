@@ -17,7 +17,7 @@ import Button from './Button';
 
 /**
  * Professional Support Contact Card for MENDROO
- * Displays official support number 89277 21577 with one-tap dialing and selectable text.
+ * Displays official support number +91 89277 21577 with one-tap dialing and selectable text.
  */
 export default function SupportContactCard({
   style,
@@ -42,8 +42,7 @@ export default function SupportContactCard({
     if (!email) return;
     const mailto = `mailto:${email}?subject=${encodeURIComponent('MENDROO Support Request')}`;
     try {
-      const canOpen = await Linking.canOpenURL(mailto).catch(() => false);
-      if (canOpen || Platform.OS === 'web') {
+      if (Platform.OS === 'android' || Platform.OS === 'ios' || Platform.OS === 'web') {
         await Linking.openURL(mailto);
       } else {
         Alert.alert('Email Support', `Please email us at: ${email}`);

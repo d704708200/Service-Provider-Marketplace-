@@ -127,8 +127,8 @@ android {
         applicationId 'com.mendroo.provider'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
-        versionName "1.2.5"
+        versionCode 9
+        versionName "1.2.7"
     }
     signingConfigs {
         debug {

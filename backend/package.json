@@ -19,6 +19,7 @@
     "test:provider-kyc": "node test_provider_kyc_workflow.js",
     "test:cors": "node test_production_cors_preflight.js",
     "seed:admin": "node src/seeds/provisionAdmin.js",
+    "admin:create": "node src/seeds/createSuperAdmin.js",
     "admin:reset-password": "node src/seeds/resetAdminPassword.js",
     "seed:provider": "node src/seeds/provisionProvider.js"
   },

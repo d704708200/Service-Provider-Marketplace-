@@ -259,7 +259,7 @@ export default function RegisterScreen({ navigation }) {
               <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
             </TouchableOpacity>
             <Image
-              source={require('../../../assets/mendroo-logo.png')}
+              source={require('../../../assets/branding/provider-icon-512.png')}
               style={styles.headerLogo}
               resizeMode="contain"
             />
